@@ -1,0 +1,31 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Secrets & local env — NEVER commit real credentials.
+# Only *.example files are tracked.
+.env
+.env.*
+!.env.example
+*.local
+
+# FCC / TEE proxy config carries indexer DB credentials — commit only *.example
+config/proxy/*.toml
+!config/proxy/*.toml.example
+config/extension.env
+
+# SQLite data files (indexer + executor durable state)
+*.sqlite
+*.sqlite-*
+*.db
+data/
+
+# Go build artifacts (tee-extension)
+tee-extension/bin/
+tee-extension/*.out
+
+# Test / coverage
+coverage/
