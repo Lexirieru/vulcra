@@ -1,65 +1,95 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+// EVM vault dashboard (U5–U7 / R17, R18). Live FTSO price, CR gauge, liquidation
+// price, what-if simulator, and open/adjust/repay/close actions.
+import { useAccount } from "wagmi";
+import { useAppKit } from "@reown/appkit/react";
+import { Button, Card, EmptyState, Skeleton } from "@/components/ui";
+import { Reveal, Stagger } from "@/components/motion";
+import { LivePrice } from "@/components/vault/LivePrice";
+import { PositionCard } from "@/components/vault/PositionCard";
+import { PriceSimulator } from "@/components/vault/PriceSimulator";
+import { VaultActions } from "@/components/vault/VaultActions";
+import { ContractsNotice } from "@/components/vault/ContractsNotice";
+import { useFtsoPrice } from "@/hooks/useFtsoPrice";
+import { useVault, useVaultParams } from "@/hooks/useVault";
+
+export default function DashboardPage() {
+  const { address, isConnected } = useAccount();
+  const { price18 } = useFtsoPrice();
+  const { params } = useVaultParams();
+  const { vault, hasVault, notConfigured, isLoading } = useVault(address);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
+    <div className="flex flex-col gap-6">
+      <Reveal>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Vault dashboard</h1>
+          <p className="mt-1 text-sm text-muted">
+            Lock FXRP as collateral, mint vUSD, and watch your position against the
+            live oracle.
           </p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </Reveal>
+
+      <Stagger className="grid gap-6 lg:grid-cols-3">
+        <LivePrice />
+
+        {notConfigured ? (
+          <div className="lg:col-span-2">
+            <ContractsNotice />
+          </div>
+        ) : !isConnected ? (
+          <Card className="lg:col-span-2 flex flex-col items-center justify-center gap-3 text-center">
+            <p className="text-sm text-muted">Connect a wallet to view your vault.</p>
+            <ConnectPrompt />
+          </Card>
+        ) : isLoading ? (
+          <Card className="lg:col-span-2">
+            <Skeleton className="h-40 w-full" />
+          </Card>
+        ) : hasVault && vault ? (
+          <div className="lg:col-span-2">
+            <PositionCard vault={vault} price18={price18} params={params} />
+          </div>
+        ) : (
+          <div className="lg:col-span-2">
+            <EmptyState
+              title="No vault yet"
+              description="Open a vault below to deposit FXRP and mint vUSD."
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          </div>
+        )}
+      </Stagger>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Reveal delay={0.05}>
+          <VaultActions
+            vault={vault}
+            price18={price18}
+            params={params}
+            disabled={notConfigured}
+          />
+        </Reveal>
+        <Reveal delay={0.1}>
+          {hasVault && vault && price18 ? (
+            <PriceSimulator vault={vault} livePrice18={price18} params={params} />
+          ) : (
+            <Card className="flex items-center justify-center text-center text-sm text-muted">
+              The what-if simulator appears once you have an open vault.
+            </Card>
+          )}
+        </Reveal>
+      </div>
     </div>
+  );
+}
+
+function ConnectPrompt() {
+  const { open } = useAppKit();
+  return (
+    <Button size="sm" onClick={() => open()}>
+      Connect wallet
+    </Button>
   );
 }

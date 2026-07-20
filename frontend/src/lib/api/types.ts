@@ -116,3 +116,14 @@ export interface GuardianRule extends GuardianRuleInput {
   enabled: boolean;
   createdAt: number;
 }
+
+// ── At-risk vaults (GET /vaults/at-risk) — from the backend indexer (R19) ─────
+// Candidate discovery only; the liquidate call re-checks CR on-chain.
+export interface AtRiskVault {
+  owner: Address;
+  /** Base units as decimal strings (FXRP 6-dec, vUSD 18-dec). */
+  collateral6: string;
+  debt18: string;
+  /** Collateral ratio in basis points at the indexer's last read. */
+  crBps: number;
+}

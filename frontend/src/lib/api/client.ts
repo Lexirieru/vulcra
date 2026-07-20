@@ -4,6 +4,7 @@
 import { API_BASE_URL } from "@/config/contracts";
 import type {
   AccountResponse,
+  AtRiskVault,
   GuardianRule,
   GuardianRuleInput,
   MintBuildRequest,
@@ -79,6 +80,11 @@ export const api = {
 
   getMintStatus: (mintId: string) =>
     request<MintStatusResponse>(`/mint/status/${encodeURIComponent(mintId)}`),
+
+  listAtRiskVaults: (belowCrBps?: number) =>
+    request<AtRiskVault[]>(
+      `/vaults/at-risk${belowCrBps ? `?belowCr=${belowCrBps}` : ""}`,
+    ),
 
   listGuardianRules: (owner: string) =>
     request<GuardianRule[]>(`/guardian/rules?owner=${encodeURIComponent(owner)}`),
