@@ -36,12 +36,19 @@ import (
 //
 //   - Owner        : the vault owner address ("0x"-prefixed, 20 bytes) — vault
 //     identity is the owner address, matching getVault(address owner).
+//   - Branch       : which collateral branch (e.g. "FXRP" / "WFLR") this rule
+//     protects. It selects the VaultManager + FTSO feed the extension reads and
+//     the delegatedRepay it calls. It is metadata for ROUTING only and is
+//     deliberately NOT part of the termsCommitment (see Commit), so the on-chain
+//     commitment scheme keccak256(abi.encode(owner, trigger, maxRepay)) is
+//     unchanged. Empty means the caller applies its default branch (FXRP).
 //   - TriggerCRBps : the private CR threshold (bps) at which protection fires;
 //     must be strictly above MCR (below MCR the liquidation keeper owns it).
 //   - MaxRepay18   : the maximum vUSD (18 decimals) the Guardian may repay on
 //     the owner's behalf in one action, passed as the delegatedRepay maxAmount.
 type Rule struct {
 	Owner        string
+	Branch       string
 	TriggerCRBps *big.Int
 	MaxRepay18   *big.Int
 }
@@ -52,6 +59,14 @@ var (
 	ErrBadOwner        = errors.New("guardian: rule owner is not a 20-byte 0x address")
 	ErrNonPositiveTrig = errors.New("guardian: trigger CR (bps) must be > 0")
 	ErrNonPositiveMax  = errors.New("guardian: max repay (18-dec) must be > 0")
+	// ErrBranchCollision guards the multi-collateral edge where two rules share
+	// the same branch-free termsCommitment (identical owner+trigger+maxRepay) but
+	// target DIFFERENT branches. Because Commit is intentionally branch-free (to
+	// keep on-chain parity), storing both would silently overwrite one. We reject
+	// the second, loudly, rather than drop protection on a branch. The production
+	// remedy is the per-registration salt noted on Commit.
+	ErrBranchCollision = errors.New(
+		"guardian: termsCommitment collides across branches (identical owner+trigger+maxRepay on a different branch) — vary maxRepay or add a salt")
 )
 
 // Commit returns the termsCommitment for a rule: a "0x"-prefixed hex Keccak-256
@@ -69,6 +84,12 @@ var (
 // identical rules produce distinct commitments and the commitment is not
 // guessable from public parameters. The Rule struct here follows the task's
 // minimal shape and omits the salt; the Solidity side documents the same.
+//
+// Rule.Branch is intentionally NOT hashed here: the commitment must stay
+// byte-for-byte identical to the on-chain keccak256(abi.encode(owner,
+// triggerCRBps, maxRepay18)). Branch is routing metadata only. (Caveat: two
+// rules that differ ONLY by branch collide on the same commitment key; that is
+// acceptable for this minimal step and is subsumed by the salt note above.)
 func Commit(r Rule) string {
 	var buf [96]byte // 32 (address, left-padded) + 32 (trigger) + 32 (maxRepay)
 
@@ -149,12 +170,22 @@ func (s *Store) Register(r Rule, mcrBps *big.Int) (string, error) {
 		return "", err
 	}
 	commitment := Commit(r)
+	newBranch := strings.TrimSpace(r.Branch)
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Reject a cross-branch collision: same commitment, different (non-empty)
+	// branch. Same-branch re-registration (idempotent overwrite) is allowed, as is
+	// filling in a previously-empty branch.
+	if existing, ok := s.rules[commitment]; ok {
+		if existing.Branch != "" && newBranch != "" && !strings.EqualFold(existing.Branch, newBranch) {
+			return "", ErrBranchCollision
+		}
+	}
 	// Store defensive copies of the big.Ints so callers can't mutate stored state.
 	s.rules[commitment] = Rule{
 		Owner:        strings.ToLower(strings.TrimSpace(r.Owner)),
+		Branch:       newBranch,
 		TriggerCRBps: new(big.Int).Set(r.TriggerCRBps),
 		MaxRepay18:   new(big.Int).Set(r.MaxRepay18),
 	}
@@ -172,6 +203,7 @@ func (s *Store) Get(commitment string) (Rule, bool) {
 	// Return a copy so callers cannot mutate stored state.
 	return Rule{
 		Owner:        r.Owner,
+		Branch:       r.Branch,
 		TriggerCRBps: new(big.Int).Set(r.TriggerCRBps),
 		MaxRepay18:   new(big.Int).Set(r.MaxRepay18),
 	}, true

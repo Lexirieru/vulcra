@@ -3,6 +3,8 @@ import {
   scaleBy10,
   xrpUsdPrice18,
   collateralValueUsd18,
+  collateralValueUsd18At,
+  usd18ToCollateral,
   crBps,
   usd18ToFxrp6,
 } from "../src/decimals.js";
@@ -44,6 +46,34 @@ describe("collateralValueUsd18", () => {
     expect(collateralValueUsd18(1_000_000n, 284_000_000n, 8)).toBe(2_840000000000000000n);
     // decimals 5: exp = 18-6-5 = 7 (>0), same USD value
     expect(collateralValueUsd18(1_000_000n, 284_000n, 5)).toBe(2_840000000000000000n);
+  });
+});
+
+describe("collateralValueUsd18At (branch-aware collateral decimals)", () => {
+  it("FXRP: 1 FXRP (6-dec) at $2.84 (6-dec feed) = $2.84", () => {
+    // $2.84 at 6-dec feed => value 2_840_000
+    expect(collateralValueUsd18At(1_000_000n, 6, 2_840_000n, 6)).toBe(2_840000000000000000n);
+  });
+
+  it("wFLR: 1000 wFLR (18-dec) at $0.02 (8-dec feed) = $20", () => {
+    // $0.02 at 8-dec feed => value 2_000_000 (0.02 * 1e8)
+    expect(collateralValueUsd18At(1000_000000000000000000n, 18, 2_000_000n, 8)).toBe(
+      20_000000000000000000n,
+    );
+  });
+
+  it("matches the legacy 6-dec helper for FXRP inputs", () => {
+    expect(collateralValueUsd18At(1_000_000n, 6, 284_000n, 5)).toBe(
+      collateralValueUsd18(1_000_000n, 284_000n, 5),
+    );
+  });
+});
+
+describe("usd18ToCollateral (branch-aware)", () => {
+  it("wFLR: $20 buys 1000 wFLR at $0.02", () => {
+    expect(usd18ToCollateral(20_000000000000000000n, 18, 2_000_000n, 8)).toBe(
+      1000_000000000000000000n,
+    );
   });
 });
 

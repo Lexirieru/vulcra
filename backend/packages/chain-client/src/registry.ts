@@ -33,6 +33,11 @@ export function resolveMasterAccountController(client: PublicClient): Promise<Ad
   return resolveContract(client, RegistryNames.MasterAccountController);
 }
 
+/** WNat (wrapped native FLR) — the wFLR branch collateral token. */
+export function resolveWNat(client: PublicClient): Promise<Address> {
+  return resolveContract(client, RegistryNames.WNat);
+}
+
 /** AssetManagerFXRP -> fAsset() gives the FXRP ERC-20 token address. */
 export async function resolveFxrpToken(client: PublicClient): Promise<Address> {
   const assetManager = await resolveAssetManagerFXRP(client);

@@ -20,6 +20,9 @@ package types
 type KeeperScanRequest struct {
 	// CandidateOwners is the list of vault owner addresses to inspect.
 	CandidateOwners []string `json:"candidateOwners"`
+	// Branch optionally scopes the scan to a single collateral branch
+	// ("FXRP"/"WFLR"). Empty means scan every configured branch.
+	Branch string `json:"branch,omitempty"`
 	// MCRBps overrides the on-chain MCR for the scan (optional, decimal string).
 	MCRBps string `json:"mcrBps,omitempty"`
 	// DryRun, when true, computes decisions but does not submit liquidate() txs.
@@ -27,12 +30,19 @@ type KeeperScanRequest struct {
 }
 
 // KeeperVaultResult is the per-vault outcome of a scan.
+//
+// A scan now covers multiple collateral branches, so each result names its
+// Branch. Collateral6 / XRPUsdPrice18 keep their wire names for compatibility
+// but hold the branch's RAW collateral (in the branch's collateral decimals:
+// 6 for FXRP, 18 for wFLR) and the branch's authoritative USD price (18-dec,
+// XRP/USD for FXRP, FLR/USD for wFLR). Interpret them using Branch.
 type KeeperVaultResult struct {
 	Owner         string `json:"owner"`
-	Collateral6   string `json:"collateral6"`   // decimal string, 6 decimals
-	Debt18        string `json:"debt18"`        // decimal string, 18 decimals
-	XRPUsdPrice18 string `json:"xrpUsdPrice18"` // authoritative price used, 18 decimals
-	CRBps         string `json:"crBps"`         // computed CR, basis points
+	Branch        string `json:"branch,omitempty"` // collateral branch (FXRP/WFLR)
+	Collateral6   string `json:"collateral6"`      // raw collateral, branch decimals
+	Debt18        string `json:"debt18"`           // decimal string, 18 decimals
+	XRPUsdPrice18 string `json:"xrpUsdPrice18"`    // authoritative branch price, 18 decimals
+	CRBps         string `json:"crBps"`            // computed CR, basis points
 	Liquidatable  bool   `json:"liquidatable"`
 	// Liquidated is true only when a liquidate() tx was actually submitted.
 	Liquidated bool   `json:"liquidated"`
@@ -73,9 +83,12 @@ type GuardianRegisterResult struct {
 // authoritative on-chain state.
 type GuardianEvaluateRequest struct {
 	TermsCommitment string `json:"termsCommitment"`
-	CurrentCRBps    string `json:"currentCrBps,omitempty"`  // decimal string, bps
-	CurrentDebt18   string `json:"currentDebt18,omitempty"` // decimal string, 18 decimals
-	DryRun          bool   `json:"dryRun,omitempty"`
+	// Branch optionally overrides the branch the stored rule routes to
+	// ("FXRP"/"WFLR"); empty uses the rule's own branch (default FXRP).
+	Branch        string `json:"branch,omitempty"`
+	CurrentCRBps  string `json:"currentCrBps,omitempty"`  // decimal string, bps
+	CurrentDebt18 string `json:"currentDebt18,omitempty"` // decimal string, 18 decimals
+	DryRun        bool   `json:"dryRun,omitempty"`
 }
 
 // GuardianEvaluateResult reports the decision. It never echoes the private
@@ -83,6 +96,7 @@ type GuardianEvaluateRequest struct {
 // delegatedRepay call.
 type GuardianEvaluateResult struct {
 	TermsCommitment string `json:"termsCommitment"`
+	Branch          string `json:"branch,omitempty"` // branch the evaluation routed to
 	ShouldRepay     bool   `json:"shouldRepay"`
 	RepayAmount18   string `json:"repayAmount18,omitempty"` // decimal string, 18 decimals
 	Repaid          bool   `json:"repaid"`

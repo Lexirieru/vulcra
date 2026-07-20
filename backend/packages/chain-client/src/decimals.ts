@@ -17,10 +17,32 @@ export function scaleBy10(value: bigint, exp: number): bigint {
   return exp > 0 ? value * factor : value / factor;
 }
 
-/** XRP/USD price in 18-decimal USD: value * 10^(18 - feedDecimals). */
-export function xrpUsdPrice18(feedValue: bigint, feedDecimals: number): bigint {
+/** A USD feed price in 18-decimal USD: value * 10^(18 - feedDecimals). Branch-agnostic. */
+export function feedPrice18(feedValue: bigint, feedDecimals: number): bigint {
   if (feedValue < 0n) throw new Error("feedValue must be >= 0");
   return scaleBy10(feedValue, 18 - feedDecimals);
+}
+
+/** XRP/USD price in 18-decimal USD. Kept for back-compat; delegates to feedPrice18. */
+export function xrpUsdPrice18(feedValue: bigint, feedDecimals: number): bigint {
+  return feedPrice18(feedValue, feedDecimals);
+}
+
+/**
+ * USD value (18-dec) of a collateral amount in ANY branch's native decimals:
+ *   amount * feedValue * 10^(18 - collateralDecimals - feedDecimals)
+ * FXRP: collateralDecimals=6, feed=6. wFLR: collateralDecimals=18, feed=8.
+ * Computed as (amount * feedValue) then scaled so a negative exponent divides the
+ * full product (not each factor), preserving precision.
+ */
+export function collateralValueUsd18At(
+  amount: bigint,
+  collateralDecimals: number,
+  feedValue: bigint,
+  feedDecimals: number,
+): bigint {
+  if (amount < 0n || feedValue < 0n) throw new Error("amounts must be >= 0");
+  return scaleBy10(amount * feedValue, 18 - collateralDecimals - feedDecimals);
 }
 
 /**
@@ -50,9 +72,19 @@ export function usd18ToFxrp6(
   feedValue: bigint,
   feedDecimals: number,
 ): bigint {
+  return usd18ToCollateral(usd18, 6, feedValue, feedDecimals);
+}
+
+/** How much collateral (in `collateralDecimals`) a given USD amount (18-dec) buys. */
+export function usd18ToCollateral(
+  usd18: bigint,
+  collateralDecimals: number,
+  feedValue: bigint,
+  feedDecimals: number,
+): bigint {
   if (feedValue === 0n) throw new Error("feedValue must be > 0");
-  // fxrp6 = usd18 / (price18) * 1e6 ; price18 = feedValue * 10^(18 - feedDecimals)
-  const price18 = xrpUsdPrice18(feedValue, feedDecimals);
+  const price18 = feedPrice18(feedValue, feedDecimals);
   if (price18 === 0n) throw new Error("price18 resolved to 0");
-  return (usd18 * 1_000_000n) / price18;
+  // collateral = usd18 / price18 * 10^collateralDecimals
+  return scaleBy10(usd18, collateralDecimals) / price18;
 }

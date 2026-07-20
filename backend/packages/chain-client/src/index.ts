@@ -4,3 +4,4 @@ export * from "./registry.js";
 export * from "./ftso.js";
 export * from "./decimals.js";
 export * from "./clients.js";
+export * from "./branches.js";
