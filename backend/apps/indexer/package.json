@@ -1,0 +1,29 @@
+{
+  "name": "@vulcra/indexer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts"
+  },
+  "dependencies": {
+    "@vulcra/interfaces": "*",
+    "@vulcra/chain-client": "*",
+    "viem": "^2.21.0",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.8",
+    "tsx": "^4.19.0",
+    "@types/node": "^22.10.0"
+  }
+}
