@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
-import type { FeedReading } from "@vulcra/chain-client";
+import { accrueDebt, type FeedReading } from "@vulcra/chain-client";
 import type { VaultRow, VaultStore } from "./store.js";
-import { atRisk, vaultCrBps } from "./sortedByCr.js";
+import { atRisk, redemptionQueue, vaultCrBps } from "./sortedByCr.js";
 
 /** A live feed reading for a branch, or a reason it is unavailable/unusable. */
 export type PriceResult =
@@ -24,13 +24,23 @@ export interface ApiDeps {
   indexingEnabled: boolean;
 }
 
-function serializeVault(row: VaultRow): Record<string, unknown> {
+/** Wall-clock now in whole seconds (for on-read interest accrual). */
+function nowSeconds(): bigint {
+  return BigInt(Math.floor(Date.now() / 1000));
+}
+
+function serializeVault(row: VaultRow, now: bigint): Record<string, unknown> {
+  // currentDebt18 = the entire estimated debt incl. accrued interest at `now`.
+  const currentDebt18 = accrueDebt(row.debt18, row.rateBps, now - row.lastAccrualTs);
   return {
     owner: row.owner,
     // Raw collateral in the branch's native decimals (field name is legacy).
     collateral: row.collateral6.toString(),
+    // Recorded debt at the last debt event; currentDebt18 is the accrued estimate.
     debt18: row.debt18.toString(),
-    nicr: row.nicr.toString(),
+    currentDebt18: currentDebt18.toString(),
+    rateBps: row.rateBps.toString(),
+    lastAccrualTs: row.lastAccrualTs.toString(),
     active: row.active,
     lastBlock: row.lastBlock.toString(),
     lastTxHash: row.lastTxHash,
@@ -57,10 +67,13 @@ function parseBelowCrBps(raw: unknown, fallback: bigint): bigint | null {
 
 /**
  * Build the branch-aware indexer HTTP API.
- *   GET /health                    — per-branch cursor + active count.
- *   GET /branches                  — configured branch keys + metadata.
- *   GET /vaults/at-risk?branch=KEY  — price-dependent; 503 when no live/fresh price.
- *   GET /vaults/:branch/:owner      — one vault in a branch; CR added when price available.
+ *   GET /health                        — per-branch cursor + active count.
+ *   GET /branches                      — configured branch keys + metadata.
+ *   GET /vaults/at-risk?branch=KEY      — price-dependent; 503 when no live/fresh price.
+ *   GET /vaults/redemption-queue?branch=KEY — V2 by-rate order (lowest rate first);
+ *                                            price-independent.
+ *   GET /vaults/:branch/:owner          — one vault in a branch; CR added when price
+ *                                          available. Includes currentDebt18 + rateBps.
  */
 export function buildApi(deps: ApiDeps): FastifyInstance {
   const app = Fastify({ logger: false });
@@ -105,11 +118,13 @@ export function buildApi(deps: ApiDeps): FastifyInstance {
         .send({ error: "price feed unavailable", branch: branch.key, reason: price.reason });
     }
 
+    const now = nowSeconds();
     const flagged = atRisk(
       branch.store.listActive(),
       branch.collateralDecimals,
       price.feed.value,
       price.feed.decimals,
+      now,
       belowCrBps,
     );
     return {
@@ -117,7 +132,22 @@ export function buildApi(deps: ApiDeps): FastifyInstance {
       belowCrBps: belowCrBps.toString(),
       price: serializeFeed(price.feed),
       count: flagged.length,
-      vaults: flagged.map((x) => ({ ...serializeVault(x.vault), crBps: x.crBps.toString() })),
+      vaults: flagged.map((x) => ({ ...serializeVault(x.vault, now), crBps: x.crBps.toString() })),
+    };
+  });
+
+  app.get("/vaults/redemption-queue", async (request, reply) => {
+    const query = request.query as Record<string, unknown>;
+    const branch = resolveBranch(query.branch);
+    if (!branch) {
+      return reply.code(404).send({ error: "unknown branch", branch: query.branch ?? null });
+    }
+    const now = nowSeconds();
+    const queue = redemptionQueue(branch.store.listActive());
+    return {
+      branch: branch.key,
+      count: queue.length,
+      vaults: queue.map((v) => serializeVault(v, now)),
     };
   });
 
@@ -134,14 +164,16 @@ export function buildApi(deps: ApiDeps): FastifyInstance {
         .send({ error: "vault not found", branch: branch.key, owner: owner.toLowerCase() });
     }
 
+    const now = nowSeconds();
     const price = await branch.getPrice();
-    const body: Record<string, unknown> = { branch: branch.key, ...serializeVault(row) };
+    const body: Record<string, unknown> = { branch: branch.key, ...serializeVault(row, now) };
     if (price.ok) {
       body.crBps = vaultCrBps(
         row,
         branch.collateralDecimals,
         price.feed.value,
         price.feed.decimals,
+        now,
       ).toString();
       body.price = serializeFeed(price.feed);
     } else {

@@ -3,6 +3,7 @@ import type { Hex, Address } from "viem";
 import type { MintStore } from "./orchestrator/store.js";
 import { intakeMint } from "./orchestrator/orchestrator.js";
 import type { PreflightParams, PreflightResult } from "./preflight/preflight.js";
+import type { MintPlan } from "./mintBuilder.js";
 
 /**
  * Executor HTTP API (R11, R13). Chain-dependent work is injected as services so
@@ -19,6 +20,20 @@ export interface ExecutorServices {
   }): Promise<PreflightResult>;
   /** Resolve personal account + nonce for the frontend to build the payment. */
   account(xrplAddress: string): Promise<{ personalAccount: Address; nonce: bigint }>;
+  /** Build the full XRPL 0xFE mint plan (Core Vault destination, memo, amount, userOp). */
+  buildMint(input: {
+    xrplAddress: string;
+    collateral6: bigint;
+    mint18: bigint;
+    annualInterestRateBps?: bigint;
+    vusdDestination?: Address;
+  }): Promise<MintPlan>;
+  /**
+   * Drive a submitted mint through attestation -> executeDirectMintingWithData
+   * (fire-and-forget). Absent/no-op when live execution is gated (no funded key);
+   * the mint then stays queued with a clear gated status. Never mocked.
+   */
+  processMint?: (mintId: string) => void;
 }
 
 function serializeBigints(value: unknown): unknown {
@@ -60,6 +75,35 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
     }
   });
 
+  // Build the ONE XRPL payment (destination Core Vault + 0xFE memo + amount) for an
+  // r-address + collateral + mint + optional rate. FXRP-only (XRPL-native).
+  app.post<{
+    Body: {
+      xrplAddress?: string;
+      collateral6?: string;
+      mint18?: string;
+      annualInterestRateBps?: string;
+      vusdDestination?: Address;
+    };
+  }>("/mint/build", async (req, reply) => {
+    const { xrplAddress, collateral6, mint18, annualInterestRateBps, vusdDestination } = req.body ?? {};
+    if (!xrplAddress || collateral6 === undefined || mint18 === undefined) {
+      return reply.code(400).send({ error: "xrplAddress, collateral6, mint18 are required" });
+    }
+    try {
+      const plan = await services.buildMint({
+        xrplAddress,
+        collateral6: BigInt(collateral6),
+        mint18: BigInt(mint18),
+        annualInterestRateBps: annualInterestRateBps !== undefined ? BigInt(annualInterestRateBps) : undefined,
+        vusdDestination,
+      });
+      return serializeBigints(plan);
+    } catch (err) {
+      return reply.code(503).send({ error: (err as Error).message });
+    }
+  });
+
   app.post<{
     Body: { packedUserOpHex?: Hex; xrplTxId?: string; memoUserOpHash?: Hex };
   }>("/mint/submit", async (req, reply) => {
@@ -79,7 +123,10 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
     if (rec.state === "REJECTED") {
       return reply.code(422).send({ mintId: rec.id, state: rec.state, error: rec.lastError });
     }
-    return { mintId: rec.id, state: rec.state };
+    // Kick off the attestation -> submit pipeline (no-op / gated when unfunded).
+    services.processMint?.(rec.id);
+    const gated = services.processMint === undefined;
+    return { mintId: rec.id, state: rec.state, ...(gated ? { note: "live submit gated: set EXECUTOR_PRIVATE_KEY + verifier/DA env to process" } : {}) };
   });
 
   app.get<{ Params: { id: string } }>("/mint/status/:id", async (req, reply) => {

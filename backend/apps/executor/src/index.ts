@@ -8,5 +8,7 @@ export * from "./orchestrator/state.js";
 export * from "./orchestrator/store.js";
 export * from "./orchestrator/orchestrator.js";
 export * from "./recovery/recovery.js";
+export * from "./mintBuilder.js";
+export * from "./processor.js";
 export * from "./server.js";
 export * from "./services.js";

@@ -2,23 +2,29 @@ import { createRequire } from "node:module";
 import type { Address, Hex } from "viem";
 
 /**
- * A vault row as tracked by the indexer.
+ * A vault row as tracked by the indexer (V2: user-set interest rates).
  *
  * Vault identity is the OWNER ADDRESS (one vault per address) — we key everything
  * by the lowercased owner. We deliberately do NOT store a collateral ratio: CR is
- * computed ON READ from the live FTSO price. We only persist the raw amounts plus
- * `nicr` (the price-free nominal collateral ratio) used as a fast pre-filter, and
- * the last block/tx we ingested for that vault.
+ * computed ON READ from the live FTSO price AND the accrued interest.
+ *
+ * `debt18` is the RECORDED debt captured at the last debt-updating event, NOT the
+ * accrued current debt. The current debt is estimated on read via
+ * `accrueDebt(debt18, rateBps, now - lastAccrualTs)` (see chain-client). `rateBps`
+ * is the vault's annual interest rate — it is also the V2 by-rate redemption key
+ * (lowest rate is redeemed first).
  */
 export interface VaultRow {
   /** Lowercased owner address (the vault key). */
   owner: string;
-  /** FXRP collateral, 6 decimals. */
+  /** Raw collateral in the branch's native decimals (FXRP 6, wFLR 18); name is legacy. */
   collateral6: bigint;
-  /** vUSD debt, 18 decimals. */
+  /** RECORDED vUSD debt (18-dec) at the last debt-updating event — NOT accrued. */
   debt18: bigint;
-  /** Nominal individual collateral ratio (price-free); ascending nicr = ascending CR under single collateral. */
-  nicr: bigint;
+  /** Annual interest rate in bps; also the by-rate redemption key (ascending = redeemed first). */
+  rateBps: bigint;
+  /** Block timestamp (seconds) of the last debt-updating event — accrual origin for `debt18`. */
+  lastAccrualTs: bigint;
   /** Whether the vault is currently open. */
   active: boolean;
   /** Block number of the last event applied to this vault. */
@@ -45,8 +51,8 @@ export interface VaultStore {
   getVault(owner: string): VaultRow | undefined;
   /** All currently-active vaults, unordered. */
   listActive(): VaultRow[];
-  /** Active vaults ordered ascending by nicr (riskiest first), optionally capped. */
-  listAtRiskByNicr(limit?: number): VaultRow[];
+  /** Active vaults ordered ascending by rateBps (V2 redemption queue order), optionally capped. */
+  listByRateAsc(limit?: number): VaultRow[];
 
   /** Next block to scan from (0 if never scanned). */
   getCursor(): bigint;
@@ -59,9 +65,9 @@ export interface VaultStore {
   markProcessed(txHash: string, logIndex: number): void;
 }
 
-/** Sort active vaults ascending by nicr (riskiest first). Does not mutate input. */
-function sortByNicrAsc(rows: VaultRow[]): VaultRow[] {
-  return [...rows].sort((a, b) => (a.nicr < b.nicr ? -1 : a.nicr > b.nicr ? 1 : 0));
+/** Sort active vaults ascending by rateBps (lowest rate = redeemed first). Does not mutate input. */
+function sortByRateAsc(rows: VaultRow[]): VaultRow[] {
+  return [...rows].sort((a, b) => (a.rateBps < b.rateBps ? -1 : a.rateBps > b.rateBps ? 1 : 0));
 }
 
 // ---------------------------------------------------------------------------
@@ -93,8 +99,8 @@ export class InMemoryVaultStore implements VaultStore {
     return [...this.vaults.values()].filter((v) => v.active).map((v) => ({ ...v }));
   }
 
-  listAtRiskByNicr(limit?: number): VaultRow[] {
-    const sorted = sortByNicrAsc(this.listActive());
+  listByRateAsc(limit?: number): VaultRow[] {
+    const sorted = sortByRateAsc(this.listActive());
     return limit === undefined ? sorted : sorted.slice(0, limit);
   }
 
@@ -163,13 +169,14 @@ export class SqliteVaultStore implements VaultStore {
   private migrate(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS vaults (
-        owner       TEXT PRIMARY KEY,
-        collateral6 TEXT NOT NULL,
-        debt18      TEXT NOT NULL,
-        nicr        TEXT NOT NULL,
-        active      INTEGER NOT NULL,
-        lastBlock   TEXT NOT NULL,
-        lastTxHash  TEXT NOT NULL
+        owner         TEXT PRIMARY KEY,
+        collateral6   TEXT NOT NULL,
+        debt18        TEXT NOT NULL,
+        rateBps       TEXT NOT NULL,
+        lastAccrualTs TEXT NOT NULL,
+        active        INTEGER NOT NULL,
+        lastBlock     TEXT NOT NULL,
+        lastTxHash    TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS processed_logs (
         txHash   TEXT NOT NULL,
@@ -188,7 +195,8 @@ export class SqliteVaultStore implements VaultStore {
       owner: String(r.owner),
       collateral6: BigInt(String(r.collateral6)),
       debt18: BigInt(String(r.debt18)),
-      nicr: BigInt(String(r.nicr)),
+      rateBps: BigInt(String(r.rateBps)),
+      lastAccrualTs: BigInt(String(r.lastAccrualTs)),
       active: Number(r.active) !== 0,
       lastBlock: BigInt(String(r.lastBlock)),
       lastTxHash: String(r.lastTxHash),
@@ -199,21 +207,23 @@ export class SqliteVaultStore implements VaultStore {
     const owner = row.owner.toLowerCase();
     this.db
       .prepare(
-        `INSERT INTO vaults (owner, collateral6, debt18, nicr, active, lastBlock, lastTxHash)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO vaults (owner, collateral6, debt18, rateBps, lastAccrualTs, active, lastBlock, lastTxHash)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(owner) DO UPDATE SET
-           collateral6 = excluded.collateral6,
-           debt18      = excluded.debt18,
-           nicr        = excluded.nicr,
-           active      = excluded.active,
-           lastBlock   = excluded.lastBlock,
-           lastTxHash  = excluded.lastTxHash`,
+           collateral6   = excluded.collateral6,
+           debt18        = excluded.debt18,
+           rateBps       = excluded.rateBps,
+           lastAccrualTs = excluded.lastAccrualTs,
+           active        = excluded.active,
+           lastBlock     = excluded.lastBlock,
+           lastTxHash    = excluded.lastTxHash`,
       )
       .run(
         owner,
         row.collateral6.toString(),
         row.debt18.toString(),
-        row.nicr.toString(),
+        row.rateBps.toString(),
+        row.lastAccrualTs.toString(),
         row.active ? 1 : 0,
         row.lastBlock.toString(),
         row.lastTxHash,
@@ -240,9 +250,9 @@ export class SqliteVaultStore implements VaultStore {
       .map((r) => SqliteVaultStore.toRow(r));
   }
 
-  listAtRiskByNicr(limit?: number): VaultRow[] {
-    // Sort in JS by BigInt nicr — TEXT-stored bigints do not sort numerically in SQL.
-    const sorted = sortByNicrAsc(this.listActive());
+  listByRateAsc(limit?: number): VaultRow[] {
+    // Sort in JS by BigInt rateBps — TEXT-stored bigints do not sort numerically in SQL.
+    const sorted = sortByRateAsc(this.listActive());
     return limit === undefined ? sorted : sorted.slice(0, limit);
   }
 

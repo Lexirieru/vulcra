@@ -7,6 +7,7 @@ import {
 import { vaultManagerAbi } from "@vulcra/interfaces";
 import { getPersonalAccount, getNonce } from "@vulcra/userop";
 import { preflightMint } from "./preflight/preflight.js";
+import { buildMintPlan } from "./mintBuilder.js";
 import type { ExecutorServices } from "./server.js";
 import type { ExecutorEnv } from "./env.js";
 import type { MintStore } from "./orchestrator/store.js";
@@ -103,6 +104,10 @@ export async function buildLiveServices(
       const personalAccount = await getPersonalAccount(client as never, mac, xrplAddress);
       const nonce = await getNonce(client as never, mac, personalAccount);
       return { personalAccount, nonce };
+    },
+
+    buildMint(input) {
+      return buildMintPlan(client, env, input);
     },
   };
 }

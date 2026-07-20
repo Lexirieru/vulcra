@@ -43,6 +43,16 @@ export interface ExecutorEnv {
   verifierUrl?: string;
   verifierApiKey?: string;
   daLayerUrl?: string;
+
+  // FDC round timing / fee (optional; resolved live or defaulted for a real submit)
+  fdcFirstVotingRoundStartTs?: bigint;
+  fdcVotingEpochDurationSeconds?: bigint;
+  fdcRequestFeeWei?: bigint;
+}
+
+function optBigint(v: string | undefined): bigint | undefined {
+  if (v === undefined || v === "") return undefined;
+  return BigInt(v);
 }
 
 function num(v: string | undefined, dflt: number): number {
@@ -73,6 +83,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ExecutorEnv {
     verifierUrl: source.VERIFIER_URL_TESTNET || undefined,
     verifierApiKey: source.VERIFIER_API_KEY_TESTNET || undefined,
     daLayerUrl: source.COSTON2_DA_LAYER_URL || undefined,
+    fdcFirstVotingRoundStartTs: optBigint(source.FDC_FIRST_VOTING_ROUND_START_TS),
+    fdcVotingEpochDurationSeconds: optBigint(source.FDC_VOTING_EPOCH_DURATION_SECONDS),
+    fdcRequestFeeWei: optBigint(source.FDC_REQUEST_FEE_WEI),
   };
 }
 

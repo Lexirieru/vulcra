@@ -27,6 +27,27 @@ function makeServices(): ExecutorServices {
     async account(_xrplAddress) {
       return { personalAccount: ("0x" + "11".repeat(20)) as Address, nonce: 5n };
     },
+    async buildMint(input) {
+      return {
+        branch: "FXRP",
+        xrplAddress: input.xrplAddress,
+        personalAccount: ("0x" + "11".repeat(20)) as Address,
+        nonce: "5",
+        annualInterestRateBps: (input.annualInterestRateBps ?? 500n).toString(),
+        collateral6: input.collateral6.toString(),
+        mint18: input.mint18.toString(),
+        vusdDestination: ("0x" + "11".repeat(20)) as Address,
+        coreVaultXrplAddress: "rDhpmiPq4BVBDWMVdSrmkgt8thKyRzGV1p",
+        requiredPaymentDrops: (input.collateral6 + 200_000n).toString(),
+        requiredPaymentXrp: "5.2",
+        executorFeeUBA: "100000",
+        memo: "0xfe00" as `0x${string}`,
+        xrplMemoData: "FE00",
+        userOpHash: goodHash,
+        userOpBytes,
+        noDestinationTag: true,
+      };
+    },
   };
 }
 
@@ -97,5 +118,53 @@ describe("executor API", () => {
     const res = await app.inject({ method: "GET", url: "/account/rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh" });
     expect(res.statusCode).toBe(200);
     expect(res.json().nonce).toBe("5");
+  });
+
+  it("POST /mint/build returns the Core Vault destination + 0xFE memo + amount + userOp", async () => {
+    const app = buildServer(services);
+    const res = await app.inject({
+      method: "POST",
+      url: "/mint/build",
+      payload: { xrplAddress: "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", collateral6: "5000000", mint18: "3000000000000000000" },
+    });
+    expect(res.statusCode).toBe(200);
+    const b = res.json();
+    expect(b.branch).toBe("FXRP");
+    expect(b.coreVaultXrplAddress).toMatch(/^r/); // XRPL classic address
+    expect(b.xrplMemoData).toBeDefined();
+    expect(b.userOpBytes).toBeDefined();
+    expect(b.noDestinationTag).toBe(true);
+    expect(b.annualInterestRateBps).toBe("500"); // default rate flows through
+  });
+
+  it("POST /mint/build validates required fields", async () => {
+    const app = buildServer(services);
+    const res = await app.inject({ method: "POST", url: "/mint/build", payload: { xrplAddress: "r..." } });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("POST /mint/submit surfaces a gated note when the live pipeline is absent", async () => {
+    const app = buildServer(services); // no processMint => gated
+    const res = await app.inject({
+      method: "POST",
+      url: "/mint/submit",
+      payload: { packedUserOpHex: userOpBytes, xrplTxId: "0xGATED", memoUserOpHash: goodHash },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().note).toMatch(/gated/i);
+  });
+
+  it("POST /mint/submit calls processMint when the live pipeline is wired", async () => {
+    let called = "";
+    const wired: ExecutorServices = { ...services, processMint: (id) => { called = id; } };
+    const app = buildServer(wired);
+    const res = await app.inject({
+      method: "POST",
+      url: "/mint/submit",
+      payload: { packedUserOpHex: userOpBytes, xrplTxId: "0xWIRED", memoUserOpHash: goodHash },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(called).toBe("mint:0xwired");
+    expect(res.json().note).toBeUndefined();
   });
 });

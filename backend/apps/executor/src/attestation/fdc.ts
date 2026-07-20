@@ -46,6 +46,61 @@ export interface FdcConfig {
   sourceId?: string; // "testXRP" on Coston2
 }
 
+/**
+ * Resolve the live FDC config: FdcHub + Relay from FlareContractRegistry, verifier/DA
+ * from env, and the voting-round timing from FlareSystemsManager (with env override /
+ * Coston2 default of 90s epochs). Endpoint format is verified live: the XRPPayment
+ * verifier is `${verifierUrl}/verifier/xrp/XRPPayment/prepareRequest` and returns
+ * `{ status: "VALID"|"INVALID: ...", abiEncodedRequest }`.
+ */
+export async function resolveFdcConfig(
+  publicClient: PublicClient,
+  resolve: (name: string) => Promise<Address>,
+  env: {
+    verifierUrl: string;
+    verifierApiKey: string;
+    daLayerUrl: string;
+    firstVotingRoundStartTs?: bigint;
+    votingEpochDurationSeconds?: bigint;
+    sourceId?: string;
+  },
+): Promise<FdcConfig> {
+  const [fdcHub, relay] = await Promise.all([resolve("FdcHub"), resolve("Relay")]);
+  let firstVotingRoundStartTs = env.firstVotingRoundStartTs ?? 0n;
+  let votingEpochDurationSeconds = env.votingEpochDurationSeconds ?? 90n;
+  if (firstVotingRoundStartTs === 0n) {
+    try {
+      const fsm = await resolve("FlareSystemsManager");
+      firstVotingRoundStartTs = (await publicClient.readContract({
+        address: fsm,
+        abi: [
+          {
+            type: "function",
+            name: "firstVotingRoundStartTs",
+            stateMutability: "view",
+            inputs: [],
+            outputs: [{ name: "", type: "uint64" }],
+          },
+        ] as const,
+        functionName: "firstVotingRoundStartTs",
+        args: [],
+      })) as bigint;
+    } catch {
+      // leave 0n; caller must supply FDC_FIRST_VOTING_ROUND_START_TS for a real submit.
+    }
+  }
+  return {
+    verifierUrl: env.verifierUrl,
+    verifierApiKey: env.verifierApiKey,
+    daLayerUrl: env.daLayerUrl,
+    fdcHub,
+    relay,
+    firstVotingRoundStartTs,
+    votingEpochDurationSeconds,
+    sourceId: env.sourceId,
+  };
+}
+
 export interface XrpPaymentProof {
   merkleProof: Hex[];
   data: unknown; // decoded IXRPPayment.Proof response body — passed to executeDirectMintingWithData
@@ -74,6 +129,11 @@ export async function prepareXrpPaymentRequest(
     throw new Error(`verifier prepareRequest failed: ${res.status} ${await res.text()}`);
   }
   const json = (await res.json()) as { abiEncodedRequest?: Hex; status?: string };
+  // The verifier returns { status: "VALID", abiEncodedRequest } or
+  // { status: "INVALID: TRANSACTION DOES NOT EXIST" } (200) — surface INVALID clearly.
+  if (json.status && json.status.toUpperCase().startsWith("INVALID")) {
+    throw new Error(`verifier rejected XRPPayment ${args.transactionId}: ${json.status}`);
+  }
   if (!json.abiEncodedRequest) {
     throw new Error(`verifier returned no abiEncodedRequest (status=${json.status ?? "?"})`);
   }
