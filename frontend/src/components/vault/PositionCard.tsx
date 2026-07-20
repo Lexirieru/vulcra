@@ -2,9 +2,9 @@
 
 import { Card, CardTitle, Stat } from "@/components/ui";
 import { CrGauge } from "./CrGauge";
-import type { VaultState } from "@/hooks/useVault";
-import type { VaultParams } from "@/hooks/useVault";
+import type { VaultParams, VaultState } from "@/hooks/useVault";
 import {
+  collateralValueUsd18,
   computeCrBps,
   healthBand,
   liquidationPrice18,
@@ -15,14 +15,22 @@ export function PositionCard({
   vault,
   price18,
   params,
+  collDec,
+  collateralSymbol,
+  feedLabel,
 }: {
   vault: VaultState;
   price18?: bigint;
   params: VaultParams;
+  collDec: number;
+  collateralSymbol: string;
+  feedLabel: string;
 }) {
-  const crBps = price18 ? computeCrBps(vault.collateral6, vault.debt18, price18) : null;
+  const crBps = price18
+    ? computeCrBps(vault.collateral, collDec, vault.debt18, price18)
+    : null;
   const band = healthBand(crBps, params.mcrBps);
-  const liqPrice = liquidationPrice18(vault.collateral6, vault.debt18, params.mcrBps);
+  const liqPrice = liquidationPrice18(vault.collateral, collDec, vault.debt18, params.mcrBps);
 
   return (
     <Card>
@@ -32,19 +40,23 @@ export function PositionCard({
         <div className="grid grid-cols-2 gap-5">
           <Stat
             label="Collateral"
-            value={formatToken(vault.collateral6, 6, 2)}
-            sub="FXRP"
+            value={formatToken(vault.collateral, collDec, 2)}
+            sub={collateralSymbol}
           />
           <Stat label="Debt" value={formatToken(vault.debt18, 18, 2)} sub="vUSD" />
           <Stat
             label="Liquidation price"
             value={formatPrice(liqPrice ?? undefined)}
-            sub="XRP/USD"
+            sub={feedLabel}
             tone={band === "danger" ? "danger" : undefined}
           />
           <Stat
             label="Collateral value"
-            value={price18 ? formatUsd((vault.collateral6 * price18) / 1_000_000n) : "—"}
+            value={
+              price18
+                ? formatUsd(collateralValueUsd18(vault.collateral, collDec, price18))
+                : "—"
+            }
             sub="at live price"
           />
         </div>

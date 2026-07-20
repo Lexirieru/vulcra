@@ -1,7 +1,8 @@
 "use client";
 
-// EVM vault dashboard (U5–U7 / R17, R18). Live FTSO price, CR gauge, liquidation
-// price, what-if simulator, and open/adjust/repay/close actions.
+// EVM vault dashboard (U5–U7 / R17, R18), multi-collateral. Live per-branch FTSO
+// price, CR gauge, liquidation price, what-if simulator, and vault actions — all
+// scoped to the selected collateral branch (FXRP / wFLR).
 import { useAccount } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import { Button, Card, EmptyState, Skeleton } from "@/components/ui";
@@ -12,22 +13,28 @@ import { PriceSimulator } from "@/components/vault/PriceSimulator";
 import { VaultActions } from "@/components/vault/VaultActions";
 import { ContractsNotice } from "@/components/vault/ContractsNotice";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
-import { useVault, useVaultParams } from "@/hooks/useVault";
+import { useCollateralToken, useVault, useVaultParams } from "@/hooks/useVault";
+import { useBranch } from "@/context/branch";
 
 export default function DashboardPage() {
+  const { branch } = useBranch();
   const { address, isConnected } = useAccount();
-  const { price18 } = useFtsoPrice();
-  const { params } = useVaultParams();
-  const { vault, hasVault, notConfigured, isLoading } = useVault(address);
+  const vaultManager = branch.vaultManager || undefined;
+  const { price18 } = useFtsoPrice(branch.feedId);
+  const { params } = useVaultParams(vaultManager);
+  const { vault, hasVault, notConfigured, isLoading } = useVault(address, vaultManager);
+  const { address: collateralToken } = useCollateralToken(branch);
 
   return (
     <div className="flex flex-col gap-6">
       <Reveal>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Vault dashboard</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {branch.label} vault dashboard
+          </h1>
           <p className="mt-1 text-sm text-muted">
-            Lock FXRP as collateral, mint vUSD, and watch your position against the
-            live oracle.
+            Lock {branch.collateralSymbol} as collateral, mint vUSD, and watch your
+            position against the live {branch.feedLabel} oracle.
           </p>
         </div>
       </Reveal>
@@ -37,7 +44,7 @@ export default function DashboardPage() {
 
         {notConfigured ? (
           <div className="lg:col-span-2">
-            <ContractsNotice />
+            <ContractsNotice branch={branch} />
           </div>
         ) : !isConnected ? (
           <Card className="lg:col-span-2 flex flex-col items-center justify-center gap-3 text-center">
@@ -50,13 +57,20 @@ export default function DashboardPage() {
           </Card>
         ) : hasVault && vault ? (
           <div className="lg:col-span-2">
-            <PositionCard vault={vault} price18={price18} params={params} />
+            <PositionCard
+              vault={vault}
+              price18={price18}
+              params={params}
+              collDec={branch.collateralDecimals}
+              collateralSymbol={branch.collateralSymbol}
+              feedLabel={branch.feedLabel}
+            />
           </div>
         ) : (
           <div className="lg:col-span-2">
             <EmptyState
               title="No vault yet"
-              description="Open a vault below to deposit FXRP and mint vUSD."
+              description={`Open a vault below to deposit ${branch.collateralSymbol} and mint vUSD.`}
             />
           </div>
         )}
@@ -68,12 +82,20 @@ export default function DashboardPage() {
             vault={vault}
             price18={price18}
             params={params}
+            branch={branch}
+            collateralToken={collateralToken}
+            owner={address}
             disabled={notConfigured}
           />
         </Reveal>
         <Reveal delay={0.1}>
           {hasVault && vault && price18 ? (
-            <PriceSimulator vault={vault} livePrice18={price18} params={params} />
+            <PriceSimulator
+              vault={vault}
+              livePrice18={price18}
+              params={params}
+              collDec={branch.collateralDecimals}
+            />
           ) : (
             <Card className="flex items-center justify-center text-center text-sm text-muted">
               The what-if simulator appears once you have an open vault.

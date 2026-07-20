@@ -20,17 +20,19 @@ import {
 } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { api } from "@/lib/api/client";
-import { DEFAULT_PARAMS } from "@/hooks/useVault";
+import { useVaultParams } from "@/hooks/useVault";
+import { useBranch } from "@/context/branch";
 import { formatCr, parseAmount } from "@/lib/format";
 
-const MCR_BPS = Number(DEFAULT_PARAMS.mcrBps);
-
 export default function GuardianPage() {
+  const { branch } = useBranch();
   const { address, isConnected } = useAccount();
   const qc = useQueryClient();
+  const { params } = useVaultParams(branch.vaultManager || undefined);
+  const mcrBps = Number(params.mcrBps);
 
   const rulesQuery = useQuery({
-    queryKey: ["guardian-rules", address],
+    queryKey: ["guardian-rules", address, branch.key],
     queryFn: () => api.listGuardianRules(address!),
     enabled: Boolean(address),
     retry: 1,
@@ -42,13 +44,13 @@ export default function GuardianPage() {
   const triggerCrBps = Math.round(Number(triggerPct) * 100);
   const maxRepay18 = parseAmount(maxRepay, 18);
   const triggerError =
-    Number.isFinite(triggerCrBps) && triggerCrBps <= MCR_BPS
-      ? `Trigger must be above the ${formatCr(DEFAULT_PARAMS.mcrBps)} liquidation threshold to protect you.`
+    Number.isFinite(triggerCrBps) && triggerCrBps <= mcrBps
+      ? `Trigger must be above the ${formatCr(params.mcrBps)} liquidation threshold to protect you.`
       : undefined;
   const valid =
     Boolean(address) &&
     !triggerError &&
-    triggerCrBps > MCR_BPS &&
+    triggerCrBps > mcrBps &&
     maxRepay18 !== null &&
     maxRepay18 > 0n;
 
@@ -58,10 +60,12 @@ export default function GuardianPage() {
         owner: address!,
         triggerCrBps,
         maxRepay18: maxRepay18!.toString(),
+        branch: branch.key,
+        vaultManager: branch.vaultManager || undefined,
       }),
     onSuccess: () => {
       setMaxRepay("");
-      qc.invalidateQueries({ queryKey: ["guardian-rules", address] });
+      qc.invalidateQueries({ queryKey: ["guardian-rules", address, branch.key] });
     },
   });
 
@@ -74,7 +78,10 @@ export default function GuardianPage() {
           </h1>
           <p className="mt-1 text-sm text-muted">
             Private, TEE-enforced protection rules. Auto-repay before liquidation —
-            without exposing your trigger on-chain beforehand.
+            without exposing your trigger on-chain beforehand. Guardian works across
+            every collateral branch; the rule below protects your{" "}
+            <span className="font-medium text-text">{branch.label}</span> vault (switch
+            branches to manage others).
           </p>
         </div>
       </Reveal>

@@ -81,10 +81,13 @@ export const api = {
   getMintStatus: (mintId: string) =>
     request<MintStatusResponse>(`/mint/status/${encodeURIComponent(mintId)}`),
 
-  listAtRiskVaults: (belowCrBps?: number) =>
-    request<AtRiskVault[]>(
-      `/vaults/at-risk${belowCrBps ? `?belowCr=${belowCrBps}` : ""}`,
-    ),
+  listAtRiskVaults: (belowCrBps?: number, branch?: string) => {
+    const params = new URLSearchParams();
+    if (belowCrBps) params.set("belowCr", String(belowCrBps));
+    if (branch) params.set("branch", branch);
+    const qs = params.toString();
+    return request<AtRiskVault[]>(`/vaults/at-risk${qs ? `?${qs}` : ""}`);
+  },
 
   listGuardianRules: (owner: string) =>
     request<GuardianRule[]>(`/guardian/rules?owner=${encodeURIComponent(owner)}`),

@@ -5,14 +5,16 @@ import { Badge, Card, CardTitle, Skeleton } from "@/components/ui";
 import { RollingNumber } from "@/components/motion";
 import { formatPrice } from "@/lib/format";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
+import { useBranch } from "@/context/branch";
 
 export function LivePrice() {
-  const { price18, timestamp, isStale, isLoading, isError } = useFtsoPrice();
+  const { branch } = useBranch();
+  const { price18, timestamp, isStale, isLoading, isError } = useFtsoPrice(branch.feedId);
 
   return (
     <Card>
       <div className="flex items-center justify-between">
-        <CardTitle>XRP / USD · FTSOv2</CardTitle>
+        <CardTitle>{branch.feedLabel} · FTSOv2</CardTitle>
         {isError ? (
           <Badge tone="danger">feed error</Badge>
         ) : isStale ? (

@@ -1,10 +1,10 @@
 "use client";
 
-// Redemption UI (NEW unit / R5). Any vUSD holder swaps vUSD → FXRP at face value,
-// drawn from the lowest-CR vaults first. Pure preview via shared vault-math; the
-// on-chain redeem() call goes through the shared tx lifecycle.
+// Redemption UI (R5), multi-collateral. Any vUSD holder swaps vUSD → the selected
+// branch's collateral at face value, drawn from the lowest-CR vaults first. Pure
+// preview via shared vault-math; the on-chain redeem() goes through the shared tx
+// lifecycle. Real ABI: redeem(vusdAmount18, maxIterations).
 import { useState } from "react";
-import { zeroAddress } from "viem";
 import { ArrowDown } from "lucide-react";
 import { Badge, Button, Card, CardTitle, Field, Input, Stat } from "@/components/ui";
 import { Reveal } from "@/components/motion";
@@ -12,19 +12,25 @@ import { TxStatus } from "@/components/vault/TxStatus";
 import { ContractsNotice } from "@/components/vault/ContractsNotice";
 import { LivePrice } from "@/components/vault/LivePrice";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
-import { useVaultManagerAddress } from "@/hooks/useVault";
+import { branchVaultManager } from "@/hooks/useVault";
 import { useVaultAction } from "@/hooks/useVaultAction";
-import { fxrpForVusd } from "@/lib/vault-math";
+import { useBranch } from "@/context/branch";
+import { collateralForVusd } from "@/lib/vault-math";
 import { formatToken, parseAmount } from "@/lib/format";
 
+const MAX_ITERATIONS = 25n; // bounded walk down the sorted list
+
 export default function RedeemPage() {
-  const { price18 } = useFtsoPrice();
-  const { configured } = useVaultManagerAddress();
-  const action = useVaultAction();
+  const { branch } = useBranch();
+  const { price18 } = useFtsoPrice(branch.feedId);
+  const { address: vaultManager, configured } = branchVaultManager(branch);
+  const action = useVaultAction(vaultManager);
   const [amount, setAmount] = useState("");
 
   const vusd18 = parseAmount(amount, 18);
-  const fxrpOut = vusd18 !== null && price18 ? fxrpForVusd(vusd18, price18) : null;
+  const collDec = branch.collateralDecimals;
+  const collOut =
+    vusd18 !== null && price18 ? collateralForVusd(vusd18, price18, collDec) : null;
   const valid = vusd18 !== null && vusd18 > 0n;
   const blocked = !configured;
 
@@ -34,8 +40,9 @@ export default function RedeemPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Redeem vUSD</h1>
           <p className="mt-1 text-sm text-muted">
-            Redeem vUSD for FXRP at face value. Redemptions draw from the riskiest
-            vaults first — this is the arbitrage that holds the peg floor.
+            Redeem vUSD for {branch.collateralSymbol} at face value. Redemptions draw
+            from the riskiest {branch.label} vaults first — the arbitrage that holds
+            the peg floor.
           </p>
         </div>
       </Reveal>
@@ -48,13 +55,13 @@ export default function RedeemPage() {
         <Reveal delay={0.05}>
           <Card>
             <div className="flex items-center justify-between">
-              <CardTitle>Redemption</CardTitle>
+              <CardTitle>Redemption · {branch.label}</CardTitle>
               <Badge tone="ember">face value · $1</Badge>
             </div>
 
             {!configured && (
               <div className="mt-4">
-                <ContractsNotice />
+                <ContractsNotice branch={branch} />
               </div>
             )}
 
@@ -63,7 +70,7 @@ export default function RedeemPage() {
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!valid || blocked) return;
-                action.execute("redeem", [vusd18, zeroAddress]);
+                action.execute("redeem", [vusd18, MAX_ITERATIONS]);
               }}
             >
               <Field label="Redeem vUSD" htmlFor="redeem-amount" hint="Burned at $1 each">
@@ -83,8 +90,8 @@ export default function RedeemPage() {
               <div className="rounded-lg border border-border bg-surface-2/60 p-4">
                 <Stat
                   label="You receive (est.)"
-                  value={fxrpOut !== null ? formatToken(fxrpOut, 6, 4) : "—"}
-                  sub="FXRP at the live oracle price"
+                  value={collOut !== null ? formatToken(collOut, collDec, 4) : "—"}
+                  sub={`${branch.collateralSymbol} at the live oracle price`}
                   tone="ember"
                 />
               </div>

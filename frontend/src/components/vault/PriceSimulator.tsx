@@ -12,15 +12,17 @@ export function PriceSimulator({
   vault,
   livePrice18,
   params,
+  collDec,
 }: {
   vault: VaultState;
   livePrice18: bigint;
   params: VaultParams;
+  collDec: number;
 }) {
   const [pct, setPct] = useState(100); // % of live price
 
   const simPrice18 = (livePrice18 * BigInt(Math.round(pct * 100))) / 10_000n;
-  const crBps = computeCrBps(vault.collateral6, vault.debt18, simPrice18);
+  const crBps = computeCrBps(vault.collateral, collDec, vault.debt18, simPrice18);
   const band = healthBand(crBps, params.mcrBps);
   const liquidatable = crBps !== null && crBps < params.mcrBps;
 
