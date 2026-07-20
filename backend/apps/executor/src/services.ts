@@ -52,11 +52,34 @@ export async function buildLiveServices(
     store,
 
     async preflight(input) {
-      const [am, minDebt18, block] = await Promise.all([
+      const [am, paramsResult, block] = await Promise.all([
         readAm(),
-        client.readContract({ address: vaultManager, abi: vaultManagerAbi, functionName: "minDebt18", args: [] }) as Promise<bigint>,
+        // VaultManager exposes the config as a single `params()` struct getter
+        // (mcrBps, minDebt18, mintFeeBps, liqBonusBps, redemptionFeeBps), not
+        // individual getters. Read the struct and take minDebt18 (index 1).
+        client.readContract({
+          address: vaultManager,
+          abi: [
+            {
+              type: "function",
+              name: "params",
+              stateMutability: "view",
+              inputs: [],
+              outputs: [
+                { name: "mcrBps", type: "uint256" },
+                { name: "minDebt18", type: "uint256" },
+                { name: "mintFeeBps", type: "uint256" },
+                { name: "liqBonusBps", type: "uint256" },
+                { name: "redemptionFeeBps", type: "uint256" },
+              ],
+            },
+          ],
+          functionName: "params",
+          args: [],
+        }) as Promise<readonly [bigint, bigint, bigint, bigint, bigint]>,
         client.getBlock(),
       ]);
+      const minDebt18 = paramsResult[1];
       const now = block.timestamp;
       return preflightMint({
         xrplAddress: input.xrplAddress,
