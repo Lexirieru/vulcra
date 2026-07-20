@@ -74,6 +74,7 @@ contract VaultManager is
     error NotLiquidatable();
     error ExceedsSystemDebt();
     error NothingRedeemed();
+    error FunderInsufficient();
 
     event VaultOpened(address indexed owner, uint256 collateral6, uint256 debt18, uint256 nicr);
     event CollateralAdded(address indexed owner, uint256 amount6, uint256 newCollateral6);
@@ -93,6 +94,8 @@ contract VaultManager is
     event Redemption(
         address indexed redeemer, uint256 vusdRedeemed18, uint256 fxrpPaid6, uint256 fee6
     );
+    event GuardianFunderSet(address indexed owner, address indexed funder);
+    event DelegatedRepay(address indexed owner, address indexed funder, uint256 amount18);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -357,6 +360,57 @@ contract VaultManager is
         if (fee6 > 0) fxrpToken.safeTransfer(feeReceiver, fee6);
 
         emit Redemption(msg.sender, redeemed, fxrpPaid6, fee6);
+    }
+
+    // --- Vault Guardian delegated repay (R15 / KTD2) ---
+
+    /// @notice Nominate the vUSD funding address the Guardian may pull from to protect your vault.
+    /// @dev address(0) (the default) means the funder is the vault owner itself. Non-custodial:
+    ///      the funder must have approved this contract; only a standard allowance is ever used.
+    function setGuardianFunder(address funder) external {
+        guardianFunder[msg.sender] = funder;
+        emit GuardianFunderSet(msg.sender, funder);
+    }
+
+    /// @notice Repay part of a vault's debt on the owner's behalf, pulling vUSD from the nominated
+    ///         funder via allowance. Callable only by the TEE Guardian executor (R15/AE3/KTD2).
+    /// @dev Can only DECREASE debt (strictly CR-improving) and never touches collateral, so a
+    ///      compromised executor cannot grief beyond repaying debt the owner already owes. The
+    ///      private protection trigger lives in the TEE and is never visible on-chain beforehand —
+    ///      only the {DelegatedRepay} event fires, at execution. A repay that would strand dust
+    ///      below `minDebt` is clamped up to a full repay.
+    /// @param owner Vault owner to protect.
+    /// @param maxAmount18 Upper bound on vUSD to repay.
+    function delegatedRepay(address owner, uint256 maxAmount18, address prevHint, address nextHint)
+        external
+        onlyRole(GUARDIAN_EXECUTOR_ROLE)
+        nonReentrant
+    {
+        Vault storage vlt = vaults[owner];
+        if (!vlt.active) revert NoVault();
+        uint256 amount = maxAmount18 >= vlt.debt18 ? vlt.debt18 : maxAmount18;
+        if (amount == 0) revert ZeroAmount();
+        uint256 newDebt = vlt.debt18 - amount;
+        if (newDebt != 0 && newDebt < params.minDebt18) {
+            amount = vlt.debt18; // clamp: repay in full rather than strand dust
+            newDebt = 0;
+        }
+
+        address funder = guardianFunder[owner];
+        if (funder == address(0)) funder = owner;
+        if (
+            vusdToken.balanceOf(funder) < amount
+                || vusdToken.allowance(funder, address(this)) < amount
+        ) revert FunderInsufficient();
+
+        vlt.debt18 = newDebt;
+        totalDebt -= amount;
+        sorted.reInsert(owner, VulcraMath.nicr(vlt.collateral6, newDebt), prevHint, nextHint);
+
+        vusdToken.transferFrom(funder, address(this), amount);
+        vusdToken.burn(address(this), amount);
+
+        emit DelegatedRepay(owner, funder, amount);
     }
 
     // --- admin ---
