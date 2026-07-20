@@ -67,10 +67,8 @@ contract VUSDTest is Test {
         uint256 deadline = block.timestamp + 1 hours;
         uint256 nonce = vusd.nonces(owner);
 
-        bytes32 structHash =
-            keccak256(abi.encode(PERMIT_TYPEHASH, owner, bob, value, nonce, deadline));
-        bytes32 digest =
-            keccak256(abi.encodePacked("\x19\x01", vusd.DOMAIN_SEPARATOR(), structHash));
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner, bob, value, nonce, deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", vusd.DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
 
         vusd.permit(owner, bob, value, deadline, v, r, s);
@@ -81,10 +79,8 @@ contract VUSDTest is Test {
     function test_revert_permit_expiredDeadline() public {
         (address owner, uint256 pk) = makeAddrAndKey("permitOwner2");
         uint256 deadline = block.timestamp - 1;
-        bytes32 structHash =
-            keccak256(abi.encode(PERMIT_TYPEHASH, owner, bob, 1e18, vusd.nonces(owner), deadline));
-        bytes32 digest =
-            keccak256(abi.encodePacked("\x19\x01", vusd.DOMAIN_SEPARATOR(), structHash));
+        bytes32 structHash = keccak256(abi.encode(PERMIT_TYPEHASH, owner, bob, 1e18, vusd.nonces(owner), deadline));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", vusd.DOMAIN_SEPARATOR(), structHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
         vm.expectRevert();
         vusd.permit(owner, bob, 1e18, deadline, v, r, s);

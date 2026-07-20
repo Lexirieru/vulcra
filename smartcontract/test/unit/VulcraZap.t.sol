@@ -15,10 +15,7 @@ contract VulcraZapTest is VaultTestSetup {
     function setUp() public {
         _deployStack();
         zap = VulcraZap(
-            _deployProxy(
-                address(new VulcraZap()),
-                abi.encodeCall(VulcraZap.initialize, (admin, address(mgr)))
-            )
+            _deployProxy(address(new VulcraZap()), abi.encodeCall(VulcraZap.initialize, (admin, address(mgr))))
         );
     }
 
@@ -87,16 +84,12 @@ contract VulcraZapTest is VaultTestSetup {
     {
         calls = new MockPersonalAccount.Call[](2);
         calls[0] = MockPersonalAccount.Call({
-            target: address(fxrp),
-            value: 0,
-            data: abi.encodeCall(IERC20.approve, (address(zap), coll))
+            target: address(fxrp), value: 0, data: abi.encodeCall(IERC20.approve, (address(zap), coll))
         });
         calls[1] = MockPersonalAccount.Call({
             target: address(zap),
             value: 0,
-            data: abi.encodeCall(
-                IVulcraZap.openVaultAndForward, (coll, mint, vusdDest, address(0), address(0))
-            )
+            data: abi.encodeCall(IVulcraZap.openVaultAndForward, (coll, mint, vusdDest, address(0), address(0)))
         });
     }
 

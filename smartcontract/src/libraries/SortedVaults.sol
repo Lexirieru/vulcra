@@ -76,9 +76,7 @@ library SortedVaults {
     /// @notice Insert `id` at its NICR-ordered position.
     /// @param prevHint Suggested higher-NICR neighbour (toward head); address(0) if at head.
     /// @param nextHint Suggested lower-NICR neighbour (toward tail); address(0) if at tail.
-    function insert(Data storage d, address id, uint256 nicr, address prevHint, address nextHint)
-        internal
-    {
+    function insert(Data storage d, address id, uint256 nicr, address prevHint, address nextHint) internal {
         if (id == address(0)) revert ZeroId();
         if (d.nodes[id].exists) revert AlreadyInList();
 
@@ -117,13 +115,7 @@ library SortedVaults {
     }
 
     /// @notice Move `id` to the position implied by `newNicr` (remove + insert).
-    function reInsert(
-        Data storage d,
-        address id,
-        uint256 newNicr,
-        address prevHint,
-        address nextHint
-    ) internal {
+    function reInsert(Data storage d, address id, uint256 newNicr, address prevHint, address nextHint) internal {
         if (!d.nodes[id].exists) revert NotInList();
         remove(d, id);
         insert(d, id, newNicr, prevHint, nextHint);
@@ -158,8 +150,7 @@ library SortedVaults {
         } else if (next == address(0)) {
             return d.tail == prev && nicr <= d.nodes[prev].nicr;
         } else {
-            return d.nodes[prev].next == next && d.nodes[prev].nicr >= nicr
-                && nicr >= d.nodes[next].nicr;
+            return d.nodes[prev].next == next && d.nodes[prev].nicr >= nicr && nicr >= d.nodes[next].nicr;
         }
     }
 

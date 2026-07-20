@@ -16,12 +16,10 @@ import {TestFtsoV2Interface} from "@flarenetwork/flare-periphery-contracts/costo
 abstract contract VulcraTestBase is Test {
     address internal constant FLARE_REGISTRY = 0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019;
     address internal constant MOCK_FTSO = address(uint160(uint256(keccak256("vulcra.mock.ftso"))));
-    address internal constant MOCK_ASSET_MANAGER =
-        address(uint160(uint256(keccak256("vulcra.mock.assetmanager"))));
+    address internal constant MOCK_ASSET_MANAGER = address(uint160(uint256(keccak256("vulcra.mock.assetmanager"))));
 
     /// @dev XRP/USD feed id (category 0x01 + "XRP/USD" utf8, right-padded to 21 bytes).
-    bytes21 internal constant XRP_USD_FEED_ID =
-        bytes21(0x015852502f55534400000000000000000000000000);
+    bytes21 internal constant XRP_USD_FEED_ID = bytes21(0x015852502f55534400000000000000000000000000);
 
     /// @notice Inject an FTSO feed reading for the XRP/USD feed id, resolved through the real registry.
     function _setFeed(uint256 value, int8 decimals, uint64 timestamp) internal {
@@ -29,9 +27,7 @@ abstract contract VulcraTestBase is Test {
         if (MOCK_FTSO.code.length == 0) vm.etch(MOCK_FTSO, hex"fe");
         vm.mockCall(
             FLARE_REGISTRY,
-            abi.encodeWithSignature(
-                "getContractAddressByHash(bytes32)", keccak256(abi.encode("FtsoV2"))
-            ),
+            abi.encodeWithSignature("getContractAddressByHash(bytes32)", keccak256(abi.encode("FtsoV2"))),
             abi.encode(MOCK_FTSO)
         );
         vm.mockCall(
@@ -53,9 +49,7 @@ abstract contract VulcraTestBase is Test {
         if (MOCK_ASSET_MANAGER.code.length == 0) vm.etch(MOCK_ASSET_MANAGER, hex"fe");
         vm.mockCall(
             FLARE_REGISTRY,
-            abi.encodeWithSignature(
-                "getContractAddressByHash(bytes32)", keccak256(abi.encode("AssetManagerFXRP"))
-            ),
+            abi.encodeWithSignature("getContractAddressByHash(bytes32)", keccak256(abi.encode("AssetManagerFXRP"))),
             abi.encode(MOCK_ASSET_MANAGER)
         );
         vm.mockCall(MOCK_ASSET_MANAGER, abi.encodeWithSignature("fAsset()"), abi.encode(fxrpToken));

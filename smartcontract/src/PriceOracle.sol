@@ -57,8 +57,7 @@ contract PriceOracle is Initializable, AccessControlUpgradeable, UUPSUpgradeable
 
     /// @inheritdoc IPriceOracle
     function xrpUsdPrice18() public view returns (uint256) {
-        (uint256 value, int8 decimals, uint64 timestamp) =
-            ContractRegistry.getTestFtsoV2().getFeedById(feedId);
+        (uint256 value, int8 decimals, uint64 timestamp) = ContractRegistry.getTestFtsoV2().getFeedById(feedId);
         if (value == 0) revert ZeroPrice();
         if (block.timestamp > timestamp && block.timestamp - timestamp > maxStalenessSeconds) {
             revert StalePrice(timestamp, block.timestamp, maxStalenessSeconds);

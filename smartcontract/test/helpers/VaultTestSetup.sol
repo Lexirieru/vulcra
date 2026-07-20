@@ -33,13 +33,10 @@ abstract contract VaultTestSetup is VulcraTestBase {
 
         oracle = PriceOracle(
             _deployProxy(
-                address(new PriceOracle()),
-                abi.encodeCall(PriceOracle.initialize, (admin, XRP_USD_FEED_ID, 3600))
+                address(new PriceOracle()), abi.encodeCall(PriceOracle.initialize, (admin, XRP_USD_FEED_ID, 3600))
             )
         );
-        vusd = VUSD(
-            _deployProxy(address(new VUSD()), abi.encodeCall(VUSD.initialize, (admin)))
-        );
+        vusd = VUSD(_deployProxy(address(new VUSD()), abi.encodeCall(VUSD.initialize, (admin))));
         IVaultManager.Params memory p = IVaultManager.Params({
             mcrBps: MCR_BPS,
             minDebt18: MIN_DEBT,
@@ -50,10 +47,7 @@ abstract contract VaultTestSetup is VulcraTestBase {
         mgr = VaultManager(
             _deployProxy(
                 address(new VaultManager()),
-                abi.encodeCall(
-                    VaultManager.initialize,
-                    (admin, address(oracle), address(vusd), feeReceiver, p)
-                )
+                abi.encodeCall(VaultManager.initialize, (admin, address(oracle), address(vusd), feeReceiver, p))
             )
         );
         bytes32 minterRole = vusd.MINTER_ROLE();

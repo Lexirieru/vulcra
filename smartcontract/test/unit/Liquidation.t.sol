@@ -19,7 +19,7 @@ contract LiquidationTest is VaultTestSetup {
     function test_liquidate_happy() public {
         _openVault(alice, 100e6, 100e18); // debt 100.5, CR ~248% at $2.50
         _seedVusd(liquidator, 200e18);
-        _setPrice18(1.20e18); // collValue 120 -> CR ~119% < 130%
+        _setPrice18(1.2e18); // collValue 120 -> CR ~119% < 130%
 
         assertTrue(mgr.isLiquidatable(alice));
         uint256 liqBefore = fxrp.balanceOf(liquidator);
@@ -28,7 +28,7 @@ contract LiquidationTest is VaultTestSetup {
         mgr.liquidate(alice);
 
         // seize = 100.5 * 1.10 = 110.55 USD; at $1.20 => 92.125 FXRP; owner keeps remainder
-        uint256 expectedSeize = (110.55e18 * 1e6) / 1.20e18; // 92_125_000
+        uint256 expectedSeize = (110.55e18 * 1e6) / 1.2e18; // 92_125_000
         assertEq(fxrp.balanceOf(liquidator) - liqBefore, expectedSeize);
         assertEq(fxrp.balanceOf(alice), 100e6 - expectedSeize);
         (,, bool active) = mgr.getVault(alice);
@@ -74,7 +74,7 @@ contract LiquidationTest is VaultTestSetup {
     function test_liquidate_badDebt_seizesAllCollateral() public {
         _openVault(alice, 100e6, 100e18); // debt 100.5
         _seedVusd(liquidator, 200e18);
-        _setPrice18(0.90e18); // collValue 90 < debt 100.5 => CR ~89.5% (bad debt)
+        _setPrice18(0.9e18); // collValue 90 < debt 100.5 => CR ~89.5% (bad debt)
 
         uint256 liqBefore = fxrp.balanceOf(liquidator);
         vm.prank(liquidator);
@@ -88,7 +88,7 @@ contract LiquidationTest is VaultTestSetup {
 
     function test_revert_liquidate_insufficientVusd() public {
         _openVault(alice, 100e6, 100e18);
-        _setPrice18(1.20e18);
+        _setPrice18(1.2e18);
         // liquidator holds no vUSD -> burn reverts
         vm.prank(liquidator);
         vm.expectRevert();
@@ -107,7 +107,7 @@ contract LiquidationTest is VaultTestSetup {
         address bob = makeAddr("bob");
         _openVault(bob, 200e6, 100e18); // safer vault
         _seedVusd(liquidator, 200e18);
-        _setPrice18(1.20e18);
+        _setPrice18(1.2e18);
         // alice is riskiest
         assertEq(mgr.riskiestVault(), alice);
         vm.prank(liquidator);

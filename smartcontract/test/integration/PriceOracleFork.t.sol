@@ -11,8 +11,7 @@ import {PriceOracle} from "../../src/PriceOracle.sol";
 ///      Verified live at build time: registry 0xaD67…F6019 -> FtsoV2 0xC4e9…304d,
 ///      feed id 0x0158…0000 returns a plausible XRP price with dynamic decimals.
 contract PriceOracleForkTest is Test {
-    bytes21 internal constant XRP_USD_FEED_ID =
-        bytes21(0x015852502f55534400000000000000000000000000);
+    bytes21 internal constant XRP_USD_FEED_ID = bytes21(0x015852502f55534400000000000000000000000000);
 
     function test_liveFeed_returnsPlausiblePrice() public {
         string memory rpc = vm.envOr("COSTON2_RPC_URL", string(""));
@@ -26,8 +25,7 @@ contract PriceOracleForkTest is Test {
         PriceOracle oracle = PriceOracle(
             address(
                 new ERC1967Proxy(
-                    address(impl),
-                    abi.encodeCall(PriceOracle.initialize, (address(this), XRP_USD_FEED_ID, 86_400))
+                    address(impl), abi.encodeCall(PriceOracle.initialize, (address(this), XRP_USD_FEED_ID, 86_400))
                 )
             )
         );

@@ -33,10 +33,7 @@ interface IVaultManager {
         returns (uint256 debt18, uint256 crBps, bool meetsMcr, bool meetsMinDebt);
 
     /// @notice Current vault state for `owner`.
-    function getVault(address owner)
-        external
-        view
-        returns (uint256 collateral6, uint256 debt18, bool active);
+    function getVault(address owner) external view returns (uint256 collateral6, uint256 debt18, bool active);
 
     /// @notice The FXRP collateral token (resolved from ContractRegistry at init).
     function fxrp() external view returns (address);

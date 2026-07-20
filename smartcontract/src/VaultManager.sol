@@ -3,12 +3,9 @@ pragma solidity 0.8.28;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {AccessControlUpgradeable} from
-    "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {PausableUpgradeable} from
-    "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
-import {ReentrancyGuardTransient} from
-    "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {PausableUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -91,9 +88,7 @@ contract VaultManager is
         uint256 collateralToLiquidator6,
         uint256 collateralToOwner6
     );
-    event Redemption(
-        address indexed redeemer, uint256 vusdRedeemed18, uint256 fxrpPaid6, uint256 fee6
-    );
+    event Redemption(address indexed redeemer, uint256 vusdRedeemed18, uint256 fxrpPaid6, uint256 fee6);
     event GuardianFunderSet(address indexed owner, address indexed funder);
     event DelegatedRepay(address indexed owner, address indexed funder, uint256 amount18);
 
@@ -102,13 +97,10 @@ contract VaultManager is
         _disableInitializers();
     }
 
-    function initialize(
-        address admin,
-        address oracle_,
-        address vusd_,
-        address feeReceiver_,
-        Params memory p
-    ) external initializer {
+    function initialize(address admin, address oracle_, address vusd_, address feeReceiver_, Params memory p)
+        external
+        initializer
+    {
         __AccessControl_init();
         __Pausable_init();
         if (oracle_ == address(0) || vusd_ == address(0) || feeReceiver_ == address(0)) {
@@ -182,11 +174,7 @@ contract VaultManager is
     // --- adjust ---
 
     /// @notice Add FXRP collateral to the caller's vault (always CR-improving).
-    function addCollateral(uint256 amount6, address prevHint, address nextHint)
-        external
-        whenNotPaused
-        nonReentrant
-    {
+    function addCollateral(uint256 amount6, address prevHint, address nextHint) external whenNotPaused nonReentrant {
         Vault storage vlt = vaults[msg.sender];
         if (!vlt.active) revert NoVault();
         if (amount6 == 0) revert ZeroAmount();
@@ -215,11 +203,7 @@ contract VaultManager is
     }
 
     /// @notice Mint more vUSD against the caller's existing vault (R1, R6).
-    function mintMore(uint256 amount18, address prevHint, address nextHint)
-        external
-        whenNotPaused
-        nonReentrant
-    {
+    function mintMore(uint256 amount18, address prevHint, address nextHint) external whenNotPaused nonReentrant {
         Vault storage vlt = vaults[msg.sender];
         if (!vlt.active) revert NoVault();
         if (amount18 == 0) revert ZeroAmount();
@@ -306,11 +290,7 @@ contract VaultManager is
     /// @return fxrpPaid6 FXRP paid to the redeemer (net of any redemption fee).
     /// @dev Each touched vault loses equal USD value of collateral and debt, so its CR rises — good
     ///      for remaining borrowers. The redeemer captures the peg arbitrage when vUSD < $1.
-    function redeem(uint256 vusdAmount18, uint256 maxIterations)
-        external
-        nonReentrant
-        returns (uint256 fxrpPaid6)
-    {
+    function redeem(uint256 vusdAmount18, uint256 maxIterations) external nonReentrant returns (uint256 fxrpPaid6) {
         if (vusdAmount18 == 0) revert ZeroAmount();
         if (vusdAmount18 > totalDebt) revert ExceedsSystemDebt();
 
@@ -398,10 +378,9 @@ contract VaultManager is
 
         address funder = guardianFunder[owner];
         if (funder == address(0)) funder = owner;
-        if (
-            vusdToken.balanceOf(funder) < amount
-                || vusdToken.allowance(funder, address(this)) < amount
-        ) revert FunderInsufficient();
+        if (vusdToken.balanceOf(funder) < amount || vusdToken.allowance(funder, address(this)) < amount) {
+            revert FunderInsufficient();
+        }
 
         vlt.debt18 = newDebt;
         totalDebt -= amount;
@@ -438,11 +417,7 @@ contract VaultManager is
     // --- views ---
 
     /// @inheritdoc IVaultManager
-    function getVault(address owner)
-        external
-        view
-        returns (uint256 collateral6, uint256 debt18, bool active)
-    {
+    function getVault(address owner) external view returns (uint256 collateral6, uint256 debt18, bool active) {
         Vault storage v = vaults[owner];
         return (v.collateral6, v.debt18, v.active);
     }

@@ -3,10 +3,8 @@ pragma solidity 0.8.28;
 
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
-import {AccessControlUpgradeable} from
-    "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {ReentrancyGuardTransient} from
-    "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {ReentrancyGuardTransient} from "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
@@ -20,13 +18,7 @@ import {IVulcraZap} from "./interfaces/IVulcraZap.sol";
 ///      batch. It never holds funds across a call: FXRP flows caller -> Zap -> VaultManager, vUSD is
 ///      minted straight to the destination. Any inner revert bubbles up so the direct-mint tx rolls
 ///      back and no FXRP is minted (R10/AE4).
-contract VulcraZap is
-    Initializable,
-    AccessControlUpgradeable,
-    ReentrancyGuardTransient,
-    UUPSUpgradeable,
-    IVulcraZap
-{
+contract VulcraZap is Initializable, AccessControlUpgradeable, ReentrancyGuardTransient, UUPSUpgradeable, IVulcraZap {
     using SafeERC20 for IERC20;
 
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
@@ -64,9 +56,7 @@ contract VulcraZap is
         fxrpToken.safeTransferFrom(msg.sender, address(this), collateral6);
         fxrpToken.forceApprove(address(vaultManager), collateral6);
         // Vault owned by the caller (PersonalAccount); vUSD delivered to the destination.
-        vaultManager.openVaultFor(
-            msg.sender, collateral6, mint18, vusdDestination, prevHint, nextHint
-        );
+        vaultManager.openVaultFor(msg.sender, collateral6, mint18, vusdDestination, prevHint, nextHint);
     }
 
     /// @inheritdoc IVulcraZap

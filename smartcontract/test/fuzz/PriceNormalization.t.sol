@@ -14,8 +14,7 @@ contract PriceNormalizationFuzzTest is VulcraTestBase {
         PriceOracle impl = new PriceOracle();
         oracle = PriceOracle(
             _deployProxy(
-                address(impl),
-                abi.encodeCall(PriceOracle.initialize, (makeAddr("admin"), XRP_USD_FEED_ID, 3600))
+                address(impl), abi.encodeCall(PriceOracle.initialize, (makeAddr("admin"), XRP_USD_FEED_ID, 3600))
             )
         );
     }
@@ -62,10 +61,7 @@ contract PriceNormalizationFuzzTest is VulcraTestBase {
     }
 
     /// @dev NICR ordering is price-independent: scaling both vaults' price does not reorder them.
-    function testFuzz_nicrOrderingPriceInvariant(uint256 c1, uint256 d1, uint256 c2, uint256 d2)
-        public
-        pure
-    {
+    function testFuzz_nicrOrderingPriceInvariant(uint256 c1, uint256 d1, uint256 c2, uint256 d2) public pure {
         c1 = bound(c1, 1e6, 1e15);
         d1 = bound(d1, 1e18, 1e24);
         c2 = bound(c2, 1e6, 1e15);

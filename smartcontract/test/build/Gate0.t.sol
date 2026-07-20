@@ -12,8 +12,7 @@ import {IAssetManager} from "@flarenetwork/flare-periphery-contracts/coston2/IAs
 /// No network access; purely a compile + type-resolution check.
 contract Gate0BuildTest is Test {
     // XRP/USD block-latency feed id (category 0x01 crypto + "XRP/USD" utf8, right-padded to 21 bytes).
-    bytes21 internal constant XRP_USD_FEED_ID =
-        bytes21(0x015852502f55534400000000000000000000000000);
+    bytes21 internal constant XRP_USD_FEED_ID = bytes21(0x015852502f55534400000000000000000000000000);
 
     function test_peripheryTypesResolve() public pure {
         // Type-level references only; no on-chain calls.
@@ -25,10 +24,7 @@ contract Gate0BuildTest is Test {
     }
 
     function test_registryAddressConstant() public pure {
-        assertEq(
-            ContractRegistry.FLARE_CONTRACT_REGISTRY_ADDRESS,
-            0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019
-        );
+        assertEq(ContractRegistry.FLARE_CONTRACT_REGISTRY_ADDRESS, 0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019);
     }
 
     function test_feedIdEncoding() public pure {

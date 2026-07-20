@@ -42,23 +42,14 @@ contract VUSDAuthorizationTest is Test {
         bytes32 nonce
     ) internal view returns (uint8 v, bytes32 r, bytes32 s) {
         bytes32 structHash = keccak256(
-            abi.encode(
-                vusd.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(),
-                _from,
-                _to,
-                value,
-                validAfter,
-                validBefore,
-                nonce
-            )
+            abi.encode(vusd.TRANSFER_WITH_AUTHORIZATION_TYPEHASH(), _from, _to, value, validAfter, validBefore, nonce)
         );
         (v, r, s) = vm.sign(pk, _digest(structHash));
     }
 
     function test_transferWithAuthorization() public {
         bytes32 nonce = keccak256("n1");
-        (uint8 v, bytes32 r, bytes32 s) =
-            _signTransfer(fromPk, from, to, 250e18, 0, block.timestamp + 1 hours, nonce);
+        (uint8 v, bytes32 r, bytes32 s) = _signTransfer(fromPk, from, to, 250e18, 0, block.timestamp + 1 hours, nonce);
 
         vusd.transferWithAuthorization(from, to, 250e18, 0, block.timestamp + 1 hours, nonce, v, r, s);
 
@@ -80,8 +71,7 @@ contract VUSDAuthorizationTest is Test {
     function test_revert_notYetValid() public {
         bytes32 nonce = keccak256("n3");
         uint256 va = block.timestamp + 1 hours;
-        (uint8 v, bytes32 r, bytes32 s) =
-            _signTransfer(fromPk, from, to, 100e18, va, block.timestamp + 2 hours, nonce);
+        (uint8 v, bytes32 r, bytes32 s) = _signTransfer(fromPk, from, to, 100e18, va, block.timestamp + 2 hours, nonce);
         vm.expectRevert(EIP3009Upgradeable.AuthorizationNotYetValid.selector);
         vusd.transferWithAuthorization(from, to, 100e18, va, block.timestamp + 2 hours, nonce, v, r, s);
     }
@@ -106,8 +96,7 @@ contract VUSDAuthorizationTest is Test {
     function test_revert_wrongSigner() public {
         bytes32 nonce = keccak256("n6");
         (, uint256 wrongPk) = makeAddrAndKey("wrong");
-        (uint8 v, bytes32 r, bytes32 s) =
-            _signTransfer(wrongPk, from, to, 100e18, 0, block.timestamp + 1 hours, nonce);
+        (uint8 v, bytes32 r, bytes32 s) = _signTransfer(wrongPk, from, to, 100e18, 0, block.timestamp + 1 hours, nonce);
         vm.expectRevert(EIP3009Upgradeable.InvalidAuthorizationSigner.selector);
         vusd.transferWithAuthorization(from, to, 100e18, 0, block.timestamp + 1 hours, nonce, v, r, s);
     }
@@ -115,11 +104,8 @@ contract VUSDAuthorizationTest is Test {
     function test_receiveWithAuthorization_requiresPayee() public {
         bytes32 nonce = keccak256("n7");
         uint256 vb = block.timestamp + 1 hours;
-        bytes32 structHash = keccak256(
-            abi.encode(
-                vusd.RECEIVE_WITH_AUTHORIZATION_TYPEHASH(), from, to, 50e18, uint256(0), vb, nonce
-            )
-        );
+        bytes32 structHash =
+            keccak256(abi.encode(vusd.RECEIVE_WITH_AUTHORIZATION_TYPEHASH(), from, to, 50e18, uint256(0), vb, nonce));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(fromPk, _digest(structHash));
 
         // Wrong caller (not the payee) reverts.
@@ -136,8 +122,7 @@ contract VUSDAuthorizationTest is Test {
         bytes32 nonce = keccak256("n8");
         uint256 vb = block.timestamp + 1 hours;
 
-        bytes32 cancelHash =
-            keccak256(abi.encode(vusd.CANCEL_AUTHORIZATION_TYPEHASH(), from, nonce));
+        bytes32 cancelHash = keccak256(abi.encode(vusd.CANCEL_AUTHORIZATION_TYPEHASH(), from, nonce));
         (uint8 cv, bytes32 cr, bytes32 cs) = vm.sign(fromPk, _digest(cancelHash));
         vusd.cancelAuthorization(from, nonce, cv, cr, cs);
         assertTrue(vusd.authorizationState(from, nonce));

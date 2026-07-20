@@ -15,10 +15,7 @@ contract PriceOracleTest is VulcraTestBase {
         vm.warp(1_800_000_000); // deterministic, well past epoch
         PriceOracle impl = new PriceOracle();
         oracle = PriceOracle(
-            _deployProxy(
-                address(impl),
-                abi.encodeCall(PriceOracle.initialize, (admin, XRP_USD_FEED_ID, STALENESS))
-            )
+            _deployProxy(address(impl), abi.encodeCall(PriceOracle.initialize, (admin, XRP_USD_FEED_ID, STALENESS)))
         );
     }
 

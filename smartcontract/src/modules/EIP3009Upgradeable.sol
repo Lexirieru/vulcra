@@ -14,15 +14,13 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 ///      implement {_executeTransfer} to move value through their ERC-20 `_transfer`.
 abstract contract EIP3009Upgradeable is Initializable, EIP712Upgradeable {
     // keccak256("TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)")
-    bytes32 public constant TRANSFER_WITH_AUTHORIZATION_TYPEHASH =
-        keccak256(
-            "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
-        );
+    bytes32 public constant TRANSFER_WITH_AUTHORIZATION_TYPEHASH = keccak256(
+        "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+    );
     // keccak256("ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)")
-    bytes32 public constant RECEIVE_WITH_AUTHORIZATION_TYPEHASH =
-        keccak256(
-            "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
-        );
+    bytes32 public constant RECEIVE_WITH_AUTHORIZATION_TYPEHASH = keccak256(
+        "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+    );
     // keccak256("CancelAuthorization(address authorizer,bytes32 nonce)")
     bytes32 public constant CANCEL_AUTHORIZATION_TYPEHASH =
         keccak256("CancelAuthorization(address authorizer,bytes32 nonce)");
@@ -62,9 +60,7 @@ abstract contract EIP3009Upgradeable is Initializable, EIP712Upgradeable {
         _validateWindow(validAfter, validBefore);
         _requireUnused(from, nonce);
         bytes32 structHash = keccak256(
-            abi.encode(
-                TRANSFER_WITH_AUTHORIZATION_TYPEHASH, from, to, value, validAfter, validBefore, nonce
-            )
+            abi.encode(TRANSFER_WITH_AUTHORIZATION_TYPEHASH, from, to, value, validAfter, validBefore, nonce)
         );
         _requireSigner(from, structHash, v, r, s);
         _markUsed(from, nonce);
@@ -87,20 +83,15 @@ abstract contract EIP3009Upgradeable is Initializable, EIP712Upgradeable {
         if (to != msg.sender) revert CallerNotPayee();
         _validateWindow(validAfter, validBefore);
         _requireUnused(from, nonce);
-        bytes32 structHash = keccak256(
-            abi.encode(
-                RECEIVE_WITH_AUTHORIZATION_TYPEHASH, from, to, value, validAfter, validBefore, nonce
-            )
-        );
+        bytes32 structHash =
+            keccak256(abi.encode(RECEIVE_WITH_AUTHORIZATION_TYPEHASH, from, to, value, validAfter, validBefore, nonce));
         _requireSigner(from, structHash, v, r, s);
         _markUsed(from, nonce);
         _executeTransfer(from, to, value);
     }
 
     /// @notice Cancel an unused authorization, signed by the authorizer.
-    function cancelAuthorization(address authorizer, bytes32 nonce, uint8 v, bytes32 r, bytes32 s)
-        external
-    {
+    function cancelAuthorization(address authorizer, bytes32 nonce, uint8 v, bytes32 r, bytes32 s) external {
         _requireUnused(authorizer, nonce);
         bytes32 structHash = keccak256(abi.encode(CANCEL_AUTHORIZATION_TYPEHASH, authorizer, nonce));
         _requireSigner(authorizer, structHash, v, r, s);
@@ -117,10 +108,7 @@ abstract contract EIP3009Upgradeable is Initializable, EIP712Upgradeable {
         if (_authorizationStates[authorizer][nonce]) revert AuthorizationAlreadyUsed();
     }
 
-    function _requireSigner(address expected, bytes32 structHash, uint8 v, bytes32 r, bytes32 s)
-        private
-        view
-    {
+    function _requireSigner(address expected, bytes32 structHash, uint8 v, bytes32 r, bytes32 s) private view {
         address signer = ECDSA.recover(_hashTypedDataV4(structHash), v, r, s);
         if (signer != expected) revert InvalidAuthorizationSigner();
     }
