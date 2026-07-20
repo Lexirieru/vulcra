@@ -141,6 +141,9 @@ contract VaultManagerTest is VaultTestSetup {
 
     function test_openVaultFor_ownershipAndRecipient() public {
         // zap-style: caller funds collateral, owner = alice, vUSD -> bob
+        bytes32 zapRole = mgr.ZAP_ROLE();
+        vm.prank(admin);
+        mgr.grantRole(zapRole, zap);
         _fundFxrp(zap, 100e6);
         vm.prank(zap);
         mgr.openVaultFor(alice, 100e6, 100e18, bob, address(0), address(0));
@@ -151,6 +154,14 @@ contract VaultManagerTest is VaultTestSetup {
         (,, bool zapActive) = mgr.getVault(zap);
         assertFalse(zapActive); // vault owned by alice, not the caller
         _supplyEqualsDebt();
+    }
+
+    function test_revert_openVaultFor_notZap() public {
+        // openVaultFor is gated to ZAP_ROLE to prevent occupying a victim's vault slot
+        _fundFxrp(zap, 100e6);
+        vm.expectRevert();
+        vm.prank(zap);
+        mgr.openVaultFor(alice, 100e6, 100e18, bob, address(0), address(0));
     }
 
     function test_riskiestVault_ordering() public {

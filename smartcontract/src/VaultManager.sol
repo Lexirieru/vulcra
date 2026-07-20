@@ -38,6 +38,9 @@ contract VaultManager is
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant GUARDIAN_EXECUTOR_ROLE = keccak256("GUARDIAN_EXECUTOR_ROLE");
+    /// @dev Addresses allowed to open a vault on someone else's behalf (VulcraZap). Prevents a
+    ///      griefing vector where anyone could occupy a victim's one-vault-per-address slot.
+    bytes32 public constant ZAP_ROLE = keccak256("ZAP_ROLE");
 
     struct Vault {
         uint256 collateral6; // FXRP, 6-dec
@@ -138,7 +141,7 @@ contract VaultManager is
         address debtRecipient,
         address prevHint,
         address nextHint
-    ) external whenNotPaused nonReentrant {
+    ) external whenNotPaused nonReentrant onlyRole(ZAP_ROLE) {
         if (owner == address(0) || debtRecipient == address(0)) revert ZeroAddress();
         _open(owner, msg.sender, collateral6, mint18, debtRecipient, prevHint, nextHint);
     }

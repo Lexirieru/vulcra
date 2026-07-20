@@ -17,6 +17,9 @@ contract VulcraZapTest is VaultTestSetup {
         zap = VulcraZap(
             _deployProxy(address(new VulcraZap()), abi.encodeCall(VulcraZap.initialize, (admin, address(mgr))))
         );
+        bytes32 zapRole = mgr.ZAP_ROLE();
+        vm.prank(admin);
+        mgr.grantRole(zapRole, address(zap));
     }
 
     function test_zap_direct_ownershipAndForward() public {

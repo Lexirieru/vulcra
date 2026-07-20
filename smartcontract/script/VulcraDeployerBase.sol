@@ -55,5 +55,7 @@ abstract contract VulcraDeployerBase {
                 )
             )
         );
+        // Only the Zap may open vaults on a user's behalf (atomic-mint flow).
+        d.manager.grantRole(d.manager.ZAP_ROLE(), address(d.zap));
     }
 }
