@@ -35,9 +35,15 @@ interface IVaultManager {
     /// @notice Current vault state for `owner`.
     function getVault(address owner) external view returns (uint256 collateral6, uint256 debt18, bool active);
 
-    /// @notice The FXRP collateral token (resolved from ContractRegistry at init).
+    /// @notice Decimals of this branch's collateral token (e.g. 6 for FXRP, 18 for wFLR).
+    /// @dev The collateral token address itself is exposed by the public `collateralToken()` getter
+    ///      and by the backward-compatible {fxrp} alias below.
+    function collateralDecimals() external view returns (uint8);
+
+    /// @notice Backward-compatible alias for the collateral token (deployed ABI). Returns this
+    ///         branch's collateral token — FXRP on the FXRP branch, wFLR on the wFLR branch, etc.
     function fxrp() external view returns (address);
 
-    /// @notice The vUSD debt token.
+    /// @notice The vUSD debt token (shared across all branches).
     function vusd() external view returns (address);
 }

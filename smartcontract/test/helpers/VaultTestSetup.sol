@@ -28,7 +28,6 @@ abstract contract VaultTestSetup is VulcraTestBase {
     function _deployStack() internal {
         vm.warp(1_800_000_000);
         fxrp = new MockERC20("Test FXRP", "FXRP", 6);
-        _setFxrp(address(fxrp));
         _setXrpPrice(2.5e18, 18); // $2.50 / XRP
 
         oracle = PriceOracle(
@@ -44,10 +43,14 @@ abstract contract VaultTestSetup is VulcraTestBase {
             liqBonusBps: LIQ_BONUS_BPS,
             redemptionFeeBps: 0
         });
+        // Single FXRP-like branch (6-dec collateral, XRP/USD feed) for the shared unit/fuzz tests.
         mgr = VaultManager(
             _deployProxy(
                 address(new VaultManager()),
-                abi.encodeCall(VaultManager.initialize, (admin, address(oracle), address(vusd), feeReceiver, p))
+                abi.encodeCall(
+                    VaultManager.initialize,
+                    (admin, address(fxrp), 6, address(oracle), address(vusd), feeReceiver, p, 0)
+                )
             )
         );
         bytes32 minterRole = vusd.MINTER_ROLE();

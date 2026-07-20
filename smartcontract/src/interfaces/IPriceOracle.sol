@@ -2,18 +2,14 @@
 pragma solidity 0.8.28;
 
 /// @title IPriceOracle
-/// @notice Vulcra price oracle: normalized XRP/USD from FTSOv2 with a staleness guard.
+/// @notice Vulcra per-branch price oracle: a normalized collateral/USD price from FTSOv2 with a
+///         staleness guard. Collateral-decimal normalization is not the oracle's concern — it lives
+///         in the VaultManager (which knows its collateral decimals) via {VulcraMath}.
 interface IPriceOracle {
-    /// @notice XRP price in 18-decimal USD, reverting if the feed is stale or zero.
-    function xrpUsdPrice18() external view returns (uint256);
+    /// @notice Collateral/USD price in 18-decimal USD, reverting if the feed is stale or zero.
+    function price18() external view returns (uint256);
 
-    /// @notice USD value (18-dec) of an FXRP amount (6-dec), using the live XRP/USD price.
-    function collateralValueUsd18(uint256 fxrpAmount6) external view returns (uint256);
-
-    /// @notice FXRP amount (6-dec) worth a given 18-dec USD value at the live price.
-    function collateralForUsd18(uint256 usd18) external view returns (uint256);
-
-    /// @notice The XRP/USD block-latency feed id used by this oracle.
+    /// @notice The block-latency FTSO feed id this oracle reads (e.g. XRP/USD or FLR/USD).
     function feedId() external view returns (bytes21);
 
     /// @notice Maximum age (seconds) of a feed reading before it is considered stale.

@@ -20,9 +20,11 @@ abstract contract VulcraTestBase is Test {
 
     /// @dev XRP/USD feed id (category 0x01 + "XRP/USD" utf8, right-padded to 21 bytes).
     bytes21 internal constant XRP_USD_FEED_ID = bytes21(0x015852502f55534400000000000000000000000000);
+    /// @dev FLR/USD feed id (category 0x01 + "FLR/USD" utf8, right-padded to 21 bytes).
+    bytes21 internal constant FLR_USD_FEED_ID = bytes21(0x01464c522f55534400000000000000000000000000);
 
-    /// @notice Inject an FTSO feed reading for the XRP/USD feed id, resolved through the real registry.
-    function _setFeed(uint256 value, int8 decimals, uint64 timestamp) internal {
+    /// @dev Point the registry's FtsoV2 lookup at the mock feed contract. Idempotent.
+    function _mockFtsoResolution() internal {
         if (FLARE_REGISTRY.code.length == 0) vm.etch(FLARE_REGISTRY, hex"fe");
         if (MOCK_FTSO.code.length == 0) vm.etch(MOCK_FTSO, hex"fe");
         vm.mockCall(
@@ -30,11 +32,22 @@ abstract contract VulcraTestBase is Test {
             abi.encodeWithSignature("getContractAddressByHash(bytes32)", keccak256(abi.encode("FtsoV2"))),
             abi.encode(MOCK_FTSO)
         );
+    }
+
+    /// @notice Inject an FTSO feed reading for an arbitrary feed id (per-feed mocks coexist since the
+    ///         mock matches on getFeedById calldata). Resolved through the real registry code path.
+    function _setFeedById(bytes21 feedId, uint256 value, int8 decimals, uint64 timestamp) internal {
+        _mockFtsoResolution();
         vm.mockCall(
             MOCK_FTSO,
-            abi.encodeWithSelector(TestFtsoV2Interface.getFeedById.selector, XRP_USD_FEED_ID),
+            abi.encodeWithSelector(TestFtsoV2Interface.getFeedById.selector, feedId),
             abi.encode(value, decimals, timestamp)
         );
+    }
+
+    /// @notice Inject an XRP/USD feed reading (default feed for the FXRP branch).
+    function _setFeed(uint256 value, int8 decimals, uint64 timestamp) internal {
+        _setFeedById(XRP_USD_FEED_ID, value, decimals, timestamp);
     }
 
     /// @notice Convenience: set an XRP/USD price expressed with `decimals` places, fresh timestamp.

@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {ERC1967Proxy} from "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import {PriceOracle} from "../../src/PriceOracle.sol";
+import {VulcraMath} from "../../src/libraries/VulcraMath.sol";
 
 /// @notice Live Coston2 fork test — NO MOCK. Deploys PriceOracle against the real
 ///         FlareContractRegistry / FtsoV2 and reads the live XRP/USD feed.
@@ -30,12 +31,12 @@ contract PriceOracleForkTest is Test {
             )
         );
 
-        uint256 price18 = oracle.xrpUsdPrice18();
+        uint256 price18 = oracle.price18();
         // XRP has traded well within [$0.10, $100] on testnet; a sane liveness band.
         assertGt(price18, 0.1e18, "XRP price implausibly low");
         assertLt(price18, 100e18, "XRP price implausibly high");
 
-        uint256 oneFxrp = oracle.collateralValueUsd18(1e6);
+        uint256 oneFxrp = VulcraMath.collateralValueUsd18(1e6, 6, price18);
         assertEq(oneFxrp, price18, "1 FXRP should equal one XRP price");
     }
 }

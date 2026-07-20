@@ -12,7 +12,9 @@ import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 import {VulcraMath} from "./libraries/VulcraMath.sol";
 
 /// @title PriceOracle
-/// @notice UUPS-upgradeable oracle wrapping the FTSOv2 block-latency XRP/USD feed.
+/// @notice UUPS-upgradeable, feed-agnostic oracle wrapping an FTSOv2 block-latency feed. One
+///         instance is deployed per Vulcra branch, parameterized by its `feedId` (e.g. XRP/USD for
+///         the FXRP branch, FLR/USD for the wFLR branch).
 /// @dev Resolves FtsoV2 at runtime via `ContractRegistry` (zero hardcoded system addresses, R8).
 ///      Uses `getTestFtsoV2()` — on Coston2 the block-latency view read is free (no fee), and the
 ///      `TestFtsoV2Interface.getFeedById` is `view`, so callers (VaultManager CR checks, previews)
@@ -43,7 +45,7 @@ contract PriceOracle is Initializable, AccessControlUpgradeable, UUPSUpgradeable
     }
 
     /// @param admin Address granted admin, param-admin, and upgrader roles.
-    /// @param _feedId XRP/USD block-latency feed id (verified live at Gate 0).
+    /// @param _feedId Block-latency FTSO feed id for this branch (e.g. XRP/USD or FLR/USD).
     /// @param _maxStalenessSeconds Maximum feed age before {StalePrice} reverts.
     function initialize(address admin, bytes21 _feedId, uint64 _maxStalenessSeconds) external initializer {
         __AccessControl_init();
@@ -56,23 +58,13 @@ contract PriceOracle is Initializable, AccessControlUpgradeable, UUPSUpgradeable
     }
 
     /// @inheritdoc IPriceOracle
-    function xrpUsdPrice18() public view returns (uint256) {
+    function price18() public view returns (uint256) {
         (uint256 value, int8 decimals, uint64 timestamp) = ContractRegistry.getTestFtsoV2().getFeedById(feedId);
         if (value == 0) revert ZeroPrice();
         if (block.timestamp > timestamp && block.timestamp - timestamp > maxStalenessSeconds) {
             revert StalePrice(timestamp, block.timestamp, maxStalenessSeconds);
         }
         return VulcraMath.toPrice18(value, decimals);
-    }
-
-    /// @inheritdoc IPriceOracle
-    function collateralValueUsd18(uint256 fxrpAmount6) external view returns (uint256) {
-        return VulcraMath.collateralValueUsd18(fxrpAmount6, xrpUsdPrice18());
-    }
-
-    /// @inheritdoc IPriceOracle
-    function collateralForUsd18(uint256 usd18) external view returns (uint256) {
-        return VulcraMath.collateralForUsd18(usd18, xrpUsdPrice18());
     }
 
     /// @notice Update the staleness bound (param admin only).

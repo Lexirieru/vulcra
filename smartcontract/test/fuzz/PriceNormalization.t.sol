@@ -5,27 +5,35 @@ import {VulcraTestBase} from "../helpers/VulcraTestBase.sol";
 import {PriceOracle} from "../../src/PriceOracle.sol";
 import {VulcraMath} from "../../src/libraries/VulcraMath.sol";
 
-/// @notice Fuzz coverage for centralized price normalization (R3/R9).
+/// @notice Fuzz coverage for centralized price normalization across branches (R3/R9):
+///         FXRP (6-dec collateral, 6-dec XRP/USD feed) and wFLR (18-dec collateral, 8-dec FLR/USD).
 contract PriceNormalizationFuzzTest is VulcraTestBase {
-    PriceOracle internal oracle;
+    PriceOracle internal xrpOracle; // FXRP branch feed
+    PriceOracle internal flrOracle; // wFLR branch feed
 
     function setUp() public {
         vm.warp(1_800_000_000);
-        PriceOracle impl = new PriceOracle();
-        oracle = PriceOracle(
+        xrpOracle = PriceOracle(
             _deployProxy(
-                address(impl), abi.encodeCall(PriceOracle.initialize, (makeAddr("admin"), XRP_USD_FEED_ID, 3600))
+                address(new PriceOracle()),
+                abi.encodeCall(PriceOracle.initialize, (makeAddr("admin"), XRP_USD_FEED_ID, 3600))
+            )
+        );
+        flrOracle = PriceOracle(
+            _deployProxy(
+                address(new PriceOracle()),
+                abi.encodeCall(PriceOracle.initialize, (makeAddr("admin"), FLR_USD_FEED_ID, 3600))
             )
         );
     }
 
-    /// @dev Normalization matches the closed-form across decimals on both sides of 18.
+    /// @dev Feed normalization matches the closed-form across decimals on both sides of 18.
     function testFuzz_toPrice18(uint256 value, uint8 decimalsRaw) public {
         value = bound(value, 1, 1e30);
         int8 decimals = int8(int256(bound(decimalsRaw, 0, 24)));
-        _setXrpPrice(value, decimals);
+        _setFeedById(XRP_USD_FEED_ID, value, decimals, uint64(block.timestamp));
 
-        uint256 got = oracle.xrpUsdPrice18();
+        uint256 got = xrpOracle.price18();
         uint256 expected;
         if (decimals <= 18) {
             expected = value * (10 ** uint256(int256(18) - int256(decimals)));
@@ -35,29 +43,45 @@ contract PriceNormalizationFuzzTest is VulcraTestBase {
         assertEq(got, expected, "price18 mismatch");
     }
 
-    /// @dev collateralValueUsd18 never reverts on valid ranges and matches the formula.
-    function testFuzz_collateralValue(uint256 value, uint8 decimalsRaw, uint256 fxrp6) public {
+    /// @dev FXRP branch: 6-dec collateral, matches the formula and never reverts on valid ranges.
+    function testFuzz_collateralValue_fxrp(uint256 value, uint8 decimalsRaw, uint256 fxrp6) public {
         value = bound(value, 1, 1e18);
         int8 decimals = int8(int256(bound(decimalsRaw, 0, 18)));
-        fxrp6 = bound(fxrp6, 0, 1e18); // up to 1e12 FXRP
-        _setXrpPrice(value, decimals);
+        fxrp6 = bound(fxrp6, 0, 1e18);
+        _setFeedById(XRP_USD_FEED_ID, value, decimals, uint64(block.timestamp));
 
-        uint256 price18 = oracle.xrpUsdPrice18();
-        uint256 got = oracle.collateralValueUsd18(fxrp6);
-        assertEq(got, (fxrp6 * price18) / 1e6, "collateral value mismatch");
+        uint256 price18 = xrpOracle.price18();
+        uint256 got = VulcraMath.collateralValueUsd18(fxrp6, 6, price18);
+        assertEq(got, (fxrp6 * price18) / 1e6, "fxrp collateral value mismatch");
     }
 
-    /// @dev collateralForUsd18 is the (rounding-down) inverse of collateralValueUsd18.
-    function testFuzz_roundTrip(uint256 value, uint8 decimalsRaw, uint256 fxrp6) public {
-        value = bound(value, 1e4, 1e14); // realistic price band, avoids degenerate rounding
-        int8 decimals = int8(int256(bound(decimalsRaw, 2, 12)));
-        fxrp6 = bound(fxrp6, 1e6, 1e15);
-        _setXrpPrice(value, decimals);
+    /// @dev wFLR branch: 18-dec collateral + 8-dec FLR/USD feed (both verified live on Coston2).
+    ///      Verifies the full 8-dec-feed -> price18 -> 18-dec-collateral chain.
+    function testFuzz_collateralValue_wflr(uint256 flrPriceRaw, uint256 wflr18) public {
+        flrPriceRaw = bound(flrPriceRaw, 1, 1e12); // 8-dec FLR/USD (e.g. 2_000_000 = $0.02)
+        wflr18 = bound(wflr18, 0, 1e24); // up to 1,000,000 wFLR
+        _setFeedById(FLR_USD_FEED_ID, flrPriceRaw, 8, uint64(block.timestamp));
 
-        uint256 usd18 = oracle.collateralValueUsd18(fxrp6);
-        uint256 backToFxrp = oracle.collateralForUsd18(usd18);
-        // Inverse rounds down; never returns more collateral than we started with.
-        assertLe(backToFxrp, fxrp6, "round-trip must not inflate collateral");
+        uint256 price18 = flrOracle.price18();
+        assertEq(price18, flrPriceRaw * 1e10, "8-dec feed -> 18-dec price"); // 18 - 8 = 10
+
+        uint256 got = VulcraMath.collateralValueUsd18(wflr18, 18, price18);
+        assertEq(got, (wflr18 * price18) / 1e18, "wflr collateral value mismatch");
+    }
+
+    /// @dev collateralForUsd18 is the (rounding-down) inverse of collateralValueUsd18, for either
+    ///      collateral decimals (6 or 18).
+    function testFuzz_roundTrip(uint256 value, uint256 amount, bool wide) public {
+        value = bound(value, 1e4, 1e14);
+        _setFeedById(XRP_USD_FEED_ID, value, 8, uint64(block.timestamp));
+        uint256 price18 = xrpOracle.price18();
+
+        uint8 dec = wide ? 18 : 6;
+        amount = bound(amount, 10 ** dec, 1000 * (10 ** dec));
+
+        uint256 usd18 = VulcraMath.collateralValueUsd18(amount, dec, price18);
+        uint256 back = VulcraMath.collateralForUsd18(usd18, dec, price18);
+        assertLe(back, amount, "round-trip must not inflate collateral");
     }
 
     /// @dev NICR ordering is price-independent: scaling both vaults' price does not reorder them.
@@ -68,12 +92,11 @@ contract PriceNormalizationFuzzTest is VulcraTestBase {
         d2 = bound(d2, 1e18, 1e24);
         uint256 n1 = VulcraMath.nicr(c1, d1);
         uint256 n2 = VulcraMath.nicr(c2, d2);
-        // Actual CR at any positive price P (18-dec) = collateralValueUsd18 * BPS / debt.
-        // Since P multiplies both, the ordering of actual CR equals ordering of NICR.
+        // Within a branch (same decimals + price), actual-CR ordering equals NICR ordering.
         uint256 p = 2.5e18;
-        uint256 cr1 = VulcraMath.crBps(VulcraMath.collateralValueUsd18(c1, p), d1);
-        uint256 cr2 = VulcraMath.crBps(VulcraMath.collateralValueUsd18(c2, p), d2);
-        if (n1 < n2) assertLe(cr1, cr2, "NICR<  implies CR<=");
-        if (n1 > n2) assertGe(cr1, cr2, "NICR>  implies CR>=");
+        uint256 cr1 = VulcraMath.crBps(VulcraMath.collateralValueUsd18(c1, 6, p), d1);
+        uint256 cr2 = VulcraMath.crBps(VulcraMath.collateralValueUsd18(c2, 6, p), d2);
+        if (n1 < n2) assertLe(cr1, cr2, "NICR< implies CR<=");
+        if (n1 > n2) assertGe(cr1, cr2, "NICR> implies CR>=");
     }
 }

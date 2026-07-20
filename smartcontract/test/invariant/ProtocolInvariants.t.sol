@@ -6,6 +6,7 @@ import {VulcraTestBase} from "../helpers/VulcraTestBase.sol";
 import {VaultManager} from "../../src/VaultManager.sol";
 import {VUSD} from "../../src/VUSD.sol";
 import {MockERC20} from "../helpers/MockERC20.sol";
+import {VulcraMath} from "../../src/libraries/VulcraMath.sol";
 
 /// @notice Full-protocol handler: open/adjust/repay + price moves + liquidation + redemption +
 ///         delegated repay across a fixed actor set. Actor 0 is a whale that holds vUSD to fund
@@ -149,7 +150,7 @@ contract ProtocolInvariants is VaultTestSetup {
         for (uint256 i; i < actors.length; i++) {
             (uint256 coll,, bool active) = mgr.getVault(actors[i]);
             if (!active) continue;
-            totalCollValue += oracle.collateralValueUsd18(coll);
+            totalCollValue += VulcraMath.collateralValueUsd18(coll, mgr.collateralDecimals(), oracle.price18());
             if (mgr.collateralRatioBps(actors[i]) < 10_000) anyBadDebt = true;
         }
         if (!anyBadDebt) {

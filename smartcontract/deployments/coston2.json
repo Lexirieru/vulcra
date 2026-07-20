@@ -2,17 +2,69 @@
   "network": "coston2",
   "chainId": 114,
   "explorer": "https://coston2-explorer.flare.network",
-  "deployedAt": "2026-07-20",
-  "admin": "0x2917AcaAE420feEbc5eD76Efd3c37929A46eC81E",
-  "contracts": {
+  "model": "multi-collateral (branch per collateral, Liquity-V2 / Enosys style)",
+  "note": "One shared VUSD; one branch (PriceOracle + VaultManager [+ VulcraZap on FXRP]) per collateral, each granted VUSD MINTER_ROLE. External runtime ABI of VaultManager is identical across branches — multi-collateral = multiple instances, not new signatures. Contract addresses below are filled by the coordinator after running `script/DeployVulcra.s.sol` (broadcast gated behind PRIVATE_KEY). Collateral tokens + registry are resolved on-chain via FlareContractRegistry; token addresses shown for reference only.",
+  "deployOrder": [
+    "VUSD (shared, once)",
+    "FXRP branch: PriceOracle(XRP/USD) -> VaultManager(FXRP,6dec) -> grant VUSD.MINTER_ROLE -> VulcraZap -> grant ZAP_ROLE",
+    "wFLR branch: PriceOracle(FLR/USD) -> VaultManager(wFLR,18dec) -> grant VUSD.MINTER_ROLE (no Zap)",
+    "optional: grant GUARDIAN_EXECUTOR_ROLE(keeper) on each branch"
+  ],
+  "vaultManagerInit": "initialize(admin, collateralToken, collateralDecimals(uint8), oracle, vusd, feeReceiver, Params{mcrBps,minDebt18,mintFeeBps,liqBonusBps,redemptionFeeBps}, debtCeiling)",
+  "external": {
+    "FlareContractRegistry": "0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019",
+    "AssetManagerFXRP": "0xc1Ca88b937d0b528842F95d5731ffB586f4fbDFA"
+  },
+  "shared": {
+    "admin": "",
+    "VUSD": ""
+  },
+  "branches": {
+    "FXRP": {
+      "collateralToken": "0x0b6A3645c240605887a5532109323A3E12273dc7",
+      "collateralDecimals": 6,
+      "feed": "XRP/USD",
+      "feedId": "0x015852502f55534400000000000000000000000000",
+      "feedDecimals": 6,
+      "xrplNativeMint": true,
+      "params": {
+        "mcrBps": 13000,
+        "minDebt18": "100000000000000000000",
+        "mintFeeBps": 50,
+        "liqBonusBps": 1000,
+        "redemptionFeeBps": 0
+      },
+      "debtCeiling": "0",
+      "PriceOracle": "",
+      "VaultManager": "",
+      "VulcraZap": ""
+    },
+    "wFLR": {
+      "collateralToken": "0xC67DCE33D7A8efA5FfEB961899C73fe01bCe9273",
+      "collateralDecimals": 18,
+      "feed": "FLR/USD",
+      "feedId": "0x01464c522f55534400000000000000000000000000",
+      "feedDecimals": 8,
+      "xrplNativeMint": false,
+      "params": {
+        "mcrBps": 15000,
+        "minDebt18": "200000000000000000000",
+        "mintFeeBps": 50,
+        "liqBonusBps": 1200,
+        "redemptionFeeBps": 0
+      },
+      "debtCeiling": "500000000000000000000000",
+      "PriceOracle": "",
+      "VaultManager": ""
+    }
+  },
+  "deprecated_single_collateral": {
+    "note": "Superseded by the multi-collateral model above; kept for reference. These live single-collateral contracts predate the collateral-agnostic VaultManager and should be treated as retired.",
+    "deployedAt": "2026-07-20",
+    "admin": "0x2917AcaAE420feEbc5eD76Efd3c37929A46eC81E",
     "VaultManager": "0xB74e100F2C651822082360777dD825c2b24E08E1",
     "VUSD": "0x00c5354725345768787c4D1F725801073812023D",
     "PriceOracle": "0x8E2d6f9B6c5CEEf39Cf534B0343338Da72e5A3Be",
     "VulcraZap": "0xf362477e81AfD7dC08Ec57aF834BAc7185DFAdF5"
-  },
-  "external": {
-    "FlareContractRegistry": "0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019",
-    "AssetManagerFXRP": "0xc1Ca88b937d0b528842F95d5731ffB586f4fbDFA",
-    "FXRP": "0x0b6A3645c240605887a5532109323A3E12273dc7"
   }
 }
