@@ -1,0 +1,36 @@
+# ---- secrets: NEVER commit real values ----
+# Local env files with real values (the .example templates ARE committed).
+.env
+.env.*
+!.env.example
+
+# ext-proxy configs contain the FCC indexer DB credentials — commit only the
+# .example template, never the real .toml.
+config/proxy/*.toml
+!config/proxy/*.toml.example
+
+# Any *.local override files.
+*.local
+
+# ---- FCC-generated config (per-deploy, not source) ----
+config/extension.env
+config/**/deployed-addresses.json
+
+# ---- build artifacts ----
+/build/
+/bin/
+*.exe
+*.test
+*.out
+coverage.out
+
+# ---- Go / Foundry / node cruft ----
+vendor/
+out/
+cache/
+node_modules/
+
+# ---- editor / OS ----
+.DS_Store
+.idea/
+.vscode/
