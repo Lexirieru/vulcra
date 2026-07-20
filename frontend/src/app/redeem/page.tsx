@@ -40,9 +40,11 @@ export default function RedeemPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Redeem vUSD</h1>
           <p className="mt-1 text-sm text-muted">
-            Redeem vUSD for {branch.collateralSymbol} at face value. Redemptions draw
-            from the riskiest {branch.label} vaults first — the arbitrage that holds
-            the peg floor.
+            Redeem vUSD for {branch.collateralSymbol} at face value. In V2, redemptions
+            are <span className="font-medium text-text">by interest rate</span> — the
+            lowest-rate {branch.label} vaults are redeemed first (borrowers who chose a
+            lower rate accept redemption risk in exchange for cheaper debt). This is the
+            arbitrage that holds the peg floor.
           </p>
         </div>
       </Reveal>

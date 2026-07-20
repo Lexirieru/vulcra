@@ -4,12 +4,13 @@ import { Card, CardTitle, Stat } from "@/components/ui";
 import { CrGauge } from "./CrGauge";
 import type { VaultParams, VaultState } from "@/hooks/useVault";
 import {
+  annualInterest18,
   collateralValueUsd18,
   computeCrBps,
   healthBand,
   liquidationPrice18,
 } from "@/lib/vault-math";
-import { formatPrice, formatToken, formatUsd } from "@/lib/format";
+import { formatBps, formatPrice, formatToken, formatUsd } from "@/lib/format";
 
 export function PositionCard({
   vault,
@@ -18,6 +19,8 @@ export function PositionCard({
   collDec,
   collateralSymbol,
   feedLabel,
+  rateBps,
+  redeemableBefore18,
 }: {
   vault: VaultState;
   price18?: bigint;
@@ -25,12 +28,16 @@ export function PositionCard({
   collDec: number;
   collateralSymbol: string;
   feedLabel: string;
+  rateBps?: bigint;
+  redeemableBefore18?: bigint;
 }) {
   const crBps = price18
     ? computeCrBps(vault.collateral, collDec, vault.debt18, price18)
     : null;
   const band = healthBand(crBps, params.mcrBps);
   const liqPrice = liquidationPrice18(vault.collateral, collDec, vault.debt18, params.mcrBps);
+  const annualCost =
+    rateBps !== undefined ? annualInterest18(vault.debt18, rateBps) : undefined;
 
   return (
     <Card>
@@ -43,7 +50,11 @@ export function PositionCard({
             value={formatToken(vault.collateral, collDec, 2)}
             sub={collateralSymbol}
           />
-          <Stat label="Debt" value={formatToken(vault.debt18, 18, 2)} sub="vUSD" />
+          <Stat
+            label="Debt (incl. interest)"
+            value={formatToken(vault.debt18, 18, 2)}
+            sub="vUSD · live"
+          />
           <Stat
             label="Liquidation price"
             value={formatPrice(liqPrice ?? undefined)}
@@ -51,15 +62,35 @@ export function PositionCard({
             tone={band === "danger" ? "danger" : undefined}
           />
           <Stat
-            label="Collateral value"
-            value={
-              price18
-                ? formatUsd(collateralValueUsd18(vault.collateral, collDec, price18))
-                : "—"
+            label="Interest rate"
+            value={rateBps !== undefined ? `${formatBps(Number(rateBps))}` : "—"}
+            sub={
+              annualCost !== undefined
+                ? `≈ ${formatToken(annualCost, 18, 2)} vUSD/yr`
+                : "per year"
             }
-            sub="at live price"
           />
         </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-2/40 px-4 py-3 text-sm">
+        <span className="text-muted">
+          Collateral value:{" "}
+          <span className="font-mono text-text">
+            {price18
+              ? formatUsd(collateralValueUsd18(vault.collateral, collDec, price18))
+              : "—"}
+          </span>
+        </span>
+        <span className="text-muted">
+          Redeemable before you:{" "}
+          <span className="font-mono text-text">
+            {redeemableBefore18 !== undefined
+              ? `${formatToken(redeemableBefore18, 18, 0)} vUSD`
+              : "—"}
+          </span>{" "}
+          <span className="text-faint">(lower-rate debt, redeemed first)</span>
+        </span>
       </div>
     </Card>
   );

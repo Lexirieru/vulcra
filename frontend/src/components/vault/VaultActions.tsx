@@ -10,21 +10,72 @@ import { zeroAddress, type Address } from "viem";
 import { Button, Card, CardTitle, Field, Input, cn } from "@/components/ui";
 import { TxStatus } from "./TxStatus";
 import { useVaultAction, useTokenApproval, useWrapNative } from "@/hooks/useVaultAction";
+import { useInterestConfig, useVaultRate } from "@/hooks/useInterest";
+import type { InterestConfig } from "@/hooks/useInterest";
 import type { VaultParams, VaultState } from "@/hooks/useVault";
 import type { CollateralBranch } from "@/config/branches";
-import { maxMintableVusd18 } from "@/lib/vault-math";
-import { formatToken, parseAmount } from "@/lib/format";
+import { annualInterest18, maxMintableVusd18 } from "@/lib/vault-math";
+import { formatBps, formatToken, parseAmount } from "@/lib/format";
 
 const HINTS = [zeroAddress, zeroAddress] as const; // contract falls back to a bounded descent
 
-type Tab = "deposit" | "withdraw" | "borrow" | "repay" | "close";
+type Tab = "deposit" | "withdraw" | "borrow" | "repay" | "rate" | "close";
 const TABS: { id: Tab; label: string }[] = [
   { id: "deposit", label: "Deposit" },
   { id: "withdraw", label: "Withdraw" },
   { id: "borrow", label: "Borrow" },
   { id: "repay", label: "Repay" },
+  { id: "rate", label: "Interest" },
   { id: "close", label: "Close" },
 ];
+
+// Reusable interest-rate slider (Enosys-style "X % per year") with the annual
+// cost at the given debt. Bounds come from the contract config.
+function InterestSlider({
+  config,
+  rateBps,
+  onChange,
+  debt18,
+}: {
+  config: InterestConfig;
+  rateBps: number;
+  onChange: (bps: number) => void;
+  debt18?: bigint;
+}) {
+  const annual = debt18 ? annualInterest18(debt18, rateBps) : undefined;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between">
+        <label htmlFor="interest-rate" className="text-sm font-medium text-text">
+          Interest rate
+        </label>
+        <span className="font-mono text-sm tabular-nums text-ember">
+          {formatBps(rateBps)} / year
+        </span>
+      </div>
+      <input
+        id="interest-rate"
+        type="range"
+        min={config.minBps}
+        max={config.maxBps}
+        step={10}
+        value={rateBps}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-valuetext={`${formatBps(rateBps)} per year`}
+        className="w-full accent-[var(--color-ember)]"
+      />
+      <div className="flex justify-between text-xs text-faint">
+        <span>{formatBps(config.minBps)}</span>
+        <span>
+          {annual !== undefined
+            ? `≈ ${formatToken(annual, 18, 2)} vUSD/yr at current debt`
+            : "lower rate = redeemed first"}
+        </span>
+        <span>{formatBps(config.maxBps)}</span>
+      </div>
+    </div>
+  );
+}
 
 export function VaultActions({
   vault,
@@ -48,6 +99,11 @@ export function VaultActions({
   const action = useVaultAction(branch.vaultManager || undefined);
   const blocked = disabled || !action.configured;
   const collDec = branch.collateralDecimals;
+  const { config: interest } = useInterestConfig(
+    branch.vaultManager || undefined,
+    branch.interest,
+  );
+  const { rateBps: currentRate } = useVaultRate(owner, branch.vaultManager || undefined);
 
   return (
     <Card>
@@ -66,6 +122,7 @@ export function VaultActions({
             action={action}
             collateralToken={collateralToken}
             owner={owner}
+            interest={interest}
             blocked={blocked}
           />
         </div>
@@ -119,6 +176,16 @@ export function VaultActions({
             )}
             {tab === "repay" && (
               <DebtForm mode="repay" action={action} vault={vault} blocked={blocked} />
+            )}
+            {tab === "rate" && (
+              <RateForm
+                key={String(currentRate)}
+                action={action}
+                interest={interest}
+                currentRateBps={currentRate}
+                debt18={vault?.debt18}
+                blocked={blocked}
+              />
             )}
             {tab === "close" && <CloseForm vault={vault} action={action} blocked={blocked} />}
           </div>
@@ -188,6 +255,7 @@ function OpenForm({
   action,
   collateralToken,
   owner,
+  interest,
   blocked,
 }: {
   price18?: bigint;
@@ -196,11 +264,14 @@ function OpenForm({
   action: Action;
   collateralToken?: Address;
   owner?: Address;
+  interest: InterestConfig;
   blocked: boolean;
 }) {
   const collDec = branch.collateralDecimals;
   const [collateral, setCollateral] = useState("");
   const [mint, setMint] = useState("");
+  const [rateBps, setRateBps] = useState(interest.defaultBps);
+  const clampedRate = Math.min(Math.max(rateBps, interest.minBps), interest.maxBps);
 
   const collateralAmt = parseAmount(collateral, collDec);
   const mint18 = parseAmount(mint, 18);
@@ -233,7 +304,7 @@ function OpenForm({
       onSubmit={(e) => {
         e.preventDefault();
         if (!valid || blocked) return;
-        action.execute("openVault", [collateralAmt, mint18, ...HINTS]);
+        action.execute("openVault", [collateralAmt, mint18, BigInt(clampedRate), ...HINTS]);
       }}
     >
       <Field
@@ -263,6 +334,12 @@ function OpenForm({
           onChange={(e) => setMint(e.target.value)}
         />
       </Field>
+      <InterestSlider
+        config={interest}
+        rateBps={clampedRate}
+        onChange={setRateBps}
+        debt18={mint18 ?? undefined}
+      />
       {needsApproval && collateralToken ? (
         <Button
           type="button"
@@ -404,6 +481,46 @@ function DebtForm({
         {action.isBusy ? "Submitting…" : mode === "borrow" ? "Borrow" : "Repay"}
       </Button>
     </form>
+  );
+}
+
+// ── Adjust interest rate (V2) ────────────────────────────────────────────────
+function RateForm({
+  action,
+  interest,
+  currentRateBps,
+  debt18,
+  blocked,
+}: {
+  action: Action;
+  interest: InterestConfig;
+  currentRateBps?: bigint;
+  debt18?: bigint;
+  blocked: boolean;
+}) {
+  const initial = currentRateBps !== undefined ? Number(currentRateBps) : interest.defaultBps;
+  const [rateBps, setRateBps] = useState(initial);
+  const clampedRate = Math.min(Math.max(rateBps, interest.minBps), interest.maxBps);
+  const changed = currentRateBps === undefined || BigInt(clampedRate) !== currentRateBps;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted">
+        Your current rate is{" "}
+        <span className="font-medium text-text">
+          {currentRateBps !== undefined ? `${formatBps(Number(currentRateBps))} / year` : "—"}
+        </span>
+        . A lower rate is cheaper to carry but is redeemed first (redemption is by
+        rate, lowest first).
+      </p>
+      <InterestSlider config={interest} rateBps={clampedRate} onChange={setRateBps} debt18={debt18} />
+      <Button
+        disabled={blocked || !changed || action.isBusy}
+        onClick={() => action.execute("adjustInterestRate", [BigInt(clampedRate), ...HINTS])}
+      >
+        {action.isBusy ? "Updating…" : "Update interest rate"}
+      </Button>
+    </div>
   );
 }
 
