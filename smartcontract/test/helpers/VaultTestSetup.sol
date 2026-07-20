@@ -79,4 +79,19 @@ abstract contract VaultTestSetup is VulcraTestBase {
     function _setPrice18(uint256 price18) internal {
         _setFeed(price18, 18, uint64(block.timestamp));
     }
+
+    address internal whale = makeAddr("whale");
+
+    /// @notice Source vUSD for a test actor (liquidator/redeemer) from an extremely
+    ///         over-collateralized "whale" vault that stays safest at any test price.
+    function _seedVusd(address to, uint256 amount18) internal {
+        (,, bool active) = mgr.getVault(whale);
+        if (!active) {
+            _fundFxrp(whale, 1e13); // 10,000,000 FXRP
+            vm.prank(whale);
+            mgr.openVault(1e13, 100_000e18, address(0), address(0));
+        }
+        vm.prank(whale);
+        vusd.transfer(to, amount18);
+    }
 }

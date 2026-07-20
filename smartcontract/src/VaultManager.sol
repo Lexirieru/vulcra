@@ -71,6 +71,7 @@ contract VaultManager is
     error InvalidParams();
     error InsufficientCollateral();
     error ZeroAddress();
+    error NotLiquidatable();
 
     event VaultOpened(address indexed owner, uint256 collateral6, uint256 debt18, uint256 nicr);
     event CollateralAdded(address indexed owner, uint256 amount6, uint256 newCollateral6);
@@ -80,6 +81,13 @@ contract VaultManager is
     event VaultClosed(address indexed owner, uint256 collateralReturned6, uint256 debtBurned18);
     event ParamsUpdated(Params params);
     event FeeReceiverUpdated(address indexed feeReceiver);
+    event VaultLiquidated(
+        address indexed owner,
+        address indexed liquidator,
+        uint256 debtCleared18,
+        uint256 collateralToLiquidator6,
+        uint256 collateralToOwner6
+    );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -247,6 +255,39 @@ contract VaultManager is
         if (debt > 0) vusdToken.burn(msg.sender, debt);
         if (coll > 0) fxrpToken.safeTransfer(msg.sender, coll);
         emit VaultClosed(msg.sender, coll, debt);
+    }
+
+    // --- liquidation (R4) ---
+
+    /// @notice Liquidate an undercollateralized vault: the caller burns the vault's full debt in
+    ///         vUSD and receives collateral worth debt + liquidation bonus (capped at the vault's
+    ///         collateral); any remainder returns to the owner (R4/AE5).
+    /// @dev Allowed even while paused so the peg is defensible during emergencies.
+    function liquidate(address owner) external nonReentrant {
+        Vault storage vlt = vaults[owner];
+        if (!vlt.active) revert NoVault();
+        uint256 debt = vlt.debt18;
+        uint256 coll = vlt.collateral6;
+
+        uint256 price18 = oracle.xrpUsdPrice18();
+        uint256 collValue = VulcraMath.collateralValueUsd18(coll, price18);
+        if (VulcraMath.crBps(collValue, debt) >= params.mcrBps) revert NotLiquidatable();
+
+        // Collateral owed to the liquidator: debt * (1 + bonus), converted to FXRP, capped at coll.
+        uint256 seizeValue = (debt * (VulcraMath.BPS + params.liqBonusBps)) / VulcraMath.BPS;
+        uint256 seize6 = VulcraMath.collateralForUsd18(seizeValue, price18);
+        if (seize6 > coll) seize6 = coll;
+        uint256 toOwner6 = coll - seize6;
+
+        delete vaults[owner];
+        totalDebt -= debt;
+        sorted.remove(owner);
+
+        vusdToken.burn(msg.sender, debt);
+        fxrpToken.safeTransfer(msg.sender, seize6);
+        if (toOwner6 > 0) fxrpToken.safeTransfer(owner, toOwner6);
+
+        emit VaultLiquidated(owner, msg.sender, debt, seize6, toOwner6);
     }
 
     // --- admin ---
