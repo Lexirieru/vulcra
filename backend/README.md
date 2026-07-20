@@ -78,13 +78,30 @@ Copy `.env.example` to `.env` (gitignored) and fill in. **Never commit real valu
 | `FTSO_MAX_STALENESS_SECONDS` | Price staleness bound (`120`) |
 | `WALLET_ID` | Smart-account wallet id in the memo (`0`) |
 
-### From the smartcontract deploy (needed for pre-flight + indexing)
+### From the smartcontract deploy — MULTI-COLLATERAL (one VaultManager per branch)
 
-| Var | Purpose |
-|-----|---------|
-| `VAULT_MANAGER_ADDRESS` | Vulcra VaultManager (pre-flight params, indexer events) |
-| `VULCRA_ZAP_ADDRESS` | Zap target for the userOp |
-| `VUSD_ADDRESS` / `PRICE_ORACLE_ADDRESS` | vUSD token / oracle |
+The VaultManager ABI is identical across branches; multi-collateral means multiple
+VaultManager **instances**, one per collateral branch. Set the address for each
+branch you deploy — a branch is active iff its `VAULT_MANAGER_<KEY>_ADDRESS` is set.
+
+| Var | Branch | Purpose |
+|-----|--------|---------|
+| `VAULT_MANAGER_FXRP_ADDRESS` | FXRP (6-dec, XRP/USD feed) | FXRP VaultManager. **XRPL-native (0xFE) mint enabled.** Indexer + keeper + Guardian. |
+| `VAULT_MANAGER_WFLR_ADDRESS` | wFLR (18-dec WNat, FLR/USD feed) | wFLR VaultManager. **EVM-only — no XRPL mint.** Indexer + keeper + Guardian. |
+| `VAULT_MANAGER_ADDRESS` | (legacy) | Honored as the FXRP branch if the per-branch vars are unset. |
+| `VULCRA_ZAP_ADDRESS` | FXRP | Zap target for the 0xFE userOp (FXRP only). |
+| `VUSD_ADDRESS` / `PRICE_ORACLE_ADDRESS` | — | vUSD token / oracle. |
+
+Optional per-branch overrides (defaults are the verified Coston2 values): `FEED_ID_FXRP`,
+`FEED_ID_WFLR`, `COLLATERAL_DECIMALS_FXRP`, `COLLATERAL_DECIMALS_WFLR`. Collateral tokens
+(FXRP, WNat) are resolved via `FlareContractRegistry` at runtime — never hardcoded.
+
+- **Executor** operates on the **FXRP branch only** (the 0xFE atomic mint is FXRP-native;
+  wFLR is EVM-only and does not touch the executor).
+- **Indexer** indexes **every** configured branch (own store, poll loop, and feed each);
+  CR is computed per branch using its own collateral decimals + feed. Branch-aware API:
+  `GET /branches`, `GET /vaults/at-risk?branch=FXRP|WFLR`, `GET /vaults/:branch/:owner`.
+- **Keeper + Vault Guardian (TEE)** loop over **all** branches (both FXRP and wFLR vaults).
 
 ### Gated secrets — required only for LIVE mint execution (fail-fast if missing)
 
