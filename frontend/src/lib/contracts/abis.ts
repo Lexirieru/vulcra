@@ -125,6 +125,18 @@ export const vaultManagerAbi = [
   { type: "function", name: "vaultCount", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
   { type: "function", name: "fxrp", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
   { type: "function", name: "vusd", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  // --- V2 interest-rate reads (Liquity-V2 user-set rates) ---
+  { type: "function", name: "minInterestRateBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "maxInterestRateBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "defaultInterestRateBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "annualInterestRateBpsOf", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "getEntireSystemDebt", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "pendingAggInterest", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  // Redemption queue is ordered by interest rate (lowest redeemed first).
+  { type: "function", name: "redemptionQueueHead", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "lowestRateVault", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "highestRateVault", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "nextVault", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ name: "", type: "address" }] },
   // --- writes (owner-address model, 1 vault/address) ---
   {
     type: "function",
@@ -133,6 +145,18 @@ export const vaultManagerAbi = [
     inputs: [
       { name: "collateral6", type: "uint256" },
       { name: "mint18", type: "uint256" },
+      { name: "annualInterestRateBps", type: "uint256" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "adjustInterestRate",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "newAnnualInterestRateBps", type: "uint256" },
       { name: "prevHint", type: "address" },
       { name: "nextHint", type: "address" },
     ],

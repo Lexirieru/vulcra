@@ -67,6 +67,11 @@ export function collateralForVusd(
   return (vusd18 * 10n ** BigInt(collDec)) / price18;
 }
 
+/** Annual interest cost (18-dec vUSD) on a debt at a given rate (bps/yr). */
+export function annualInterest18(debt18: bigint, rateBps: number | bigint): bigint {
+  return (debt18 * BigInt(rateBps)) / 10_000n;
+}
+
 /** Max vUSD mintable against collateral while staying at exactly MCR. */
 export function maxMintableVusd18(
   collateral: bigint,

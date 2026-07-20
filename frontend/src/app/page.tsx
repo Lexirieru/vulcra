@@ -13,6 +13,7 @@ import { VaultActions } from "@/components/vault/VaultActions";
 import { ContractsNotice } from "@/components/vault/ContractsNotice";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { useCollateralToken, useVault, useVaultParams } from "@/hooks/useVault";
+import { useVaultRate, useRedeemableBefore } from "@/hooks/useInterest";
 import { useBranch } from "@/context/branch";
 
 export default function DashboardPage() {
@@ -23,6 +24,8 @@ export default function DashboardPage() {
   const { params } = useVaultParams(vaultManager);
   const { vault, hasVault, notConfigured, isLoading } = useVault(address, vaultManager);
   const { address: collateralToken } = useCollateralToken(branch);
+  const { rateBps } = useVaultRate(address, vaultManager);
+  const { data: redeemableBefore } = useRedeemableBefore(address, vaultManager, hasVault);
 
   return (
     <div className="flex flex-col gap-6">
@@ -66,6 +69,8 @@ export default function DashboardPage() {
               collDec={branch.collateralDecimals}
               collateralSymbol={branch.collateralSymbol}
               feedLabel={branch.feedLabel}
+              rateBps={rateBps}
+              redeemableBefore18={redeemableBefore?.debt18}
             />
           </div>
         ) : (

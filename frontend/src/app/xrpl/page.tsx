@@ -7,7 +7,7 @@
 import { useState } from "react";
 import QRCode from "react-qr-code";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Copy, ExternalLink, ShieldAlert } from "lucide-react";
+import { Copy, ExternalLink, PenLine, ShieldAlert, Wallet } from "lucide-react";
 import {
   Badge,
   Button,
@@ -25,8 +25,14 @@ import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
 import { api } from "@/lib/api/client";
 import type { MintBuildResponse } from "@/lib/api/types";
 import { usePersonalAccount, isValidRAddress } from "@/hooks/usePersonalAccount";
+import { useXrplWallet } from "@/hooks/useXrplWallet";
+import { XRPL_PROVIDER_ORDER, XRPL_PROVIDERS } from "@/lib/xrpl/wallets";
 import { useBranch } from "@/context/branch";
+import { BRANCHES } from "@/config/branches";
 import { formatToken, parseAmount, shortenAddress } from "@/lib/format";
+
+// XRPL-native mint is always the FXRP branch; its Zap opens at the default rate.
+const XRPL_DEFAULT_RATE_BPS = BRANCHES.fxrp.interest.defaultBps;
 
 // XRPL-native mint is FXRP-only (XRP → FXRP via the 0xFE custom instruction).
 // Other collateral branches (e.g. wFLR) use the EVM flow instead.
@@ -63,6 +69,7 @@ export default function XrplPage() {
 
 function XrplFlow() {
   const [rAddress, setRAddress] = useState("");
+  const wallet = useXrplWallet();
   const account = usePersonalAccount(rAddress);
   const validAddr = isValidRAddress(rAddress);
 
@@ -85,12 +92,27 @@ function XrplFlow() {
 
   const [xrplTxId, setXrplTxId] = useState("");
   const submit = useMutation({
-    mutationFn: () =>
+    mutationFn: (txId: string) =>
       api.submitMint({
         packedUserOpHex: build.data!.packedUserOpHex,
-        xrplTxId: xrplTxId.trim(),
+        xrplTxId: txId.trim(),
       }),
   });
+
+  // Sign the backend-built Payment in the connected XRPL wallet, then submit the
+  // resulting tx hash for tracking (replaces the manual paste for wallet users).
+  async function signAndTrack() {
+    if (!build.data) return;
+    const hash = await wallet.signPayment({
+      destination: build.data.payment.destination,
+      amountDrops: build.data.payment.amountDrops,
+      memoHex: build.data.payment.memoHex,
+    });
+    if (hash) {
+      setXrplTxId(hash);
+      submit.mutate(hash);
+    }
+  }
 
   const canGenerate = amountReady && preflight.data?.ok === true;
 
@@ -109,10 +131,55 @@ function XrplFlow() {
       {/* Step 1 — r-address */}
       <Reveal>
         <Card>
-          <CardTitle>1 · Your XRPL account</CardTitle>
+          <CardTitle>1 · Connect your XRPL wallet</CardTitle>
+
+          {wallet.address ? (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-healthy/30 bg-healthy/5 px-4 py-3">
+              <span className="flex items-center gap-2 text-sm text-text">
+                <Wallet className="h-4 w-4 text-healthy" aria-hidden />
+                {wallet.providerId ? XRPL_PROVIDERS[wallet.providerId].name : "Wallet"} ·{" "}
+                <span className="font-mono">{shortenAddress(wallet.address)}</span>
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  wallet.disconnect();
+                  setRAddress("");
+                }}
+              >
+                Disconnect
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-4 flex flex-col gap-2">
+              <div className="flex flex-wrap gap-2">
+                {XRPL_PROVIDER_ORDER.map((id) => (
+                  <Button
+                    key={id}
+                    variant="secondary"
+                    disabled={wallet.connecting}
+                    onClick={async () => {
+                      const a = await wallet.connect(id);
+                      if (a) setRAddress(a);
+                    }}
+                  >
+                    <Wallet className="h-4 w-4" aria-hidden />
+                    {wallet.connecting ? "Connecting…" : `Connect ${XRPL_PROVIDERS[id].name}`}
+                  </Button>
+                ))}
+              </div>
+              <p className="text-xs text-faint">
+                Browser extensions — no API key needed. Xaman (mobile) via QR is offered at
+                the payment step.
+              </p>
+              {wallet.error && <p className="text-xs text-danger">{wallet.error}</p>}
+            </div>
+          )}
+
           <div className="mt-4 max-w-md">
             <Field
-              label="XRPL r-address"
+              label={wallet.address ? "XRPL r-address (from wallet)" : "…or paste an r-address"}
               htmlFor="raddr"
               error={rAddress && !validAddr ? "That doesn't look like a valid r-address." : undefined}
             >
@@ -123,6 +190,7 @@ function XrplFlow() {
                 spellCheck={false}
                 value={rAddress}
                 onChange={(e) => setRAddress(e.target.value)}
+                readOnly={Boolean(wallet.address)}
               />
             </Field>
           </div>
@@ -175,6 +243,11 @@ function XrplFlow() {
                   onChange={(e) => setAmount(e.target.value)}
                 />
               </Field>
+              <p className="mt-2 text-xs text-faint">
+                Your vault opens at the default interest rate (
+                {(XRPL_DEFAULT_RATE_BPS / 100).toFixed(1)}% / year) for a smooth
+                one-payment mint — you can change it later from the EVM dashboard.
+              </p>
             </div>
 
             {amountReady && (
@@ -220,16 +293,21 @@ function XrplFlow() {
         </Reveal>
       )}
 
-      {/* Step 3 — payment (QR + Xaman) */}
+      {/* Step 3 — payment: sign in wallet, or QR/Xaman fallback */}
       {build.data && (
         <Reveal>
           <PaymentPanel
             intent={build.data}
             xrplTxId={xrplTxId}
             onXrplTxId={setXrplTxId}
-            onSubmit={() => submit.mutate()}
+            onSubmit={() => submit.mutate(xrplTxId.trim())}
             submitting={submit.isPending}
             submitError={submit.isError}
+            walletConnected={Boolean(wallet.address)}
+            walletName={wallet.providerId ? XRPL_PROVIDERS[wallet.providerId].name : undefined}
+            onWalletSign={signAndTrack}
+            signing={wallet.signing}
+            walletError={wallet.error}
           />
         </Reveal>
       )}
@@ -251,6 +329,11 @@ function PaymentPanel({
   onSubmit,
   submitting,
   submitError,
+  walletConnected,
+  walletName,
+  onWalletSign,
+  signing,
+  walletError,
 }: {
   intent: MintBuildResponse;
   xrplTxId: string;
@@ -258,16 +341,39 @@ function PaymentPanel({
   onSubmit: () => void;
   submitting: boolean;
   submitError: boolean;
+  walletConnected: boolean;
+  walletName?: string;
+  onWalletSign: () => void;
+  signing: boolean;
+  walletError?: string;
 }) {
   return (
     <Card>
       <CardTitle>3 · Sign the XRPL Payment</CardTitle>
       <p className="mt-2 text-sm text-muted">
-        The 0xFE memo was built by the backend — scan or open in Xaman to sign. Never
-        add a destination tag.
+        The 0xFE memo was built by the backend and is sent to your wallet verbatim.
+        Never add a destination tag.
       </p>
 
-      <div className="mt-4 grid gap-6 sm:grid-cols-[auto_1fr] sm:items-start">
+      {walletConnected && (
+        <div className="mt-4 rounded-lg border border-ember-soft/50 bg-ember-soft/10 p-4">
+          <Button onClick={onWalletSign} disabled={signing || submitting}>
+            <PenLine className="h-4 w-4" aria-hidden />
+            {signing ? "Confirm in wallet…" : `Sign in ${walletName ?? "wallet"}`}
+          </Button>
+          <p className="mt-2 text-xs text-muted">
+            {walletName} signs and submits the Payment, then Vulcra tracks the mint
+            automatically — no copy/paste.
+          </p>
+          {walletError && <p className="mt-1 text-xs text-danger">{walletError}</p>}
+        </div>
+      )}
+
+      <p className="mt-4 text-xs uppercase tracking-wide text-faint">
+        {walletConnected ? "Or sign another way" : "Scan or open in Xaman (mobile)"}
+      </p>
+
+      <div className="mt-3 grid gap-6 sm:grid-cols-[auto_1fr] sm:items-start">
         <div className="rounded-lg bg-white p-3">
           <QRCode value={intent.qrData} size={160} />
         </div>

@@ -96,7 +96,8 @@ export function useVault(owner?: Address, vaultManager?: Address) {
     functionName: "getVault",
     args: owner ? [owner] : undefined,
     chainId: COSTON2_CHAIN_ID,
-    query: { enabled: configured && Boolean(owner) },
+    // Poll so the debt (which grows with accrued V2 interest) stays current.
+    query: { enabled: configured && Boolean(owner), refetchInterval: 12_000 },
   });
 
   const vault = query.data
