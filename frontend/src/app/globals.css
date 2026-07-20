@@ -1,26 +1,58 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ── Vulcra forge/ember design tokens (U3 / KTD10) ──────────────────────────
+   Dark-first, molten-orange accent. Deliberately distinct from Flare's brand.
+   All component colors/spacing come from these tokens, never magic values. */
+@theme {
+  --color-bg: #0a0807;
+  --color-surface: #14100e;
+  --color-surface-2: #1e1714;
+  --color-border: #2b221d;
+  --color-border-strong: #3d302a;
+  --color-text: #f5ede7;
+  --color-muted: #a89a8f;
+  --color-faint: #6f635b;
+
+  --color-ember: #f0641e;
+  --color-ember-bright: #ff8a3d;
+  --color-ember-soft: #7a2e10;
+
+  --color-healthy: #35c07a;
+  --color-warning: #e8a13a;
+  --color-danger: #e5484d;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  color-scheme: dark;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background:
+    radial-gradient(60rem 40rem at 50% -10rem, rgba(240, 100, 30, 0.12), transparent 70%),
+    var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+}
+
+/* Consistent, accessible focus ring for every interactive element. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-ember);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* Honor reduced-motion globally (page-load-animations non-negotiable). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
