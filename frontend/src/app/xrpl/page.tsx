@@ -28,7 +28,11 @@ import { usePersonalAccount, isValidRAddress } from "@/hooks/usePersonalAccount"
 import { useXrplWallet } from "@/hooks/useXrplWallet";
 import { XRPL_PROVIDER_ORDER, XRPL_PROVIDERS } from "@/lib/xrpl/wallets";
 import { useBranch } from "@/context/branch";
+import { BRANCHES } from "@/config/branches";
 import { formatToken, parseAmount, shortenAddress } from "@/lib/format";
+
+// XRPL-native mint is always the FXRP branch; its Zap opens at the default rate.
+const XRPL_DEFAULT_RATE_BPS = BRANCHES.fxrp.interest.defaultBps;
 
 // XRPL-native mint is FXRP-only (XRP → FXRP via the 0xFE custom instruction).
 // Other collateral branches (e.g. wFLR) use the EVM flow instead.
@@ -239,6 +243,11 @@ function XrplFlow() {
                   onChange={(e) => setAmount(e.target.value)}
                 />
               </Field>
+              <p className="mt-2 text-xs text-faint">
+                Your vault opens at the default interest rate (
+                {(XRPL_DEFAULT_RATE_BPS / 100).toFixed(1)}% / year) for a smooth
+                one-payment mint — you can change it later from the EVM dashboard.
+              </p>
             </div>
 
             {amountReady && (
