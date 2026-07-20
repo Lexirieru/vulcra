@@ -3,9 +3,13 @@
 // Live XRP/USD from FTSOv2 (U4 / KTD4). Real Coston2 read via FlareContractRegistry
 // resolution + wagmi useReadContract, polled at ~block cadence, with a staleness
 // signal derived from the feed's own timestamp. No mocks on this path.
+import { useEffect, useState } from "react";
 import { useReadContract } from "wagmi";
-import { COSTON2_CHAIN_ID, XRP_USD_FEED_ID } from "@/config/contracts";
-import { CONTRACT_NAMES } from "@/config/contracts";
+import {
+  COSTON2_CHAIN_ID,
+  CONTRACT_NAMES,
+  XRP_USD_FEED_ID,
+} from "@/config/contracts";
 import { useContractAddress } from "@/lib/contracts/registry";
 import { ftsoV2ReadAbi } from "@/lib/contracts/abis";
 
@@ -43,6 +47,15 @@ export function useFtsoPrice(): FtsoPrice {
     },
   });
 
+  // Clock ticks in an effect (not during render) so staleness stays pure.
+  const [nowS, setNowS] = useState(0);
+  useEffect(() => {
+    const tick = () => setNowS(Math.floor(Date.now() / 1000));
+    tick();
+    const id = setInterval(tick, 2000);
+    return () => clearInterval(id);
+  }, []);
+
   if (!data) {
     return {
       isStale: false,
@@ -55,13 +68,12 @@ export function useFtsoPrice(): FtsoPrice {
   const [value, decimals, timestamp] = data as readonly [bigint, number, bigint];
   const price18 = normalizeTo18(value, Number(decimals));
   const ts = Number(timestamp);
-  const nowS = Math.floor(Date.now() / 1000);
 
   return {
     price18,
     priceFloat: Number(price18) / 1e18,
     timestamp: ts,
-    isStale: ts > 0 && nowS - ts > STALE_AFTER_S,
+    isStale: ts > 0 && nowS > 0 && nowS - ts > STALE_AFTER_S,
     isLoading: false,
     isError,
     refetch,
