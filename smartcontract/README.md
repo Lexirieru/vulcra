@@ -1,8 +1,25 @@
 # Vulcra Smart Contracts
 
-Multi-collateral CDP stablecoin protocol on Flare: lock collateral (**FXRP**, **wFLR**), mint
+Multi-collateral CDP stablecoin protocol on Flare with **user-set per-vault interest rates**
+(Liquity-V2 style): lock collateral (**FXRP**, **wFLR**), pick an annual interest rate, mint
 **vUSD**, repay to unlock. Target network: **Flare Coston2** (chain **114**). Plan:
 [`docs/plans/2026-07-20-001-feat-vulcra-smartcontract-plan.md`](docs/plans/2026-07-20-001-feat-vulcra-smartcontract-plan.md).
+
+## Interest rates (V2)
+
+Each borrower chooses an **annual interest rate** (bps, within a per-collateral `[min,max]`) at open,
+and can change it later via `adjustInterestRate`. Interest **accrues continuously** into vault debt
+using a Liquity-V2 aggregate model — `totalDebt` (recorded) + `aggWeightedDebtSum` + a per-vault
+snapshot, plus `pendingAggInterest = aggWeightedDebtSum · dt / year` — so accrual is O(1), never a
+loop over vaults. Every operation (and the permissionless `mintInterest()`) **settles**: it mints the
+pending interest as vUSD to a configurable `interestReceiver` (the yield sink — a stability-pool /
+staker placeholder) and folds it into `totalDebt`. This keeps the core invariant
+**`VUSD.totalSupply() == Σ_collaterals totalDebt`** exact at all times, and equal to the sum of every
+vault's entire (interest-inclusive) debt after settling.
+
+**Redemptions are ordered by interest rate** (lowest first — "redeemable before you"), not by CR.
+**Liquidation is unchanged**: any vault with CR &lt; MCR (measured against its *entire* debt) can be
+liquidated. `getVault(owner).debt` and `collateralRatioBps` reflect the entire current debt.
 
 ## Multi-collateral model ("branch per collateral")
 
@@ -42,14 +59,26 @@ initialize(
   address vusd,                // shared vUSD
   address feeReceiver,
   Params  params,             // {mcrBps, minDebt18, mintFeeBps, liqBonusBps, redemptionFeeBps}
-  uint256 debtCeiling          // per-branch vUSD mint cap; 0 = unlimited
+  uint256 debtCeiling,         // per-branch vUSD mint cap; 0 = unlimited
+  InterestConfig interest      // {minInterestRateBps, maxInterestRateBps, defaultInterestRateBps, interestReceiver}
 )
 ```
 
-`initialize` is the only signature that changed; every runtime function (`openVault`,
-`addCollateral`/`withdrawCollateral`/`mintMore`, `repay`, `closeVault`, `liquidate`, `redeem`,
-`delegatedRepay`, `getVault`, `params`, `previewOpen`, `collateralRatioBps`, `fxrp`/`vusd`, …) is
-unchanged. `fxrp()` remains as a backward-compatible alias returning the branch collateral.
+### V2 runtime ABI changes (backend/frontend)
+
+- `openVault(uint256 collateral, uint256 mint, uint256 annualInterestRateBps, address prevHint, address nextHint)`
+  — **NEW 3rd param** `annualInterestRateBps` (within `[min,max]`).
+- `openVaultFor(address owner, uint256 collateral, uint256 mint, uint256 annualInterestRateBps, address debtRecipient, address prevHint, address nextHint)`.
+- `VulcraZap.openVaultAndForward(uint256 collateral, uint256 mint, uint256 annualInterestRateBps, address vusdDestination, address prevHint, address nextHint)` — for the smooth XRPL 1-payment UX, pass `defaultInterestRateBps()`.
+- `adjustInterestRate(uint256 newAnnualInterestRateBps, address prevHint, address nextHint)` — **NEW**.
+- `getVault(owner).debt` and `collateralRatioBps(owner)` now reflect the **entire** current debt (incl. accrued interest).
+- New views: `getTroveEntireDebt`, `annualInterestRateBpsOf`, `getEntireSystemDebt`, `pendingAggInterest`, `mintInterest()`, `lowestRateVault`/`highestRateVault`/`redemptionQueueHead`.
+- **`redeem` now draws from the lowest-interest-rate vaults first** (was lowest-CR).
+
+Unchanged signatures: `addCollateral`/`withdrawCollateral`/`mintMore`/`repay` (hint params retained
+but vestigial — the list is keyed by rate), `closeVault`, `liquidate`, `redeem`, `delegatedRepay`,
+`params`, `previewOpen`, `fxrp`/`vusd`, `collateralDecimals`. `riskiestVault`/`safestVault`/`nominalCr`
+are kept as deprecated aliases (now rate-based).
 
 ## Prerequisites
 
@@ -65,9 +94,11 @@ forge build
 forge test            # unit + fuzz + invariant (offline; the live fork test self-skips)
 ```
 
-Invariants covered: **`VUSD.totalSupply() == sum of every branch's `totalDebt`** (multi-branch,
-across price moves + liquidation + redemption on both branches), each branch's vault list is always
-NICR-ordered, and each branch is overcollateralized whenever no vault carries bad debt. Fuzz coverage
+Invariants covered: **`VUSD.totalSupply() == Σ every collateral's `totalDebt`** (across price moves,
+liquidation, redemption AND time-warps that accrue interest on both collaterals), each system's vault
+list is always ordered by interest rate, and each system is overcollateralized whenever no vault
+carries bad debt. Dedicated interest tests use `vm.warp` to prove accrual, settlement/minting to the
+interest receiver, `adjustInterestRate`, and rate-bounds. Fuzz coverage
 includes wFLR normalization (18-dec collateral + 8-dec FLR/USD feed).
 
 Optional **live** oracle test against Coston2 (reads the real XRP/USD feed, no mocks):

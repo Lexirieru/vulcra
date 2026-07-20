@@ -108,7 +108,9 @@ contract VaultManager is
     event AggInterestMinted(uint256 amount18);
     event ParamsUpdated(Params params);
     event FeeReceiverUpdated(address indexed feeReceiver);
-    event InterestConfigUpdated(uint256 minRateBps, uint256 maxRateBps, uint256 defaultRateBps, address interestReceiver);
+    event InterestConfigUpdated(
+        uint256 minRateBps, uint256 maxRateBps, uint256 defaultRateBps, address interestReceiver
+    );
     event DebtCeilingUpdated(uint256 debtCeiling);
     event VaultLiquidated(
         address indexed owner,

@@ -59,6 +59,20 @@ contract MultiBranchHandler is VulcraTestBase {
         _setFeedById(FLR_USD_FEED_ID, flrPrice18 / 1e10, 8, uint64(block.timestamp));
     }
 
+    /// @notice Advance time so interest accrues on both branches; refresh feeds to stay fresh.
+    function warpTime(uint256 dt) external {
+        dt = bound(dt, 1 hours, 60 days);
+        vm.warp(block.timestamp + dt);
+        _setFeedById(XRP_USD_FEED_ID, xrpPrice18, 18, uint64(block.timestamp));
+        _setFeedById(FLR_USD_FEED_ID, flrPrice18 / 1e10, 8, uint64(block.timestamp));
+    }
+
+    /// @notice Permissionlessly realize accrued interest into vUSD supply on both branches.
+    function poke() external {
+        fxrpMgr.mintInterest();
+        wflrMgr.mintInterest();
+    }
+
     function openFxrp(uint256 s, uint256 mint) external {
         address a = _a(s);
         (,, bool active) = fxrpMgr.getVault(a);

@@ -51,6 +51,13 @@ contract ProtocolHandler is VulcraTestBase {
         _setFeed(price18, 18, uint64(block.timestamp));
     }
 
+    /// @notice Advance time so per-vault interest accrues; keep the feed fresh.
+    function warpTime(uint256 dt) external {
+        dt = bound(dt, 1 hours, 90 days);
+        vm.warp(block.timestamp + dt);
+        _setFeed(price18, 18, uint64(block.timestamp));
+    }
+
     function open(uint256 s, uint256 mint) external {
         address a = _a(s);
         (,, bool active) = mgr.getVault(a);
