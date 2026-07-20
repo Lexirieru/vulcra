@@ -16,6 +16,8 @@ import {TestFtsoV2Interface} from "@flarenetwork/flare-periphery-contracts/costo
 abstract contract VulcraTestBase is Test {
     address internal constant FLARE_REGISTRY = 0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019;
     address internal constant MOCK_FTSO = address(uint160(uint256(keccak256("vulcra.mock.ftso"))));
+    address internal constant MOCK_ASSET_MANAGER =
+        address(uint160(uint256(keccak256("vulcra.mock.assetmanager"))));
 
     /// @dev XRP/USD feed id (category 0x01 + "XRP/USD" utf8, right-padded to 21 bytes).
     bytes21 internal constant XRP_USD_FEED_ID =
@@ -42,6 +44,21 @@ abstract contract VulcraTestBase is Test {
     /// @notice Convenience: set an XRP/USD price expressed with `decimals` places, fresh timestamp.
     function _setXrpPrice(uint256 value, int8 decimals) internal {
         _setFeed(value, decimals, uint64(block.timestamp));
+    }
+
+    /// @notice Inject the FXRP token resolution: registry -> AssetManagerFXRP -> fAsset(), through
+    ///         the real ContractRegistry code path (no production test hooks).
+    function _setFxrp(address fxrpToken) internal {
+        if (FLARE_REGISTRY.code.length == 0) vm.etch(FLARE_REGISTRY, hex"fe");
+        if (MOCK_ASSET_MANAGER.code.length == 0) vm.etch(MOCK_ASSET_MANAGER, hex"fe");
+        vm.mockCall(
+            FLARE_REGISTRY,
+            abi.encodeWithSignature(
+                "getContractAddressByHash(bytes32)", keccak256(abi.encode("AssetManagerFXRP"))
+            ),
+            abi.encode(MOCK_ASSET_MANAGER)
+        );
+        vm.mockCall(MOCK_ASSET_MANAGER, abi.encodeWithSignature("fAsset()"), abi.encode(fxrpToken));
     }
 
     /// @notice Deploy an implementation behind an ERC1967 proxy with the given init calldata.

@@ -1,0 +1,354 @@
+// SPDX-License-Identifier: MIT
+pragma solidity 0.8.28;
+
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import {AccessControlUpgradeable} from
+    "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {PausableUpgradeable} from
+    "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol";
+import {ReentrancyGuardTransient} from
+    "@openzeppelin/contracts/utils/ReentrancyGuardTransient.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+
+import {ContractRegistry} from "@flarenetwork/flare-periphery-contracts/coston2/ContractRegistry.sol";
+
+import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
+import {IVUSD} from "./interfaces/IVUSD.sol";
+import {IVaultManager} from "./interfaces/IVaultManager.sol";
+import {VulcraMath} from "./libraries/VulcraMath.sol";
+import {SortedVaults} from "./libraries/SortedVaults.sol";
+
+/// @title VaultManager
+/// @notice Vulcra CDP core: one FXRP-collateralized vUSD vault per address (R1, R6, R7).
+/// @dev UUPS-upgradeable. Resolves FXRP from ContractRegistry at init (R8). Mint fee is capitalized
+///      into debt so `vusd.totalSupply() == totalDebt` is an exact invariant (KTD5). Vaults are kept
+///      in a NICR-sorted list for O(1) riskiest-vault lookup (KTD1). Liquidation (U6), redemption
+///      (U7), and Guardian delegated-repay (U8) extend this contract.
+contract VaultManager is
+    Initializable,
+    AccessControlUpgradeable,
+    PausableUpgradeable,
+    ReentrancyGuardTransient,
+    UUPSUpgradeable,
+    IVaultManager
+{
+    using SafeERC20 for IERC20;
+    using SortedVaults for SortedVaults.Data;
+
+    bytes32 public constant PARAM_ADMIN_ROLE = keccak256("PARAM_ADMIN_ROLE");
+    bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
+    bytes32 public constant GUARDIAN_EXECUTOR_ROLE = keccak256("GUARDIAN_EXECUTOR_ROLE");
+
+    struct Vault {
+        uint256 collateral6; // FXRP, 6-dec
+        uint256 debt18; // vUSD, 18-dec (principal + capitalized fee)
+        bool active;
+    }
+
+    IPriceOracle public oracle;
+    IVUSD public vusdToken;
+    IERC20 public fxrpToken;
+    address public feeReceiver;
+    Params public params;
+    /// @notice Aggregate debt across all active vaults; equals vUSD total supply (KTD5).
+    uint256 public totalDebt;
+
+    mapping(address => Vault) public vaults;
+    /// @notice Per-vault vUSD funder for Guardian delegated repay (U8); defaults to the owner.
+    mapping(address => address) public guardianFunder;
+    SortedVaults.Data internal sorted;
+
+    uint256[43] private __gap;
+
+    error VaultExists();
+    error NoVault();
+    error ZeroAmount();
+    error DebtBelowMin();
+    error CRTooLow();
+    error InvalidParams();
+    error InsufficientCollateral();
+    error ZeroAddress();
+
+    event VaultOpened(address indexed owner, uint256 collateral6, uint256 debt18, uint256 nicr);
+    event CollateralAdded(address indexed owner, uint256 amount6, uint256 newCollateral6);
+    event CollateralWithdrawn(address indexed owner, uint256 amount6, uint256 newCollateral6);
+    event DebtMinted(address indexed owner, uint256 minted18, uint256 fee18, uint256 newDebt18);
+    event DebtRepaid(address indexed owner, uint256 amount18, uint256 newDebt18);
+    event VaultClosed(address indexed owner, uint256 collateralReturned6, uint256 debtBurned18);
+    event ParamsUpdated(Params params);
+    event FeeReceiverUpdated(address indexed feeReceiver);
+
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(
+        address admin,
+        address oracle_,
+        address vusd_,
+        address feeReceiver_,
+        Params memory p
+    ) external initializer {
+        __AccessControl_init();
+        __Pausable_init();
+        if (oracle_ == address(0) || vusd_ == address(0) || feeReceiver_ == address(0)) {
+            revert ZeroAddress();
+        }
+        _validateParams(p);
+        _grantRole(DEFAULT_ADMIN_ROLE, admin);
+        _grantRole(PARAM_ADMIN_ROLE, admin);
+        _grantRole(PAUSER_ROLE, admin);
+        _grantRole(UPGRADER_ROLE, admin);
+        oracle = IPriceOracle(oracle_);
+        vusdToken = IVUSD(vusd_);
+        // Resolve the real FXRP token at runtime: registry -> AssetManagerFXRP -> fAsset() (R8).
+        fxrpToken = IERC20(address(ContractRegistry.getAssetManagerFXRP().fAsset()));
+        feeReceiver = feeReceiver_;
+        params = p;
+    }
+
+    // --- open ---
+
+    /// @notice Open a vault for the caller: deposit FXRP, mint vUSD to the caller (R1).
+    function openVault(uint256 collateral6, uint256 mint18, address prevHint, address nextHint)
+        external
+        whenNotPaused
+        nonReentrant
+    {
+        _open(msg.sender, msg.sender, collateral6, mint18, msg.sender, prevHint, nextHint);
+    }
+
+    /// @inheritdoc IVaultManager
+    function openVaultFor(
+        address owner,
+        uint256 collateral6,
+        uint256 mint18,
+        address debtRecipient,
+        address prevHint,
+        address nextHint
+    ) external whenNotPaused nonReentrant {
+        if (owner == address(0) || debtRecipient == address(0)) revert ZeroAddress();
+        _open(owner, msg.sender, collateral6, mint18, debtRecipient, prevHint, nextHint);
+    }
+
+    function _open(
+        address owner,
+        address payer,
+        uint256 collateral6,
+        uint256 mint18,
+        address debtRecipient,
+        address prevHint,
+        address nextHint
+    ) internal {
+        if (vaults[owner].active) revert VaultExists();
+        if (collateral6 == 0 || mint18 == 0) revert ZeroAmount();
+        uint256 fee = (mint18 * params.mintFeeBps) / VulcraMath.BPS;
+        uint256 debt = mint18 + fee;
+        if (debt < params.minDebt18) revert DebtBelowMin();
+        _requireHealthy(collateral6, debt);
+
+        vaults[owner] = Vault({collateral6: collateral6, debt18: debt, active: true});
+        totalDebt += debt;
+        uint256 nicr = VulcraMath.nicr(collateral6, debt);
+        sorted.insert(owner, nicr, prevHint, nextHint);
+
+        fxrpToken.safeTransferFrom(payer, address(this), collateral6);
+        vusdToken.mint(debtRecipient, mint18);
+        if (fee > 0) vusdToken.mint(feeReceiver, fee);
+
+        emit VaultOpened(owner, collateral6, debt, nicr);
+    }
+
+    // --- adjust ---
+
+    /// @notice Add FXRP collateral to the caller's vault (always CR-improving).
+    function addCollateral(uint256 amount6, address prevHint, address nextHint)
+        external
+        whenNotPaused
+        nonReentrant
+    {
+        Vault storage vlt = vaults[msg.sender];
+        if (!vlt.active) revert NoVault();
+        if (amount6 == 0) revert ZeroAmount();
+        vlt.collateral6 += amount6;
+        sorted.reInsert(msg.sender, VulcraMath.nicr(vlt.collateral6, vlt.debt18), prevHint, nextHint);
+        fxrpToken.safeTransferFrom(msg.sender, address(this), amount6);
+        emit CollateralAdded(msg.sender, amount6, vlt.collateral6);
+    }
+
+    /// @notice Withdraw FXRP collateral, keeping the vault at or above MCR.
+    function withdrawCollateral(uint256 amount6, address prevHint, address nextHint)
+        external
+        whenNotPaused
+        nonReentrant
+    {
+        Vault storage vlt = vaults[msg.sender];
+        if (!vlt.active) revert NoVault();
+        if (amount6 == 0) revert ZeroAmount();
+        if (amount6 > vlt.collateral6) revert InsufficientCollateral();
+        uint256 newColl = vlt.collateral6 - amount6;
+        _requireHealthy(newColl, vlt.debt18);
+        vlt.collateral6 = newColl;
+        sorted.reInsert(msg.sender, VulcraMath.nicr(newColl, vlt.debt18), prevHint, nextHint);
+        fxrpToken.safeTransfer(msg.sender, amount6);
+        emit CollateralWithdrawn(msg.sender, amount6, newColl);
+    }
+
+    /// @notice Mint more vUSD against the caller's existing vault (R1, R6).
+    function mintMore(uint256 amount18, address prevHint, address nextHint)
+        external
+        whenNotPaused
+        nonReentrant
+    {
+        Vault storage vlt = vaults[msg.sender];
+        if (!vlt.active) revert NoVault();
+        if (amount18 == 0) revert ZeroAmount();
+        uint256 fee = (amount18 * params.mintFeeBps) / VulcraMath.BPS;
+        uint256 newDebt = vlt.debt18 + amount18 + fee;
+        if (newDebt < params.minDebt18) revert DebtBelowMin();
+        _requireHealthy(vlt.collateral6, newDebt);
+        vlt.debt18 = newDebt;
+        totalDebt += amount18 + fee;
+        sorted.reInsert(msg.sender, VulcraMath.nicr(vlt.collateral6, newDebt), prevHint, nextHint);
+        vusdToken.mint(msg.sender, amount18);
+        if (fee > 0) vusdToken.mint(feeReceiver, fee);
+        emit DebtMinted(msg.sender, amount18, fee, newDebt);
+    }
+
+    /// @notice Repay part of the caller's debt by burning vUSD. Repay-in-full is allowed;
+    ///         a partial repay may not leave dust below `minDebt18`.
+    function repay(uint256 amount18, address prevHint, address nextHint) external nonReentrant {
+        Vault storage vlt = vaults[msg.sender];
+        if (!vlt.active) revert NoVault();
+        if (amount18 == 0) revert ZeroAmount();
+        if (amount18 > vlt.debt18) amount18 = vlt.debt18;
+        uint256 newDebt = vlt.debt18 - amount18;
+        if (newDebt != 0 && newDebt < params.minDebt18) revert DebtBelowMin();
+        vlt.debt18 = newDebt;
+        totalDebt -= amount18;
+        sorted.reInsert(msg.sender, VulcraMath.nicr(vlt.collateral6, newDebt), prevHint, nextHint);
+        vusdToken.burn(msg.sender, amount18);
+        emit DebtRepaid(msg.sender, amount18, newDebt);
+    }
+
+    /// @notice Fully repay debt and withdraw all collateral, closing the vault.
+    function closeVault() external nonReentrant {
+        Vault storage vlt = vaults[msg.sender];
+        if (!vlt.active) revert NoVault();
+        uint256 debt = vlt.debt18;
+        uint256 coll = vlt.collateral6;
+        delete vaults[msg.sender];
+        totalDebt -= debt;
+        sorted.remove(msg.sender);
+        if (debt > 0) vusdToken.burn(msg.sender, debt);
+        if (coll > 0) fxrpToken.safeTransfer(msg.sender, coll);
+        emit VaultClosed(msg.sender, coll, debt);
+    }
+
+    // --- admin ---
+
+    function setParams(Params memory p) external onlyRole(PARAM_ADMIN_ROLE) {
+        _validateParams(p);
+        params = p;
+        emit ParamsUpdated(p);
+    }
+
+    function setFeeReceiver(address newReceiver) external onlyRole(PARAM_ADMIN_ROLE) {
+        if (newReceiver == address(0)) revert ZeroAddress();
+        feeReceiver = newReceiver;
+        emit FeeReceiverUpdated(newReceiver);
+    }
+
+    function pause() external onlyRole(PAUSER_ROLE) {
+        _pause();
+    }
+
+    function unpause() external onlyRole(PAUSER_ROLE) {
+        _unpause();
+    }
+
+    // --- views ---
+
+    /// @inheritdoc IVaultManager
+    function getVault(address owner)
+        external
+        view
+        returns (uint256 collateral6, uint256 debt18, bool active)
+    {
+        Vault storage v = vaults[owner];
+        return (v.collateral6, v.debt18, v.active);
+    }
+
+    /// @notice Collateral ratio (bps) of `owner`'s vault at the current price; 0 if no vault.
+    function collateralRatioBps(address owner) public view returns (uint256) {
+        Vault storage v = vaults[owner];
+        if (!v.active) return 0;
+        return VulcraMath.crBps(oracle.collateralValueUsd18(v.collateral6), v.debt18);
+    }
+
+    /// @notice Whether `owner`'s vault is below MCR and thus liquidatable.
+    function isLiquidatable(address owner) public view returns (bool) {
+        Vault storage v = vaults[owner];
+        if (!v.active) return false;
+        return VulcraMath.crBps(oracle.collateralValueUsd18(v.collateral6), v.debt18) < params.mcrBps;
+    }
+
+    /// @inheritdoc IVaultManager
+    function previewOpen(uint256 collateral6, uint256 mint18)
+        external
+        view
+        returns (uint256 debt18, uint256 crBps, bool meetsMcr, bool meetsMinDebt)
+    {
+        uint256 fee = (mint18 * params.mintFeeBps) / VulcraMath.BPS;
+        debt18 = mint18 + fee;
+        crBps = VulcraMath.crBps(oracle.collateralValueUsd18(collateral6), debt18);
+        meetsMcr = crBps >= params.mcrBps;
+        meetsMinDebt = debt18 >= params.minDebt18;
+    }
+
+    /// @notice Riskiest active vault (lowest CR) — redemption/liquidation entry point.
+    function riskiestVault() external view returns (address) {
+        return sorted.getLast();
+    }
+
+    /// @notice Number of active vaults.
+    function vaultCount() external view returns (uint256) {
+        return sorted.getSize();
+    }
+
+    function nominalCr(address owner) external view returns (uint256) {
+        return sorted.nicrOf(owner);
+    }
+
+    /// @inheritdoc IVaultManager
+    function fxrp() external view returns (address) {
+        return address(fxrpToken);
+    }
+
+    /// @inheritdoc IVaultManager
+    function vusd() external view returns (address) {
+        return address(vusdToken);
+    }
+
+    // --- internals ---
+
+    function _requireHealthy(uint256 collateral6, uint256 debt18) internal view {
+        if (VulcraMath.crBps(oracle.collateralValueUsd18(collateral6), debt18) < params.mcrBps) {
+            revert CRTooLow();
+        }
+    }
+
+    function _validateParams(Params memory p) internal pure {
+        if (p.mcrBps < 10_000 || p.mcrBps > 100_000) revert InvalidParams();
+        if (p.minDebt18 == 0) revert InvalidParams();
+        if (p.mintFeeBps > 1_000) revert InvalidParams();
+        if (p.liqBonusBps > 5_000) revert InvalidParams();
+        if (p.redemptionFeeBps > 1_000) revert InvalidParams();
+    }
+
+    function _authorizeUpgrade(address) internal override onlyRole(UPGRADER_ROLE) {}
+}
