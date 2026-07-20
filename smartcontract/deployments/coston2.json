@@ -2,74 +2,36 @@
   "network": "coston2",
   "chainId": 114,
   "explorer": "https://coston2-explorer.flare.network",
-  "model": "V2 multi-collateral (isolated per-collateral systems, shared vUSD) with user-set per-vault interest rates",
+  "deployedAt": "2026-07-21",
+  "version": "v2",
+  "model": "multi-collateral CDP (isolated per-collateral), shared vUSD, Liquity-V2 user-set interest rates + by-rate redemption",
   "admin": "0x2917AcaAE420feEbc5eD76Efd3c37929A46eC81E",
-  "note": "V2 upgrade (user-set interest rates) requires REDEPLOY — the collateral-agnostic VaultManager gained interest storage/params, so the live V1 contracts below are superseded. Run script/DeployVulcra.s.sol (broadcast gated behind PRIVATE_KEY); fill shared.VUSD + each collateral's PriceOracle/VaultManager/VulcraZap after broadcast. Collateral tokens + registry are resolved on-chain via FlareContractRegistry.",
-  "abiChanges": {
-    "openVault": "openVault(uint256 collateral, uint256 mint, uint256 annualInterestRateBps, address prevHint, address nextHint) — NEW 3rd param annualInterestRateBps in [minInterestRateBps,maxInterestRateBps]",
-    "openVaultFor": "openVaultFor(address owner, uint256 collateral, uint256 mint, uint256 annualInterestRateBps, address debtRecipient, address prevHint, address nextHint)",
-    "openVaultAndForward": "VulcraZap: openVaultAndForward(uint256 collateral, uint256 mint, uint256 annualInterestRateBps, address vusdDestination, address prevHint, address nextHint)",
-    "adjustInterestRate": "adjustInterestRate(uint256 newAnnualInterestRateBps, address prevHint, address nextHint) — NEW",
-    "getVault": "getVault(owner) -> (collateral, debt, active) — debt is now the ENTIRE current debt incl accrued interest",
-    "newViews": "getTroveEntireDebt(owner), annualInterestRateBpsOf(owner), getEntireSystemDebt(), pendingAggInterest(), mintInterest() [permissionless settle], lowestRateVault()/highestRateVault()/redemptionQueueHead()",
-    "redemption": "redeem() now draws from LOWEST interest-rate vaults first (was lowest-CR). Liquidation is unchanged: by CR<MCR (per-vault, against entire debt).",
-    "sortedList": "keyed by annual interest rate ascending; deprecated aliases riskiestVault()/safestVault()/nominalCr() now return rate-based ends."
+  "shared": { "VUSD": "0x333FDCf66792122e80654E197Eb6Fa3705f1B6D8" },
+  "collaterals": {
+    "FXRP": {
+      "collateralToken": "0x0b6A3645c240605887a5532109323A3E12273dc7",
+      "collateralDecimals": 6,
+      "feed": "XRP/USD",
+      "PriceOracle": "0x63Bf4a9d716Ce16C0E091EF9C3281f44829f953B",
+      "VaultManager": "0x93e572cDbfb62557E041B53490e5208C147b5388",
+      "VulcraZap": "0xCe4f886e67dE51418751314eEb19aC2D75B59dfE",
+      "xrplNativeMint": true,
+      "interest": { "minBps": 50, "maxBps": 25000, "defaultBps": 500 }
+    },
+    "wFLR": {
+      "collateralToken": "0xC67DCE33D7A8efA5FfEB961899C73fe01bCe9273",
+      "collateralDecimals": 18,
+      "feed": "FLR/USD",
+      "PriceOracle": "0x914cd3509727afeED74267FDF5c9E7f1fB4453Df",
+      "VaultManager": "0x1F079F205ca2857a3A199937Ace956ed51B0b3b8",
+      "xrplNativeMint": false,
+      "interest": { "minBps": 50, "maxBps": 25000, "defaultBps": 800 }
+    }
   },
   "external": {
     "FlareContractRegistry": "0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019",
     "WNat": "0xC67DCE33D7A8efA5FfEB961899C73fe01bCe9273",
     "AssetManagerFXRP": "0xc1Ca88b937d0b528842F95d5731ffB586f4fbDFA"
   },
-  "shared": {
-    "VUSD": ""
-  },
-  "collaterals": {
-    "FXRP": {
-      "collateralToken": "0x0b6A3645c240605887a5532109323A3E12273dc7",
-      "collateralDecimals": 6,
-      "feed": "XRP/USD",
-      "feedId": "0x015852502f55534400000000000000000000000000",
-      "xrplNativeMint": true,
-      "debtCeiling": "0",
-      "interest": {
-        "minInterestRateBps": 50,
-        "maxInterestRateBps": 25000,
-        "defaultInterestRateBps": 500,
-        "interestReceiver": "feeReceiver (placeholder; set to stability-pool/staker later)"
-      },
-      "PriceOracle": "",
-      "VaultManager": "",
-      "VulcraZap": ""
-    },
-    "wFLR": {
-      "collateralToken": "0xC67DCE33D7A8efA5FfEB961899C73fe01bCe9273",
-      "collateralDecimals": 18,
-      "feed": "FLR/USD",
-      "feedId": "0x01464c522f55534400000000000000000000000000",
-      "xrplNativeMint": false,
-      "debtCeiling": "500000000000000000000000",
-      "interest": {
-        "minInterestRateBps": 50,
-        "maxInterestRateBps": 25000,
-        "defaultInterestRateBps": 800,
-        "interestReceiver": "feeReceiver (placeholder)"
-      },
-      "PriceOracle": "",
-      "VaultManager": ""
-    }
-  },
-  "deprecated_v1_fee_only": {
-    "note": "Live V1 (one-time fee, NO interest) multi-collateral deployment; superseded by V2 above.",
-    "deployedAt": "2026-07-21",
-    "VUSD": "0xd9e20007B6b442a82629af96cBBE052e976cBBf0",
-    "FXRP": {
-      "PriceOracle": "0x20866EfAf796D5cEf3b48b01ABC929d18Aa7D9f5",
-      "VaultManager": "0xb85F3C8ef8a729Eb4F18d7D72a08f4798ec98f28",
-      "VulcraZap": "0x4b328848b4a32340f207aEE3a70BD27893A4e551"
-    },
-    "wFLR": {
-      "PriceOracle": "0xdF4cDe183D26E4682dCCF1615bD760936c3Bc39d",
-      "VaultManager": "0x1dD768ed6A3731D477f9e8f7562eD1dA6bd5769f"
-    }
-  }
+  "note": "Testnet demo; per-collateral minDebt lowered on-chain for faucet-limited testing. Redemption is by interest rate (lowest first). Supersedes prior V1 deployments."
 }
