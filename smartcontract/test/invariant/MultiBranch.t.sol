@@ -39,9 +39,9 @@ contract MultiBranchHandler is VulcraTestBase {
         }
         // whale (actor 0) opens a large vault in each branch to hold vUSD for liq/redeem
         vm.prank(actors[0]);
-        fxrpMgr.openVault(1e13, 100_000e18, address(0), address(0)); // 10M FXRP
+        fxrpMgr.openVault(1e13, 100_000e18, 500, address(0), address(0)); // 10M FXRP
         vm.prank(actors[0]);
-        wflrMgr.openVault(1e25, 100_000e18, address(0), address(0)); // 10M wFLR @ $0.02 = $200k
+        wflrMgr.openVault(1e25, 100_000e18, 500, address(0), address(0)); // 10M wFLR @ $0.02 = $200k
     }
 
     function _a(uint256 s) internal view returns (address) {
@@ -65,7 +65,7 @@ contract MultiBranchHandler is VulcraTestBase {
         if (active) return;
         mint = bound(mint, 100e18, 1e21);
         vm.prank(a);
-        try fxrpMgr.openVault((mint * 20) / 1e13, mint, address(0), address(0)) {} catch {}
+        try fxrpMgr.openVault((mint * 20) / 1e13, mint, 500, address(0), address(0)) {} catch {}
     }
 
     function openWflr(uint256 s, uint256 mint) external {
@@ -74,7 +74,7 @@ contract MultiBranchHandler is VulcraTestBase {
         if (active) return;
         mint = bound(mint, 200e18, 1e21);
         vm.prank(a);
-        try wflrMgr.openVault(mint * 300, mint, address(0), address(0)) {} catch {} // generous coll
+        try wflrMgr.openVault(mint * 300, mint, 500, address(0), address(0)) {} catch {} // generous coll
     }
 
     function repayFxrp(uint256 s, uint256 amt) external {
@@ -148,6 +148,7 @@ contract MultiBranchInvariant is VulcraTestBase, VulcraDeployerBase {
             makeAddr("fee"),
             Coston2Config.fxrpParams(),
             0,
+            Coston2Config.fxrpInterest(makeAddr("interest")),
             true
         );
         wflrB = _deployBranch(
@@ -160,6 +161,7 @@ contract MultiBranchInvariant is VulcraTestBase, VulcraDeployerBase {
             makeAddr("fee"),
             Coston2Config.wflrParams(),
             0, // unlimited ceiling for the invariant run
+            Coston2Config.wflrInterest(makeAddr("interest")),
             false
         );
         // never let either feed go stale during the randomized run

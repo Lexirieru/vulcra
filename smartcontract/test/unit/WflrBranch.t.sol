@@ -29,8 +29,14 @@ contract WflrBranchTest is VulcraTestBase, VulcraDeployerBase {
         IVaultManager.Params memory p = IVaultManager.Params({
             mcrBps: 15_000, minDebt18: 200e18, mintFeeBps: 50, liqBonusBps: 1_200, redemptionFeeBps: 0
         });
+        IVaultManager.InterestConfig memory ic = IVaultManager.InterestConfig({
+            minInterestRateBps: 50,
+            maxInterestRateBps: 25_000,
+            defaultInterestRateBps: 500,
+            interestReceiver: makeAddr("interest")
+        });
         Branch memory b = _deployBranch(
-            address(this), vusd, address(wflr), 18, FLR_USD_FEED_ID, 3600, makeAddr("fee"), p, CEILING, false
+            address(this), vusd, address(wflr), 18, FLR_USD_FEED_ID, 3600, makeAddr("fee"), p, CEILING, ic, false
         );
         mgr = b.manager;
     }
@@ -54,7 +60,7 @@ contract WflrBranchTest is VulcraTestBase, VulcraDeployerBase {
         // 30,000 wFLR @ $0.02 = $600 collateral; mint 300 vUSD -> debt 301.5; CR ~199%
         _fund(alice, 30_000e18);
         vm.prank(alice);
-        mgr.openVault(30_000e18, 300e18, address(0), address(0));
+        mgr.openVault(30_000e18, 300e18, 500, address(0), address(0));
 
         (uint256 coll, uint256 debt,) = mgr.getVault(alice);
         assertEq(coll, 30_000e18);
@@ -70,11 +76,11 @@ contract WflrBranchTest is VulcraTestBase, VulcraDeployerBase {
     function test_liquidate_18decCollateral() public {
         _fund(alice, 30_000e18);
         vm.prank(alice);
-        mgr.openVault(30_000e18, 300e18, address(0), address(0)); // debt 301.5, CR ~199%
+        mgr.openVault(30_000e18, 300e18, 500, address(0), address(0)); // debt 301.5, CR ~199%
         // seed liquidator with vUSD via a whale
         _fund(liquidator, 100_000_000e18);
         vm.prank(liquidator);
-        mgr.openVault(100_000_000e18, 300e18, address(0), address(0)); // whale, very safe
+        mgr.openVault(100_000_000e18, 300e18, 500, address(0), address(0)); // whale, very safe
         vm.prank(liquidator);
         mgr.mintMore(400e18, address(0), address(0)); // liquidator now holds ~700 vUSD
 
@@ -99,7 +105,7 @@ contract WflrBranchTest is VulcraTestBase, VulcraDeployerBase {
         // user1 mints 9000 (debt 9045) under the 10k ceiling
         _fund(alice, 1e24); // 1,000,000 wFLR = $20,000
         vm.prank(alice);
-        mgr.openVault(1e24, 9000e18, address(0), address(0));
+        mgr.openVault(1e24, 9000e18, 500, address(0), address(0));
         assertEq(mgr.totalDebt(), 9045e18);
 
         // user2 minting 2000 would push total to 11,055 > 10,000 ceiling -> revert
@@ -107,7 +113,7 @@ contract WflrBranchTest is VulcraTestBase, VulcraDeployerBase {
         _fund(bob, 1e24);
         vm.prank(bob);
         vm.expectRevert(VaultManager.DebtCeilingExceeded.selector);
-        mgr.openVault(1e24, 2000e18, address(0), address(0));
+        mgr.openVault(1e24, 2000e18, 500, address(0), address(0));
     }
 
     function test_setDebtCeiling_admin() public {
@@ -115,7 +121,7 @@ contract WflrBranchTest is VulcraTestBase, VulcraDeployerBase {
         mgr.setDebtCeiling(0); // lift the cap
         _fund(alice, 1e26);
         vm.prank(alice);
-        mgr.openVault(1e26, 50_000e18, address(0), address(0)); // now allowed above old cap
+        mgr.openVault(1e26, 50_000e18, 500, address(0), address(0)); // now allowed above old cap
         assertEq(mgr.totalDebt(), 50_250e18);
     }
 }

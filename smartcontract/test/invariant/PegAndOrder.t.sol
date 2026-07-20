@@ -38,7 +38,7 @@ contract PegOrderHandler is Test {
         mint = bound(mint, 100e18, 1e20);
         uint256 coll = (mint * 10) / 1e13; // ~248% CR at $2.50
         vm.prank(a);
-        try mgr.openVault(coll, mint, address(0), address(0)) {} catch {}
+        try mgr.openVault(coll, mint, 500, address(0), address(0)) {} catch {}
     }
 
     function redeem(uint256 s, uint256 amt) external {

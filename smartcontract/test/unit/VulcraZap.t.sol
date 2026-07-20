@@ -29,7 +29,7 @@ contract VulcraZapTest is VaultTestSetup {
         fxrp.approve(address(zap), 100e6);
 
         vm.prank(pa);
-        zap.openVaultAndForward(100e6, 100e18, dest, address(0), address(0));
+        zap.openVaultAndForward(100e6, 100e18, 500, dest, address(0), address(0));
 
         (uint256 coll,, bool active) = mgr.getVault(pa);
         assertEq(coll, 100e6);
@@ -44,7 +44,7 @@ contract VulcraZapTest is VaultTestSetup {
         vm.prank(pa);
         fxrp.approve(address(zap), 100e6);
         vm.prank(pa);
-        zap.openVaultAndForward(100e6, 100e18, dest, address(0), address(0));
+        zap.openVaultAndForward(100e6, 100e18, 500, dest, address(0), address(0));
 
         assertEq(fxrp.balanceOf(address(zap)), 0, "zap holds no FXRP");
         assertEq(vusd.balanceOf(address(zap)), 0, "zap holds no vUSD");
@@ -65,7 +65,7 @@ contract VulcraZapTest is VaultTestSetup {
         // no approval to the zap
         vm.prank(pa);
         vm.expectRevert();
-        zap.openVaultAndForward(100e6, 100e18, dest, address(0), address(0));
+        zap.openVaultAndForward(100e6, 100e18, 500, dest, address(0), address(0));
     }
 
     function test_revert_belowMinDebt_bubbles() public {
@@ -75,7 +75,7 @@ contract VulcraZapTest is VaultTestSetup {
         fxrp.approve(address(zap), 100e6);
         vm.prank(pa);
         vm.expectRevert(VaultManager.DebtBelowMin.selector);
-        zap.openVaultAndForward(100e6, 90e18, dest, address(0), address(0)); // debt 90.45 < 100
+        zap.openVaultAndForward(100e6, 90e18, 500, dest, address(0), address(0)); // debt 90.45 < 100
     }
 
     // --- integration: full atomic-mint batch via a PersonalAccount (R10/AE4) ---
@@ -92,7 +92,7 @@ contract VulcraZapTest is VaultTestSetup {
         calls[1] = MockPersonalAccount.Call({
             target: address(zap),
             value: 0,
-            data: abi.encodeCall(IVulcraZap.openVaultAndForward, (coll, mint, vusdDest, address(0), address(0)))
+            data: abi.encodeCall(IVulcraZap.openVaultAndForward, (coll, mint, 500, vusdDest, address(0), address(0)))
         });
     }
 

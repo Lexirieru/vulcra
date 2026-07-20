@@ -48,6 +48,7 @@ contract VulcraZap is Initializable, AccessControlUpgradeable, ReentrancyGuardTr
     function openVaultAndForward(
         uint256 collateral6,
         uint256 mint18,
+        uint256 annualInterestRateBps,
         address vusdDestination,
         address prevHint,
         address nextHint
@@ -56,7 +57,9 @@ contract VulcraZap is Initializable, AccessControlUpgradeable, ReentrancyGuardTr
         fxrpToken.safeTransferFrom(msg.sender, address(this), collateral6);
         fxrpToken.forceApprove(address(vaultManager), collateral6);
         // Vault owned by the caller (PersonalAccount); vUSD delivered to the destination.
-        vaultManager.openVaultFor(msg.sender, collateral6, mint18, vusdDestination, prevHint, nextHint);
+        vaultManager.openVaultFor(
+            msg.sender, collateral6, mint18, annualInterestRateBps, vusdDestination, prevHint, nextHint
+        );
     }
 
     /// @inheritdoc IVulcraZap

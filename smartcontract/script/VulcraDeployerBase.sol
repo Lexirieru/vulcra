@@ -47,6 +47,7 @@ abstract contract VulcraDeployerBase {
         address feeReceiver,
         IVaultManager.Params memory p,
         uint256 debtCeiling,
+        IVaultManager.InterestConfig memory ic,
         bool deployZap
     ) internal returns (Branch memory b) {
         b.oracle = PriceOracle(
@@ -70,7 +71,8 @@ abstract contract VulcraDeployerBase {
                             address(vusd),
                             feeReceiver,
                             p,
-                            debtCeiling
+                            debtCeiling,
+                            ic
                         )
                     )
                 )

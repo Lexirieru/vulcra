@@ -18,12 +18,26 @@ abstract contract VaultTestSetup is VulcraTestBase {
 
     address internal admin = makeAddr("admin");
     address internal feeReceiver = makeAddr("feeReceiver");
+    address internal interestReceiver = makeAddr("interestReceiver");
 
     // Default parameters (R7): MCR 130%, minDebt 100 vUSD, mint fee 0.5%, liq bonus 10%, redemption 0.
     uint256 internal constant MCR_BPS = 13_000;
     uint256 internal constant MIN_DEBT = 100e18;
     uint256 internal constant MINT_FEE_BPS = 50;
     uint256 internal constant LIQ_BONUS_BPS = 1_000;
+    // V2 interest: min 0.5%, max 250%, default 5%/yr.
+    uint256 internal constant MIN_RATE = 50;
+    uint256 internal constant MAX_RATE = 25_000;
+    uint256 internal constant DEFAULT_RATE = 500;
+
+    function _interestConfig() internal view returns (IVaultManager.InterestConfig memory) {
+        return IVaultManager.InterestConfig({
+            minInterestRateBps: MIN_RATE,
+            maxInterestRateBps: MAX_RATE,
+            defaultInterestRateBps: DEFAULT_RATE,
+            interestReceiver: interestReceiver
+        });
+    }
 
     function _deployStack() internal {
         vm.warp(1_800_000_000);
@@ -49,7 +63,7 @@ abstract contract VaultTestSetup is VulcraTestBase {
                 address(new VaultManager()),
                 abi.encodeCall(
                     VaultManager.initialize,
-                    (admin, address(fxrp), 6, address(oracle), address(vusd), feeReceiver, p, 0)
+                    (admin, address(fxrp), 6, address(oracle), address(vusd), feeReceiver, p, 0, _interestConfig())
                 )
             )
         );
@@ -65,11 +79,16 @@ abstract contract VaultTestSetup is VulcraTestBase {
         fxrp.approve(address(mgr), type(uint256).max);
     }
 
-    /// @notice Open a vault as `user` (funds + approves first). No hints (descent path).
+    /// @notice Open a vault as `user` at the default rate (funds + approves first). No hints.
     function _openVault(address user, uint256 collateral6, uint256 mint18) internal {
+        _openVaultRate(user, collateral6, mint18, DEFAULT_RATE);
+    }
+
+    /// @notice Open a vault as `user` at an explicit annual interest rate (bps).
+    function _openVaultRate(address user, uint256 collateral6, uint256 mint18, uint256 rateBps) internal {
         _fundFxrp(user, collateral6);
         vm.prank(user);
-        mgr.openVault(collateral6, mint18, address(0), address(0));
+        mgr.openVault(collateral6, mint18, rateBps, address(0), address(0));
     }
 
     /// @notice Update the XRP price (fresh timestamp) mid-test.
@@ -86,7 +105,7 @@ abstract contract VaultTestSetup is VulcraTestBase {
         if (!active) {
             _fundFxrp(whale, 1e13); // 10,000,000 FXRP
             vm.prank(whale);
-            mgr.openVault(1e13, 100_000e18, address(0), address(0));
+            mgr.openVault(1e13, 100_000e18, DEFAULT_RATE, address(0), address(0));
         }
         vm.prank(whale);
         vusd.transfer(to, amount18);

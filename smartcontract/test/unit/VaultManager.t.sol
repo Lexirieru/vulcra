@@ -37,7 +37,7 @@ contract VaultManagerTest is VaultTestSetup {
         uint256 coll = 52_260_000; // 52.26e6
         _fundFxrp(alice, coll);
         vm.prank(alice);
-        mgr.openVault(coll, 100e18, address(0), address(0));
+        mgr.openVault(coll, 100e18, 500, address(0), address(0));
         assertEq(mgr.collateralRatioBps(alice), MCR_BPS);
     }
 
@@ -46,14 +46,14 @@ contract VaultManagerTest is VaultTestSetup {
         _fundFxrp(alice, coll);
         vm.expectRevert(VaultManager.CRTooLow.selector);
         vm.prank(alice);
-        mgr.openVault(coll, 100e18, address(0), address(0));
+        mgr.openVault(coll, 100e18, 500, address(0), address(0));
     }
 
     function test_revert_open_debtBelowMin() public {
         _fundFxrp(alice, 100e6);
         vm.expectRevert(VaultManager.DebtBelowMin.selector);
         vm.prank(alice);
-        mgr.openVault(100e6, 90e18, address(0), address(0)); // debt 90.45 < 100
+        mgr.openVault(100e6, 90e18, 500, address(0), address(0)); // debt 90.45 < 100
     }
 
     function test_revert_open_twice() public {
@@ -61,7 +61,7 @@ contract VaultManagerTest is VaultTestSetup {
         _fundFxrp(alice, 100e6);
         vm.expectRevert(VaultManager.VaultExists.selector);
         vm.prank(alice);
-        mgr.openVault(100e6, 100e18, address(0), address(0));
+        mgr.openVault(100e6, 100e18, 500, address(0), address(0));
     }
 
     function test_addCollateral() public {
@@ -146,7 +146,7 @@ contract VaultManagerTest is VaultTestSetup {
         mgr.grantRole(zapRole, zap);
         _fundFxrp(zap, 100e6);
         vm.prank(zap);
-        mgr.openVaultFor(alice, 100e6, 100e18, bob, address(0), address(0));
+        mgr.openVaultFor(alice, 100e6, 100e18, 500, bob, address(0), address(0));
         (uint256 coll,, bool active) = mgr.getVault(alice);
         assertEq(coll, 100e6);
         assertTrue(active);
@@ -161,13 +161,16 @@ contract VaultManagerTest is VaultTestSetup {
         _fundFxrp(zap, 100e6);
         vm.expectRevert();
         vm.prank(zap);
-        mgr.openVaultFor(alice, 100e6, 100e18, bob, address(0), address(0));
+        mgr.openVaultFor(alice, 100e6, 100e18, 500, bob, address(0), address(0));
     }
 
-    function test_riskiestVault_ordering() public {
-        _openVault(alice, 100e6, 100e18); // CR ~248%
-        _openVault(bob, 60e6, 100e18); // CR ~149% (lower)
-        assertEq(mgr.riskiestVault(), bob);
+    function test_redemptionQueue_orderedByRate() public {
+        // V2: the sorted list is keyed by interest rate; lowest rate is redeemed first.
+        _openVaultRate(alice, 100e6, 100e18, 800);
+        _openVaultRate(bob, 100e6, 100e18, 300); // lower rate
+        assertEq(mgr.lowestRateVault(), bob); // bob (rate 300) at the head of the redemption queue
+        assertEq(mgr.highestRateVault(), alice);
+        assertEq(mgr.annualInterestRateBpsOf(bob), 300);
     }
 
     function test_previewOpen() public view {
@@ -206,6 +209,6 @@ contract VaultManagerTest is VaultTestSetup {
         _fundFxrp(alice, 100e6);
         vm.expectRevert();
         vm.prank(alice);
-        mgr.openVault(100e6, 100e18, address(0), address(0));
+        mgr.openVault(100e6, 100e18, 500, address(0), address(0));
     }
 }

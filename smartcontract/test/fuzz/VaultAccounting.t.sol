@@ -23,7 +23,7 @@ contract VaultAccountingFuzzTest is VaultTestSetup {
 
         _fundFxrp(alice, collateral6);
         vm.prank(alice);
-        mgr.openVault(collateral6, mint18, address(0), address(0));
+        mgr.openVault(collateral6, mint18, 500, address(0), address(0));
 
         (, uint256 vdebt,) = mgr.getVault(alice);
         assertEq(vdebt, debt, "debt == mint + fee");
@@ -41,7 +41,7 @@ contract VaultAccountingFuzzTest is VaultTestSetup {
         uint256 coll = 1e12; // 1,000,000 FXRP => value $2.5M
         _fundFxrp(alice, coll);
         vm.prank(alice);
-        mgr.openVault(coll, mint1, address(0), address(0));
+        mgr.openVault(coll, mint1, 500, address(0), address(0));
 
         // ensure mint2 keeps CR >= MCR; if not, skip
         (uint256 debt2,, bool ok,) = mgr.previewOpen(coll, mint1 + mint2);

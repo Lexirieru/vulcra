@@ -41,4 +41,27 @@ library Coston2Config {
             mcrBps: 15_000, minDebt18: 200e18, mintFeeBps: 50, liqBonusBps: 1_200, redemptionFeeBps: 0
         });
     }
+
+    // --- V2 interest config (per branch). Rates in bps/year; interestReceiver passed by the script
+    //     (yield recipient; a stability-pool/staker placeholder — may equal feeReceiver for now). ---
+
+    /// @notice FXRP interest: min 0.5%/yr, max 250%/yr, default 5%/yr (used for XRPL Zap opens).
+    function fxrpInterest(address interestReceiver) internal pure returns (IVaultManager.InterestConfig memory) {
+        return IVaultManager.InterestConfig({
+            minInterestRateBps: 50,
+            maxInterestRateBps: 25_000,
+            defaultInterestRateBps: 500,
+            interestReceiver: interestReceiver
+        });
+    }
+
+    /// @notice wFLR interest: min 0.5%/yr, max 250%/yr, default 8%/yr (EVM-mode only).
+    function wflrInterest(address interestReceiver) internal pure returns (IVaultManager.InterestConfig memory) {
+        return IVaultManager.InterestConfig({
+            minInterestRateBps: 50,
+            maxInterestRateBps: 25_000,
+            defaultInterestRateBps: 800,
+            interestReceiver: interestReceiver
+        });
+    }
 }

@@ -25,7 +25,7 @@ contract LiquidationMathFuzzTest is VaultTestSetup {
         uint256 coll = (18 * debt * 1e6) / (10 * openPrice) + 1;
         _fundFxrp(alice, coll);
         vm.prank(alice);
-        mgr.openVault(coll, mint18, address(0), address(0));
+        mgr.openVault(coll, mint18, 500, address(0), address(0));
 
         // Drop price so CR falls below MCR (drop 30%..70%).
         dropBps = bound(dropBps, 3_000, 7_000);

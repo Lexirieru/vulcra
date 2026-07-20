@@ -49,7 +49,7 @@ contract LiquidationTest is VaultTestSetup {
         uint256 coll = 52_260_000;
         _fundFxrp(alice, coll);
         vm.prank(alice);
-        mgr.openVault(coll, 100e18, address(0), address(0));
+        mgr.openVault(coll, 100e18, 500, address(0), address(0));
         assertEq(mgr.collateralRatioBps(alice), MCR_BPS);
         _seedVusd(liquidator, 200e18);
         vm.prank(liquidator);
@@ -61,7 +61,7 @@ contract LiquidationTest is VaultTestSetup {
         // open at exactly MCR, then nudge price down slightly so CR falls just below MCR
         _fundFxrp(alice, 52_260_000);
         vm.prank(alice);
-        mgr.openVault(52_260_000, 100e18, address(0), address(0));
+        mgr.openVault(52_260_000, 100e18, 500, address(0), address(0));
         _seedVusd(liquidator, 200e18);
         _setPrice18(2.49e18); // tiny drop -> just below MCR
         assertTrue(mgr.isLiquidatable(alice));
@@ -108,10 +108,15 @@ contract LiquidationTest is VaultTestSetup {
         _openVault(bob, 200e6, 100e18); // safer vault
         _seedVusd(liquidator, 200e18);
         _setPrice18(1.2e18);
-        // alice is riskiest
-        assertEq(mgr.riskiestVault(), alice);
+        // liquidation targets by CR (per-vault), not by the sorted list
+        assertTrue(mgr.isLiquidatable(alice));
+        uint256 countBefore = mgr.vaultCount();
         vm.prank(liquidator);
         mgr.liquidate(alice);
-        assertEq(mgr.riskiestVault(), bob); // alice removed; bob now riskiest active
+        (,, bool aliceActive) = mgr.getVault(alice);
+        assertFalse(aliceActive); // alice removed from vaults + sorted list
+        assertEq(mgr.vaultCount(), countBefore - 1);
+        (,, bool bobActive) = mgr.getVault(bob);
+        assertTrue(bobActive); // bob untouched
     }
 }

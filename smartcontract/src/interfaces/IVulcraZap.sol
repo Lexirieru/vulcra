@@ -10,9 +10,12 @@ interface IVulcraZap {
     ///      The vault is owned by the caller (the PersonalAccount) so the XRPL user keeps control;
     ///      vUSD is sent to `vusdDestination`. Any revert bubbles up so the whole direct-mint tx
     ///      rolls back and no FXRP is minted (R10/AE4).
+    /// @param annualInterestRateBps Interest rate for the new vault. For the smoothest XRPL 1-payment
+    ///        UX, pass the VaultManager's `defaultInterestRateBps()`; a custom rate is also accepted.
     function openVaultAndForward(
         uint256 collateral6,
         uint256 mint18,
+        uint256 annualInterestRateBps,
         address vusdDestination,
         address prevHint,
         address nextHint

@@ -35,7 +35,7 @@ contract ProtocolHandler is VulcraTestBase {
         }
         // whale (actor 0): huge over-collateralized vault -> lots of vUSD, always safest
         vm.prank(actors[0]);
-        mgr.openVault(1e14, 1_000_000e18, address(0), address(0));
+        mgr.openVault(1e14, 1_000_000e18, 500, address(0), address(0));
     }
 
     function actorsList() external view returns (address[] memory) {
@@ -58,7 +58,7 @@ contract ProtocolHandler is VulcraTestBase {
         mint = bound(mint, 100e18, 1e21);
         uint256 coll = (mint * 12) / 1e13; // ~healthy at $2.5
         vm.prank(a);
-        try mgr.openVault(coll, mint, address(0), address(0)) {} catch {}
+        try mgr.openVault(coll, mint, 500, address(0), address(0)) {} catch {}
     }
 
     function addColl(uint256 s, uint256 amt) external {

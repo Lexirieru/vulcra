@@ -53,6 +53,7 @@ contract DeployVulcra is Script, VulcraDeployerBase {
             feeReceiver,
             Coston2Config.fxrpParams(),
             Coston2Config.FXRP_DEBT_CEILING,
+            Coston2Config.fxrpInterest(feeReceiver), // interestReceiver = feeReceiver placeholder
             true
         );
 
@@ -67,6 +68,7 @@ contract DeployVulcra is Script, VulcraDeployerBase {
             feeReceiver,
             Coston2Config.wflrParams(),
             Coston2Config.WFLR_DEBT_CEILING,
+            Coston2Config.wflrInterest(feeReceiver),
             false
         );
 

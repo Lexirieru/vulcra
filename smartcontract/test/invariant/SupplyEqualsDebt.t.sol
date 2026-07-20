@@ -42,7 +42,7 @@ contract SupplyDebtHandler is Test {
         coll = bound(coll, 1e9, 1e13); // 1k - 10M FXRP
         mint = bound(mint, 100e18, 1e21);
         vm.prank(a);
-        try mgr.openVault(coll, mint, address(0), address(0)) {} catch {}
+        try mgr.openVault(coll, mint, 500, address(0), address(0)) {} catch {}
     }
 
     function addColl(uint256 s, uint256 amt) external {

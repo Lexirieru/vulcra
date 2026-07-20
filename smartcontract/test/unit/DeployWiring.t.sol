@@ -36,6 +36,7 @@ contract DeployWiringTest is VulcraTestBase, VulcraDeployerBase {
             feeReceiver,
             Coston2Config.fxrpParams(),
             0,
+            Coston2Config.fxrpInterest(feeReceiver),
             true
         );
         wflrB = _deployBranch(
@@ -48,6 +49,7 @@ contract DeployWiringTest is VulcraTestBase, VulcraDeployerBase {
             feeReceiver,
             Coston2Config.wflrParams(),
             Coston2Config.WFLR_DEBT_CEILING,
+            Coston2Config.wflrInterest(feeReceiver),
             false
         );
     }
@@ -101,6 +103,6 @@ contract DeployWiringTest is VulcraTestBase, VulcraDeployerBase {
         vm.prank(user);
         tok.approve(address(m), coll);
         vm.prank(user);
-        m.openVault(coll, mint, address(0), address(0));
+        m.openVault(coll, mint, 500, address(0), address(0));
     }
 }
