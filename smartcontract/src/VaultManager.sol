@@ -72,6 +72,8 @@ contract VaultManager is
     error InsufficientCollateral();
     error ZeroAddress();
     error NotLiquidatable();
+    error ExceedsSystemDebt();
+    error NothingRedeemed();
 
     event VaultOpened(address indexed owner, uint256 collateral6, uint256 debt18, uint256 nicr);
     event CollateralAdded(address indexed owner, uint256 amount6, uint256 newCollateral6);
@@ -87,6 +89,9 @@ contract VaultManager is
         uint256 debtCleared18,
         uint256 collateralToLiquidator6,
         uint256 collateralToOwner6
+    );
+    event Redemption(
+        address indexed redeemer, uint256 vusdRedeemed18, uint256 fxrpPaid6, uint256 fee6
     );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -290,6 +295,70 @@ contract VaultManager is
         emit VaultLiquidated(owner, msg.sender, debt, seize6, toOwner6);
     }
 
+    // --- redemption (R5) ---
+
+    /// @notice Redeem vUSD at face value for FXRP, drawing from the riskiest vaults first (R5/AE5).
+    /// @param vusdAmount18 vUSD to redeem (burned from the caller); must not exceed system debt.
+    /// @param maxIterations Cap on vaults touched (0 = unbounded; fine at testnet scale).
+    /// @return fxrpPaid6 FXRP paid to the redeemer (net of any redemption fee).
+    /// @dev Each touched vault loses equal USD value of collateral and debt, so its CR rises — good
+    ///      for remaining borrowers. The redeemer captures the peg arbitrage when vUSD < $1.
+    function redeem(uint256 vusdAmount18, uint256 maxIterations)
+        external
+        nonReentrant
+        returns (uint256 fxrpPaid6)
+    {
+        if (vusdAmount18 == 0) revert ZeroAmount();
+        if (vusdAmount18 > totalDebt) revert ExceedsSystemDebt();
+
+        uint256 price18 = oracle.xrpUsdPrice18();
+        uint256 remaining = vusdAmount18;
+        uint256 grossFxrp6;
+        uint256 iterations;
+        address current = sorted.getLast(); // riskiest (lowest NICR)
+
+        while (remaining > 0 && current != address(0)) {
+            if (maxIterations != 0 && iterations >= maxIterations) break;
+            address nextRiskier = sorted.getPrev(current); // toward head (higher NICR)
+            Vault storage vlt = vaults[current];
+
+            uint256 portion = remaining < vlt.debt18 ? remaining : vlt.debt18;
+            uint256 coll6 = VulcraMath.collateralForUsd18(portion, price18);
+            if (coll6 > vlt.collateral6) coll6 = vlt.collateral6; // bad-debt safety cap
+
+            uint256 newDebt = vlt.debt18 - portion;
+            uint256 newColl = vlt.collateral6 - coll6;
+            totalDebt -= portion;
+            remaining -= portion;
+            grossFxrp6 += coll6;
+
+            if (newDebt == 0) {
+                delete vaults[current];
+                sorted.remove(current);
+                if (newColl > 0) fxrpToken.safeTransfer(current, newColl); // return dust to owner
+            } else {
+                vlt.debt18 = newDebt;
+                vlt.collateral6 = newColl;
+                sorted.reInsert(current, VulcraMath.nicr(newColl, newDebt), address(0), address(0));
+            }
+            current = nextRiskier;
+            unchecked {
+                ++iterations;
+            }
+        }
+
+        uint256 redeemed = vusdAmount18 - remaining;
+        if (redeemed == 0) revert NothingRedeemed();
+
+        vusdToken.burn(msg.sender, redeemed);
+        uint256 fee6 = (grossFxrp6 * params.redemptionFeeBps) / VulcraMath.BPS;
+        fxrpPaid6 = grossFxrp6 - fee6;
+        fxrpToken.safeTransfer(msg.sender, fxrpPaid6);
+        if (fee6 > 0) fxrpToken.safeTransfer(feeReceiver, fee6);
+
+        emit Redemption(msg.sender, redeemed, fxrpPaid6, fee6);
+    }
+
     // --- admin ---
 
     function setParams(Params memory p) external onlyRole(PARAM_ADMIN_ROLE) {
@@ -363,6 +432,21 @@ contract VaultManager is
 
     function nominalCr(address owner) external view returns (uint256) {
         return sorted.nicrOf(owner);
+    }
+
+    /// @notice Safest active vault (highest CR).
+    function safestVault() external view returns (address) {
+        return sorted.getFirst();
+    }
+
+    /// @notice Next vault toward the riskiest end (lower CR) — for off-chain list traversal.
+    function nextVault(address owner) external view returns (address) {
+        return sorted.getNext(owner);
+    }
+
+    /// @notice Next vault toward the safest end (higher CR) — for off-chain list traversal.
+    function prevVault(address owner) external view returns (address) {
+        return sorted.getPrev(owner);
     }
 
     /// @inheritdoc IVaultManager
