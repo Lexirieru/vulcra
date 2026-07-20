@@ -105,7 +105,7 @@ export function Hero() {
           variants={variants}
           initial="hidden"
           animate={reveal(4)}
-          className="mt-6 font-mono text-xs uppercase tracking-widest text-muted-foreground/80"
+          className="mt-6 font-mono text-xs uppercase tracking-widest text-muted-foreground"
         >
           Coston2 testnet · no EVM wallet · no FLR
         </motion.p>

@@ -63,7 +63,7 @@ export function CtaFooter() {
           </nav>
         </div>
         <div className="mx-auto w-full max-w-6xl px-4 pb-10 sm:px-6">
-          <p className="text-xs text-muted-foreground/70">{CTA.disclaimer}</p>
+          <p className="text-xs text-muted-foreground">{CTA.disclaimer}</p>
         </div>
       </footer>
     </>
