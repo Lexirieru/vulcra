@@ -1,0 +1,9 @@
+{
+  "name": "vulcra-smartcontract",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Vulcra CDP smart contracts (Flare Coston2) — Solidity interfaces sourced from Flare periphery",
+  "dependencies": {
+    "@flarenetwork/flare-periphery-contracts": "^0.1.52"
+  }
+}
