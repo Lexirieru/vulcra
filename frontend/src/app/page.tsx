@@ -4,8 +4,7 @@
 // price, CR gauge, liquidation price, what-if simulator, and vault actions — all
 // scoped to the selected collateral branch (FXRP / wFLR).
 import { useAccount } from "wagmi";
-import { useAppKit } from "@reown/appkit/react";
-import { Button, Card, EmptyState, Skeleton } from "@/components/ui";
+import { Card, EmptyState, Skeleton } from "@/components/ui";
 import { Reveal, Stagger } from "@/components/motion";
 import { LivePrice } from "@/components/vault/LivePrice";
 import { PositionCard } from "@/components/vault/PositionCard";
@@ -47,9 +46,12 @@ export default function DashboardPage() {
             <ContractsNotice branch={branch} />
           </div>
         ) : !isConnected ? (
-          <Card className="lg:col-span-2 flex flex-col items-center justify-center gap-3 text-center">
-            <p className="text-sm text-muted">Connect a wallet to view your vault.</p>
-            <ConnectPrompt />
+          <Card className="lg:col-span-2 flex flex-col items-center justify-center gap-2 py-10 text-center">
+            <p className="text-base font-medium text-text">Connect your wallet to begin</p>
+            <p className="max-w-sm text-sm text-muted">
+              Use <span className="text-ember">Connect wallet</span> (top right) to view
+              your {branch.collateralSymbol} vault, open a position, and mint vUSD.
+            </p>
           </Card>
         ) : isLoading ? (
           <Card className="lg:col-span-2">
@@ -76,42 +78,35 @@ export default function DashboardPage() {
         )}
       </Stagger>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Reveal delay={0.05}>
-          <VaultActions
-            vault={vault}
-            price18={price18}
-            params={params}
-            branch={branch}
-            collateralToken={collateralToken}
-            owner={address}
-            disabled={notConfigured}
-          />
-        </Reveal>
-        <Reveal delay={0.1}>
-          {hasVault && vault && price18 ? (
-            <PriceSimulator
+      {isConnected && !notConfigured && (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Reveal delay={0.05}>
+            <VaultActions
               vault={vault}
-              livePrice18={price18}
+              price18={price18}
               params={params}
-              collDec={branch.collateralDecimals}
+              branch={branch}
+              collateralToken={collateralToken}
+              owner={address}
+              disabled={notConfigured}
             />
-          ) : (
-            <Card className="flex items-center justify-center text-center text-sm text-muted">
-              The what-if simulator appears once you have an open vault.
-            </Card>
-          )}
-        </Reveal>
-      </div>
+          </Reveal>
+          <Reveal delay={0.1}>
+            {hasVault && vault && price18 ? (
+              <PriceSimulator
+                vault={vault}
+                livePrice18={price18}
+                params={params}
+                collDec={branch.collateralDecimals}
+              />
+            ) : (
+              <Card className="flex items-center justify-center text-center text-sm text-muted">
+                The what-if simulator appears once you have an open vault.
+              </Card>
+            )}
+          </Reveal>
+        </div>
+      )}
     </div>
-  );
-}
-
-function ConnectPrompt() {
-  const { open } = useAppKit();
-  return (
-    <Button size="sm" onClick={() => open()}>
-      Connect wallet
-    </Button>
   );
 }
