@@ -19,11 +19,14 @@ export const FLARE_CONTRACT_REGISTRY =
   "0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019" as const;
 
 /**
- * XRP/USD FTSOv2 feed id (category 0x01 crypto).
- * VERIFY against dev.flare.network/ftso/feeds at build time before relying on it.
+ * FTSOv2 feed ids (category 0x01 crypto). Feed decimals are DYNAMIC — always
+ * read them from the feed at runtime; the per-branch `feedDecimals` is only a
+ * documented hint. VERIFY against dev.flare.network/ftso/feeds at build time.
  */
 export const XRP_USD_FEED_ID =
-  "0x015852502f55534400000000000000000000000000" as const;
+  "0x015852502f55534400000000000000000000000000" as const; // XRP/USD (feed 6 dec on Coston2)
+export const FLR_USD_FEED_ID =
+  "0x01464c522f55534400000000000000000000000000" as const; // FLR/USD (feed 8 dec on Coston2)
 
 /** Registry contract-name keys. */
 export const RegistryNames = {
@@ -33,4 +36,5 @@ export const RegistryNames = {
   FdcHub: "FdcHub",
   FdcVerification: "FdcVerification",
   Relay: "Relay",
+  WNat: "WNat",
 } as const;
