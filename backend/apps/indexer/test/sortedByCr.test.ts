@@ -9,6 +9,7 @@ import { atRisk, sortByNicrAsc, vaultCrBps } from "../src/sortedByCr.js";
 // holding N FXRP has CR = N * 100 bps  (e.g. 129 FXRP -> 12900 bps = 129%).
 const FEED_VALUE = 1n;
 const FEED_DECIMALS = 0;
+const FXRP_DEC = 6; // FXRP collateral decimals
 const DEBT_100 = 100_000000000000000000n;
 
 const addr = (n: number): Address =>
@@ -33,36 +34,59 @@ const v135 = vault(135, 135_000_000n, 13500n);
 const v180 = vault(180, 180_000_000n, 18000n);
 const v300 = vault(300, 300_000_000n, 30000n);
 
-describe("vaultCrBps", () => {
+describe("vaultCrBps (FXRP 6-dec)", () => {
   it("computes CR in bps from the supplied price", () => {
-    expect(vaultCrBps(v129, FEED_VALUE, FEED_DECIMALS)).toBe(12900n);
-    expect(vaultCrBps(v135, FEED_VALUE, FEED_DECIMALS)).toBe(13500n);
-    expect(vaultCrBps(v300, FEED_VALUE, FEED_DECIMALS)).toBe(30000n);
+    expect(vaultCrBps(v129, FXRP_DEC, FEED_VALUE, FEED_DECIMALS)).toBe(12900n);
+    expect(vaultCrBps(v135, FXRP_DEC, FEED_VALUE, FEED_DECIMALS)).toBe(13500n);
+    expect(vaultCrBps(v300, FXRP_DEC, FEED_VALUE, FEED_DECIMALS)).toBe(30000n);
   });
 });
 
-describe("atRisk — threshold 130% (MCR)", () => {
+describe("vaultCrBps (wFLR 18-dec) — branch-aware decimals", () => {
+  // 150 wFLR (18-dec) at FLR/USD $1, debt 100 vUSD -> CR 150%. Using the wrong
+  // (6-dec) scale would grossly mis-compute; the collateralDecimals arg fixes it.
+  const wflrVault: VaultRow = {
+    owner: addr(0xf1),
+    collateral6: 150_000000000000000000n, // 150 wFLR, raw 18-dec (field name is legacy)
+    debt18: DEBT_100,
+    nicr: 15000n,
+    active: true,
+    lastBlock: 1n,
+    lastTxHash: "0x",
+  };
+  it("computes 150% for a healthy wFLR vault", () => {
+    expect(vaultCrBps(wflrVault, 18, FEED_VALUE, FEED_DECIMALS)).toBe(15000n);
+  });
+  it("flags it once the price halves (75% CR < MCR)", () => {
+    // FLR/USD $0.50 => feedValue 5, feedDecimals 1
+    expect(vaultCrBps(wflrVault, 18, 5n, 1)).toBe(7500n);
+    const flagged = atRisk([wflrVault], 18, 5n, 1, 13000n);
+    expect(flagged.map((r) => r.crBps)).toEqual([7500n]);
+  });
+});
+
+describe("atRisk — threshold 130% (MCR), FXRP 6-dec", () => {
   it("flags only the 129% vault; 135/180/300 are safe", () => {
-    const result = atRisk([v135, v300, v129, v180], FEED_VALUE, FEED_DECIMALS, 13000n);
+    const result = atRisk([v135, v300, v129, v180], FXRP_DEC, FEED_VALUE, FEED_DECIMALS, 13000n);
     expect(result.map((r) => r.vault.owner)).toEqual([v129.owner]);
     expect(result[0]?.crBps).toBe(12900n);
   });
 
   it("returns multiple below-threshold vaults ordered riskiest-first (ascending CR)", () => {
-    const result = atRisk([v129, v300, v120, v135], FEED_VALUE, FEED_DECIMALS, 13000n);
+    const result = atRisk([v129, v300, v120, v135], FXRP_DEC, FEED_VALUE, FEED_DECIMALS, 13000n);
     expect(result.map((r) => r.vault.owner)).toEqual([v120.owner, v129.owner]);
     expect(result.map((r) => r.crBps)).toEqual([12000n, 12900n]);
   });
 
   it("excludes zero-debt vaults (crBps sentinel 0 is not real risk)", () => {
     const zeroDebt = vault(999, 50_000_000n, 0n, 0n);
-    const result = atRisk([zeroDebt, v129], FEED_VALUE, FEED_DECIMALS, 13000n);
+    const result = atRisk([zeroDebt, v129], FXRP_DEC, FEED_VALUE, FEED_DECIMALS, 13000n);
     expect(result.map((r) => r.vault.owner)).toEqual([v129.owner]);
   });
 
   it("excludes inactive vaults", () => {
     const closed: VaultRow = { ...v120, active: false };
-    const result = atRisk([closed, v129], FEED_VALUE, FEED_DECIMALS, 13000n);
+    const result = atRisk([closed, v129], FXRP_DEC, FEED_VALUE, FEED_DECIMALS, 13000n);
     expect(result.map((r) => r.vault.owner)).toEqual([v129.owner]);
   });
 });
