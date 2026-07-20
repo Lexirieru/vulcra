@@ -1,0 +1,37 @@
+# ext-proxy configuration for Coston2 (Docker) — TEMPLATE.
+#
+# Copy this file to `extension_proxy.coston2.docker.toml` (which is GITIGNORED)
+# and fill the [db] block from the FCC indexer credentials. The real values live
+# OUTSIDE the repo in vulcra-fcc.env (FCC_INDEXER_DB_* / FCC_TEE_PROXY_URL) and
+# are provided by the Flare hackathon admins on request. NEVER commit real
+# credentials.
+#
+#   cp config/proxy/extension_proxy.coston2.docker.toml.example \
+#      config/proxy/extension_proxy.coston2.docker.toml
+#   # then fill [db] from vulcra-fcc.env
+
+[chain]
+name = "coston2"
+chain_id = 114
+rpc_url = "https://coston2-api.flare.network/ext/C/rpc"
+
+[proxy]
+# ext-proxy external host port exposed to the internet (via ngrok/cloudflared).
+external_port = 6674
+# internal port used between the extension container and the proxy.
+internal_port = 6673
+
+[redis]
+host = "redis"
+port = 6379
+
+# Coston2 indexer DB read by the proxy. Fill from FCC_INDEXER_DB_* env /
+# vulcra-fcc.env; the real file is gitignored. The indexer DB may be
+# IP-restricted — a "connection refused" means the route to it is down, not a
+# config error (see README).
+[db]
+host = "FILL_FROM_FCC_INDEXER_DB_HOST"      # e.g. the admin-provided indexer host
+port = 3306                                  # FCC_INDEXER_DB_PORT
+name = "indexer"                             # FCC_INDEXER_DB_NAME
+user = "FILL_FROM_FCC_INDEXER_DB_USER"       # FCC_INDEXER_DB_USER
+password = "FILL_FROM_FCC_INDEXER_DB_PASSWORD" # FCC_INDEXER_DB_PASSWORD
