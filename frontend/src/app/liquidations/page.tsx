@@ -1,24 +1,28 @@
 "use client";
 
-// Liquidations (U11 / R19). At-risk vaults from the backend indexer, riskiest
-// first, with one-click liquidation through the shared tx lifecycle. The
-// liquidate() call re-checks CR on-chain, so the list is candidate discovery.
+// Liquidations (U11 / R19), per selected collateral branch. At-risk vaults from
+// the backend indexer (scoped to the branch), riskiest first, with one-click
+// liquidation through the shared tx lifecycle. liquidate() re-checks CR on-chain.
 import { useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
 import { Badge, Card, CardTitle, EmptyState, ErrorState, Skeleton } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { LiquidateButton } from "@/components/liquidations/LiquidateButton";
+import { ContractsNotice } from "@/components/vault/ContractsNotice";
 import { api } from "@/lib/api/client";
-import { DEFAULT_PARAMS, useVaultParams } from "@/hooks/useVault";
+import { useVaultParams } from "@/hooks/useVault";
+import { useBranch } from "@/context/branch";
 import { formatCr, formatToken, shortenAddress } from "@/lib/format";
 
 export default function LiquidationsPage() {
-  const { params } = useVaultParams();
-  const mcrBps = Number(params.mcrBps ?? DEFAULT_PARAMS.mcrBps);
+  const { branch } = useBranch();
+  const vaultManager = branch.vaultManager || undefined;
+  const { params } = useVaultParams(vaultManager);
+  const mcrBps = Number(params.mcrBps);
 
   const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["at-risk-vaults"],
-    queryFn: () => api.listAtRiskVaults(Math.round(mcrBps * 1.2)),
+    queryKey: ["at-risk-vaults", branch.key],
+    queryFn: () => api.listAtRiskVaults(Math.round(mcrBps * 1.2), branch.key),
     retry: 1,
     refetchInterval: 15_000,
   });
@@ -29,13 +33,21 @@ export default function LiquidationsPage() {
     <div className="flex flex-col gap-6">
       <Reveal>
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Liquidations</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {branch.label} liquidations
+          </h1>
           <p className="mt-1 text-sm text-muted">
-            Vaults below the {formatCr(params.mcrBps)} minimum collateral ratio can be
-            liquidated for the debt plus a bonus. Riskiest first.
+            {branch.label} vaults below the {formatCr(params.mcrBps)} minimum collateral
+            ratio can be liquidated for the debt plus a bonus. Riskiest first.
           </p>
         </div>
       </Reveal>
+
+      {!branch.vaultManager && (
+        <Reveal>
+          <ContractsNotice branch={branch} />
+        </Reveal>
+      )}
 
       <Reveal delay={0.05}>
         <Card>
@@ -77,7 +89,8 @@ export default function LiquidationsPage() {
                         <tr key={v.owner} className="border-b border-border/60">
                           <td className="py-3 pr-4 font-mono">{shortenAddress(v.owner)}</td>
                           <td className="py-3 pr-4 font-mono tabular-nums">
-                            {formatToken(BigInt(v.collateral6), 6, 2)}
+                            {formatToken(BigInt(v.collateral6), branch.collateralDecimals, 2)}{" "}
+                            {branch.collateralSymbol}
                           </td>
                           <td className="py-3 pr-4 font-mono tabular-nums">
                             {formatToken(BigInt(v.debt18), 18, 2)}
@@ -89,7 +102,8 @@ export default function LiquidationsPage() {
                           </td>
                           <td className="py-3 pr-4 text-right">
                             <LiquidateButton
-                              vault={v.owner as Address}
+                              owner={v.owner as Address}
+                              vaultManager={vaultManager}
                               liquidatable={liquidatable}
                               onDone={() => refetch()}
                             />

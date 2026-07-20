@@ -6,15 +6,17 @@ import { Button } from "@/components/ui";
 import { useVaultAction } from "@/hooks/useVaultAction";
 
 export function LiquidateButton({
-  vault,
+  owner,
+  vaultManager,
   liquidatable,
   onDone,
 }: {
-  vault: Address;
+  owner: Address;
+  vaultManager?: Address;
   liquidatable: boolean;
   onDone?: () => void;
 }) {
-  const action = useVaultAction();
+  const action = useVaultAction(vaultManager);
 
   useEffect(() => {
     if (action.phase === "success") onDone?.();
@@ -32,7 +34,7 @@ export function LiquidateButton({
             ? "Above MCR — not liquidatable"
             : undefined
       }
-      onClick={() => action.execute("liquidate", [vault])}
+      onClick={() => action.execute("liquidate", [owner])}
     >
       {action.isBusy ? "Liquidating…" : "Liquidate"}
     </Button>

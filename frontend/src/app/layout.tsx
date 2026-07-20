@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import "./globals.css";
 import ContextProvider from "@/context";
+import { BranchProvider } from "@/context/branch";
 import { AppShell } from "@/components/shell/AppShell";
 
 const geistSans = Geist({
@@ -35,7 +36,9 @@ export default async function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         <ContextProvider cookies={cookies}>
-          <AppShell>{children}</AppShell>
+          <BranchProvider>
+            <AppShell>{children}</AppShell>
+          </BranchProvider>
         </ContextProvider>
       </body>
     </html>

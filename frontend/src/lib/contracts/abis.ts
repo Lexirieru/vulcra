@@ -55,19 +55,44 @@ export const ftsoV2ReadAbi = [
   },
 ] as const;
 
+// WNat (wrapped native). wFLR is obtained by wrapping C2FLR: WNat.deposit() is
+// payable, withdraw(uint256) unwraps. Balance/decimals come from erc20Abi.
+// Resolved at runtime via ContractRegistry ("WNat").
+export const wnatAbi = [
+  { type: "function", name: "deposit", stateMutability: "payable", inputs: [], outputs: [] },
+  {
+    type: "function",
+    name: "withdraw",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "amount", type: "uint256" }],
+    outputs: [],
+  },
+] as const;
+
 // ─────────────────────────────────────────────────────────────────────────────
-// PLACEHOLDER — Vulcra core VaultManager (IVaultManager).
-//
-// TODO(smartcontract): replace with the deployed Coston2 ABI once the
-// smartcontract plan ships. This fragment mirrors the plan's IVaultManager
-// surface (owner-address model, 1 vault/address). Function names, hint
-// parameters, and the Vault tuple shape are AUTHORITATIVE from
-// smartcontract/docs/plans/2026-07-20-001-feat-vulcra-smartcontract-plan.md and
-// MUST be reconciled against the real ABI before mainnet. Structured so that
-// finalization is this single edit.
+// Vulcra core VaultManager — REAL Coston2 ABI, reconciled against the deployed
+// contract (smartcontract/src/VaultManager.sol; deployments/coston2.json). The
+// SAME ABI is used for every collateral branch (FXRP, wFLR) — only the instance
+// address differs. Field names say `*6`/`fxrp` for historical reasons but hold
+// the branch's collateral in ITS decimals (FXRP 6, wFLR 18); the frontend
+// interprets decimals per branch. `params` is a public struct getter; collateral
+// operations are split (addCollateral / withdrawCollateral / mintMore / repay).
 // ─────────────────────────────────────────────────────────────────────────────
 export const vaultManagerAbi = [
-  // reads
+  // --- reads ---
+  {
+    type: "function",
+    name: "params",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "mcrBps", type: "uint256" },
+      { name: "minDebt18", type: "uint256" },
+      { name: "mintFeeBps", type: "uint256" },
+      { name: "liqBonusBps", type: "uint256" },
+      { name: "redemptionFeeBps", type: "uint256" },
+    ],
+  },
   {
     type: "function",
     name: "getVault",
@@ -79,18 +104,35 @@ export const vaultManagerAbi = [
       { name: "active", type: "bool" },
     ],
   },
-  { type: "function", name: "mcrBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "minDebt18", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "mintFeeBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  { type: "function", name: "liqBonusBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
-  // writes (owner-address model)
+  {
+    type: "function",
+    name: "previewOpen",
+    stateMutability: "view",
+    inputs: [
+      { name: "collateral6", type: "uint256" },
+      { name: "mint18", type: "uint256" },
+    ],
+    outputs: [
+      { name: "debt18", type: "uint256" },
+      { name: "crBps", type: "uint256" },
+      { name: "meetsMcr", type: "bool" },
+      { name: "meetsMinDebt", type: "bool" },
+    ],
+  },
+  { type: "function", name: "collateralRatioBps", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "isLiquidatable", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ name: "", type: "bool" }] },
+  { type: "function", name: "riskiestVault", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "vaultCount", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "fxrp", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "vusd", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  // --- writes (owner-address model, 1 vault/address) ---
   {
     type: "function",
     name: "openVault",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "collateral", type: "uint256" },
-      { name: "mint", type: "uint256" },
+      { name: "collateral6", type: "uint256" },
+      { name: "mint18", type: "uint256" },
       { name: "prevHint", type: "address" },
       { name: "nextHint", type: "address" },
     ],
@@ -98,11 +140,32 @@ export const vaultManagerAbi = [
   },
   {
     type: "function",
-    name: "adjustVault",
+    name: "addCollateral",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "collateralDelta", type: "int256" },
-      { name: "debtDelta", type: "int256" },
+      { name: "amount6", type: "uint256" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdrawCollateral",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amount6", type: "uint256" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "mintMore",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amount18", type: "uint256" },
       { name: "prevHint", type: "address" },
       { name: "nextHint", type: "address" },
     ],
@@ -112,43 +175,34 @@ export const vaultManagerAbi = [
     type: "function",
     name: "repay",
     stateMutability: "nonpayable",
-    inputs: [{ name: "amount", type: "uint256" }],
-    outputs: [],
-  },
-  {
-    type: "function",
-    name: "closeVault",
-    stateMutability: "nonpayable",
     inputs: [
+      { name: "amount18", type: "uint256" },
       { name: "prevHint", type: "address" },
       { name: "nextHint", type: "address" },
     ],
     outputs: [],
   },
-  {
-    type: "function",
-    name: "liquidate",
-    stateMutability: "nonpayable",
-    inputs: [{ name: "vault", type: "address" }],
-    outputs: [],
-  },
+  { type: "function", name: "closeVault", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  { type: "function", name: "liquidate", stateMutability: "nonpayable", inputs: [{ name: "owner", type: "address" }], outputs: [] },
   {
     type: "function",
     name: "redeem",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "vusdAmount", type: "uint256" },
-      { name: "startHint", type: "address" },
+      { name: "vusdAmount18", type: "uint256" },
+      { name: "maxIterations", type: "uint256" },
     ],
-    outputs: [],
+    outputs: [{ name: "fxrpPaid6", type: "uint256" }],
   },
   {
     type: "function",
     name: "delegatedRepay",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "vault", type: "address" },
-      { name: "maxAmount", type: "uint256" },
+      { name: "owner", type: "address" },
+      { name: "maxAmount18", type: "uint256" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
     ],
     outputs: [],
   },

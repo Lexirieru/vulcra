@@ -19,14 +19,49 @@ import {
   Skeleton,
   Stat,
 } from "@/components/ui";
+import Link from "next/link";
 import { Reveal } from "@/components/motion";
 import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
 import { api } from "@/lib/api/client";
 import type { MintBuildResponse } from "@/lib/api/types";
 import { usePersonalAccount, isValidRAddress } from "@/hooks/usePersonalAccount";
+import { useBranch } from "@/context/branch";
 import { formatToken, parseAmount, shortenAddress } from "@/lib/format";
 
+// XRPL-native mint is FXRP-only (XRP → FXRP via the 0xFE custom instruction).
+// Other collateral branches (e.g. wFLR) use the EVM flow instead.
 export default function XrplPage() {
+  const { branch } = useBranch();
+  if (!branch.hasXrplMint) {
+    return (
+      <div className="flex flex-col gap-6">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Mint from XRPL</h1>
+          <p className="mt-1 text-sm text-muted">
+            XRPL-native minting only applies to the FXRP branch (XRP → FXRP).
+          </p>
+        </div>
+        <Card className="flex flex-col items-center gap-3 text-center">
+          <ShieldAlert className="h-6 w-6 text-ember" aria-hidden />
+          <p className="max-w-md text-sm text-muted">
+            The <span className="font-medium text-text">{branch.label}</span> branch has
+            no XRPL rail. Wrap C2FLR into {branch.collateralSymbol} and open a vault from
+            the EVM dashboard instead.
+          </p>
+          <Link
+            href="/"
+            className="rounded-md bg-ember px-4 py-2 text-sm font-medium text-bg hover:bg-ember-bright"
+          >
+            Go to EVM dashboard
+          </Link>
+        </Card>
+      </div>
+    );
+  }
+  return <XrplFlow />;
+}
+
+function XrplFlow() {
   const [rAddress, setRAddress] = useState("");
   const account = usePersonalAccount(rAddress);
   const validAddr = isValidRAddress(rAddress);

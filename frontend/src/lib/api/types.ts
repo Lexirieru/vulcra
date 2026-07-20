@@ -109,6 +109,10 @@ export interface GuardianRuleInput {
   /** Max vUSD to pull on execution, 18-dec base units as a string. */
   maxRepay18: string;
   funder?: Address;
+  /** Collateral branch this rule protects (cross-branch Guardian). */
+  branch?: string;
+  /** VaultManager instance for the branch. */
+  vaultManager?: Address;
 }
 
 export interface GuardianRule extends GuardianRuleInput {

@@ -14,7 +14,10 @@ import { contractRegistryAbi } from "./abis";
 const ZERO = "0x0000000000000000000000000000000000000000";
 
 /** Resolve a Flare system contract address by its registry name. */
-export function useContractAddress(name: string) {
+export function useContractAddress(
+  name: string,
+  opts?: { enabled?: boolean },
+) {
   const query = useReadContract({
     address: FLARE_CONTRACT_REGISTRY_ADDRESS,
     abi: contractRegistryAbi,
@@ -22,6 +25,7 @@ export function useContractAddress(name: string) {
     args: [name],
     chainId: COSTON2_CHAIN_ID,
     query: {
+      enabled: (opts?.enabled ?? true) && Boolean(name),
       staleTime: 5 * 60_000, // system addresses effectively never change
       gcTime: 30 * 60_000,
     },
