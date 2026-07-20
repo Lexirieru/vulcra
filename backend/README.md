@@ -63,6 +63,32 @@ are absent, so the frontend can develop against the API before the contracts are
 deployed. Live on-chain steps are **gated** (fail-fast with a clear message),
 never mocked.
 
+### XRPL-native (0xFE) mint — executor endpoints (V2)
+
+The executor turns ONE XRPL payment into an atomic vUSD mint (FXRP branch only;
+wFLR is EVM-only). Vulcra V2 vaults carry a per-vault interest rate; the XRPL
+1-payment path uses `VaultManager.defaultInterestRateBps()` for a smooth UX.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /account/:xrplAddress` | Resolve the smart-account personal address + nonce. |
+| `POST /mint/build` | For `{xrplAddress, collateral6, mint18, annualInterestRateBps?}`: returns the FAssets **Core Vault** XRPL destination, the 42-byte **0xFE memo** (MemoData), the exact **XRP amount** to send, and the **userOpBytes** to submit afterwards. **The XRPL payment must carry NO destination tag.** |
+| `POST /mint/preflight` | Rate-limit + min-fee + address checks before sending XRP (blocks irrecoverable payments). |
+| `POST /mint/submit` | `{packedUserOpHex, xrplTxId, memoUserOpHash}` after the XRPL payment confirms — drives FDC XRPPayment attestation → `executeDirectMintingWithData` (delay-retry + 0xE0/0xE1 recovery). Live submit is gated (see below). |
+| `GET /mint/status/:id` | Track the mint through the pipeline. |
+
+Flow: `POST /mint/build` → user signs the returned XRPL payment (destination Core
+Vault, the 0xFE MemoData, the amount, no tag) → `POST /mint/submit` with the
+returned userOp bytes + the XRPL tx id → poll `/mint/status`.
+
+FDC (Coston2 testnet) env — verified live against
+`https://fdc-verifiers-testnet.flare.network` (`/verifier/xrp/XRPPayment/prepareRequest`,
+`X-API-KEY` header) and `https://ctn2-data-availability.flare.network`:
+`VERIFIER_URL_TESTNET`, `VERIFIER_API_KEY_TESTNET`, `COSTON2_DA_LAYER_URL`; optional
+round timing `FDC_FIRST_VOTING_ROUND_START_TS`, `FDC_VOTING_EPOCH_DURATION_SECONDS`
+(default 90), `FDC_REQUEST_FEE_WEI`. The live `/mint/submit` pipeline turns on only
+when `EXECUTOR_PRIVATE_KEY` + the verifier/DA env are all present.
+
 ## Environment variables
 
 Copy `.env.example` to `.env` (gitignored) and fill in. **Never commit real values.**
