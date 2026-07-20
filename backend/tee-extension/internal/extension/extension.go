@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"strings"
 	"sync"
 
 	"github.com/vulcra/tee-extension/internal/config"
@@ -92,62 +93,83 @@ func (e *Extension) processKeeperScan(action teetypes.Action, df *instruction.Da
 		return e.fail(action, df, fmt.Errorf("decoding KeeperScanRequest: %w", err))
 	}
 
-	// 2. Resolve MCR (request override or config default).
-	mcrBps := e.cfg.MCRBps
+	// 2. Optional per-request MCR override (else each branch's configured MCR).
+	var reqMCR *big.Int
 	if req.MCRBps != "" {
 		if v, ok := new(big.Int).SetString(req.MCRBps, 10); ok {
-			mcrBps = v
+			reqMCR = v
 		}
 	}
 
 	out := types.KeeperScanResult{}
-	for _, owner := range req.CandidateOwners {
-		vr := types.KeeperVaultResult{Owner: owner}
 
-		// 3. AUTHORITATIVE re-read INSIDE the enclave (KTD5): getVault + FTSO.
-		// SCAFFOLD/CHAIN: call VaultManager.getVault(owner) and the FTSO feed via
-		// an eth client resolved from config.RPCURL / FlareContractRegistry.
-		// collateral6, debt18, active := e.chain.GetVault(owner)
-		// xrpUsdPrice18 := e.chain.XRPUsdPrice18()
-		collateral6, debt18, xrpUsdPrice18, active, err := e.readAuthoritativeVault(owner)
-		if err != nil {
-			vr.Error = err.Error()
-			out.Results = append(out.Results, vr)
-			continue
-		}
-		if !active {
-			vr.Error = "vault not active"
-			out.Results = append(out.Results, vr)
+	// 3. BRANCH LOOP. Multi-collateral => one VaultManager per branch, each with
+	// its own collateral decimals, FTSO feed and MCR. A request may scope the
+	// scan to a single branch via req.Branch; empty scans every configured branch.
+	for bi := range e.cfg.Branches {
+		br := &e.cfg.Branches[bi]
+		if req.Branch != "" && !strings.EqualFold(req.Branch, br.Key) {
 			continue
 		}
 
-		// 4. PURE DECISION (offline-tested logic).
-		crBps, ok := keeper.ComputeCRBps(collateral6, debt18, xrpUsdPrice18)
-		vr.Collateral6 = bigStr(collateral6)
-		vr.Debt18 = bigStr(debt18)
-		vr.XRPUsdPrice18 = bigStr(xrpUsdPrice18)
-		if ok {
-			vr.CRBps = crBps.String()
-		}
-		vr.Liquidatable = keeper.Liquidatable(collateral6, debt18, xrpUsdPrice18, mcrBps)
+		// Branch collateral scale (10^decimals) drives the keeper CR math:
+		// 1e6 for FXRP, 1e18 for wFLR. This is the fix for the old hardcoded 1e6.
+		collateralScale := keeper.CollateralScale(br.CollateralDecimals)
 
-		// 5. EXECUTE (gated). Only submit liquidate() when configured and not dry-run.
-		if vr.Liquidatable && !req.DryRun {
-			if err := e.cfg.CanExecuteOnChain(); err != nil {
-				vr.Error = "decision-only (execution gated): " + err.Error()
-			} else {
-				// SCAFFOLD/CHAIN: e.chain.Liquidate(owner) via the TEE keeper wallet
-				// (permissionless liquidate(address vaultOwner)). Sign via SIGN_PORT.
-				txHash, err := e.submitLiquidate(owner)
-				if err != nil {
-					vr.Error = err.Error()
+		mcrBps := br.MCRBps
+		if reqMCR != nil {
+			mcrBps = reqMCR
+		}
+
+		for _, owner := range req.CandidateOwners {
+			vr := types.KeeperVaultResult{Owner: owner, Branch: br.Key}
+
+			// 3a. AUTHORITATIVE re-read INSIDE the enclave (KTD5): this branch's
+			// VaultManager.getVault(owner) + this branch's FTSO feed (scaled to
+			// 18-dec). SCAFFOLD/CHAIN: resolve the eth client from config.RPCURL /
+			// FlareContractRegistry; read br.VaultManager and br.FeedID.
+			collateralRaw, debt18, priceUsd18, active, err := e.readAuthoritativeVault(br, owner)
+			if err != nil {
+				vr.Error = err.Error()
+				out.Results = append(out.Results, vr)
+				continue
+			}
+			if !active {
+				vr.Error = "vault not active"
+				out.Results = append(out.Results, vr)
+				continue
+			}
+
+			// 3b. PURE DECISION (offline-tested logic), branch-scaled.
+			crBps, ok := keeper.ComputeCRBps(collateralRaw, debt18, priceUsd18, collateralScale)
+			vr.Collateral6 = bigStr(collateralRaw)
+			vr.Debt18 = bigStr(debt18)
+			vr.XRPUsdPrice18 = bigStr(priceUsd18)
+			if ok {
+				vr.CRBps = crBps.String()
+			}
+			vr.Liquidatable = keeper.Liquidatable(collateralRaw, debt18, priceUsd18, mcrBps, collateralScale)
+
+			// 3c. EXECUTE (gated). Only submit liquidate() when configured and not
+			// dry-run. Runs for wFLR too — the branch has no XRPL mint path, but
+			// its EVM vaults are liquidated exactly like FXRP's.
+			if vr.Liquidatable && !req.DryRun {
+				if err := e.cfg.CanExecuteOnChain(); err != nil {
+					vr.Error = "decision-only (execution gated): " + err.Error()
 				} else {
-					vr.Liquidated = true
-					vr.TxHash = txHash
+					// SCAFFOLD/CHAIN: e.chain.Liquidate(owner) on br.VaultManager via
+					// the TEE keeper wallet (permissionless liquidate(address owner)).
+					txHash, err := e.submitLiquidate(br, owner)
+					if err != nil {
+						vr.Error = err.Error()
+					} else {
+						vr.Liquidated = true
+						vr.TxHash = txHash
+					}
 				}
 			}
+			out.Results = append(out.Results, vr)
 		}
-		out.Results = append(out.Results, vr)
 	}
 	out.Scanned = len(out.Results)
 
@@ -180,7 +202,8 @@ func (e *Extension) processGuardianRegister(action teetypes.Action, df *instruct
 	}
 
 	// 3. VALIDATE + STORE keyed by termsCommitment (pure, offline-tested).
-	commitment, err := e.rules.Register(rule, e.cfg.MCRBps)
+	// Validate the trigger against the rule's OWN branch MCR (per-branch MCR).
+	commitment, err := e.rules.Register(rule, e.branchMCR(rule.Branch))
 	if err != nil {
 		return e.fail(action, df, fmt.Errorf("registering rule: %w", err))
 	}
@@ -207,30 +230,42 @@ func (e *Extension) processGuardianEvaluate(action teetypes.Action, df *instruct
 		return e.fail(action, df, fmt.Errorf("no rule for termsCommitment %s", req.TermsCommitment))
 	}
 
-	// 3. AUTHORITATIVE CR + debt: from request (simulation) or on-chain read.
-	currentCRBps, currentDebt18, err := e.resolveEvalState(&req, rule.Owner)
+	// 3. Resolve the branch this evaluation routes to: the request may override
+	// (simulation), else the rule's own branch. This selects the VaultManager +
+	// FTSO feed to read and the delegatedRepay target, plus the MCR to score.
+	branchKey := rule.Branch
+	if req.Branch != "" {
+		branchKey = req.Branch
+	}
+	branch, _ := e.cfg.BranchByKey(branchKey)
+	mcrBps := e.branchMCR(branchKey)
+
+	// 4. AUTHORITATIVE CR + debt: from request (simulation) or on-chain read on
+	// this branch's VaultManager + feed.
+	currentCRBps, currentDebt18, err := e.resolveEvalState(&req, branch, rule.Owner)
 	if err != nil {
 		return e.fail(action, df, fmt.Errorf("resolving vault state: %w", err))
 	}
 
-	// 4. PURE DECISION (offline-tested).
-	should, amount := guardian.ShouldRepay(&rule, currentCRBps, e.cfg.MCRBps, currentDebt18)
+	// 5. PURE DECISION (offline-tested), scored against the branch's MCR.
+	should, amount := guardian.ShouldRepay(&rule, currentCRBps, mcrBps, currentDebt18)
 
 	res := types.GuardianEvaluateResult{
 		TermsCommitment: req.TermsCommitment,
+		Branch:          branchKey,
 		ShouldRepay:     should,
 	}
 	if should {
 		res.RepayAmount18 = amount.String()
-		// 5. EXECUTE (gated): VaultManager.delegatedRepay(owner, amount).
+		// 6. EXECUTE (gated): br.VaultManager.delegatedRepay(owner, amount).
 		if !req.DryRun {
 			if err := e.cfg.CanExecuteOnChain(); err != nil {
 				res.Error = "decision-only (execution gated): " + err.Error()
 			} else {
-				// SCAFFOLD/CHAIN: delegatedRepay is on VaultManager, gated to
-				// GUARDIAN_EXECUTOR_ROLE held by the TEE keeper wallet. No separate
-				// guardian contract.
-				txHash, err := e.submitDelegatedRepay(rule.Owner, amount)
+				// SCAFFOLD/CHAIN: delegatedRepay is on this branch's VaultManager,
+				// gated to GUARDIAN_EXECUTOR_ROLE held by the TEE keeper wallet. No
+				// separate guardian contract.
+				txHash, err := e.submitDelegatedRepay(branch, rule.Owner, amount)
 				if err != nil {
 					res.Error = err.Error()
 				} else {
@@ -289,21 +324,38 @@ func (e *Extension) fail(action teetypes.Action, df *instruction.DataFixed, err 
 // TEE SIGN_PORT. They are NOT mocked — with no funded keeper key, execution is
 // gated off by config.CanExecuteOnChain and only decisions are produced.
 
-// readAuthoritativeVault re-reads getVault(owner) + the FTSO XRP/USD price
-// inside the enclave. SCAFFOLD/CHAIN: implement with a real eth client.
-func (e *Extension) readAuthoritativeVault(owner string) (collateral6, debt18, xrpUsdPrice18 *big.Int, active bool, err error) {
-	return nil, nil, nil, false, fmt.Errorf("readAuthoritativeVault: chain client not wired (SCAFFOLD)")
+// branchMCR returns the MCR (bps) for a branch key: the branch's configured MCR
+// when the key resolves, else the global config MCR. Used both to validate a
+// rule's trigger at registration and to score it at evaluation.
+func (e *Extension) branchMCR(branchKey string) *big.Int {
+	if branchKey != "" {
+		if br, ok := e.cfg.BranchByKey(branchKey); ok && br.MCRBps != nil {
+			return br.MCRBps
+		}
+	}
+	return e.cfg.MCRBps
+}
+
+// readAuthoritativeVault re-reads br.VaultManager.getVault(owner) + br's FTSO
+// price (scaled to 18-dec) inside the enclave. The returned collateralRaw is in
+// br.CollateralDecimals; the caller scales it via keeper.CollateralScale.
+// SCAFFOLD/CHAIN: implement with a real eth client against br.VaultManager /
+// br.FeedID.
+func (e *Extension) readAuthoritativeVault(br *config.Branch, owner string) (collateralRaw, debt18, priceUsd18 *big.Int, active bool, err error) {
+	return nil, nil, nil, false, fmt.Errorf("readAuthoritativeVault[%s]: chain client not wired (SCAFFOLD)", branchKeyOf(br))
 }
 
 // decryptRule ECIES-decrypts the ciphertext via the TEE node and ABI-decodes
-// the (owner, triggerCRBps, maxRepay18) tuple. SCAFFOLD/CHAIN.
+// the (owner, triggerCRBps, maxRepay18) tuple. The branch is carried alongside
+// the ciphertext / plaintext and set on the returned Rule. SCAFFOLD/CHAIN.
 func (e *Extension) decryptRule(ciphertextHex string) (guardian.Rule, error) {
 	return guardian.Rule{}, fmt.Errorf("decryptRule: TEE /decrypt not wired (SCAFFOLD)")
 }
 
 // resolveEvalState returns the authoritative CR (bps) and debt (18-dec), from
-// the request when provided (simulation), else read on-chain. SCAFFOLD/CHAIN.
-func (e *Extension) resolveEvalState(req *types.GuardianEvaluateRequest, owner string) (currentCRBps, currentDebt18 *big.Int, err error) {
+// the request when provided (simulation), else read on-chain from the branch's
+// VaultManager + feed. SCAFFOLD/CHAIN.
+func (e *Extension) resolveEvalState(req *types.GuardianEvaluateRequest, br *config.Branch, owner string) (currentCRBps, currentDebt18 *big.Int, err error) {
 	if req.CurrentCRBps != "" && req.CurrentDebt18 != "" {
 		cr, ok1 := new(big.Int).SetString(req.CurrentCRBps, 10)
 		d, ok2 := new(big.Int).SetString(req.CurrentDebt18, 10)
@@ -311,15 +363,23 @@ func (e *Extension) resolveEvalState(req *types.GuardianEvaluateRequest, owner s
 			return cr, d, nil
 		}
 	}
-	return nil, nil, fmt.Errorf("resolveEvalState: chain client not wired (SCAFFOLD)")
+	return nil, nil, fmt.Errorf("resolveEvalState[%s]: chain client not wired (SCAFFOLD)", branchKeyOf(br))
 }
 
-func (e *Extension) submitLiquidate(owner string) (txHash string, err error) {
-	return "", fmt.Errorf("submitLiquidate: keeper wallet not wired (SCAFFOLD)")
+func (e *Extension) submitLiquidate(br *config.Branch, owner string) (txHash string, err error) {
+	return "", fmt.Errorf("submitLiquidate[%s]: keeper wallet not wired (SCAFFOLD)", branchKeyOf(br))
 }
 
-func (e *Extension) submitDelegatedRepay(owner string, amount *big.Int) (txHash string, err error) {
-	return "", fmt.Errorf("submitDelegatedRepay: keeper wallet not wired (SCAFFOLD)")
+func (e *Extension) submitDelegatedRepay(br *config.Branch, owner string, amount *big.Int) (txHash string, err error) {
+	return "", fmt.Errorf("submitDelegatedRepay[%s]: keeper wallet not wired (SCAFFOLD)", branchKeyOf(br))
+}
+
+// branchKeyOf is a nil-safe accessor for a branch's key, for log/error messages.
+func branchKeyOf(br *config.Branch) string {
+	if br == nil {
+		return "?"
+	}
+	return br.Key
 }
 
 // buildResult is a placeholder for the scaffold helper of the same role.
