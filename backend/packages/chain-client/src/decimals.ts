@@ -66,6 +66,25 @@ export function crBps(collateralUsd18: bigint, debt18: bigint): bigint {
   return (collateralUsd18 * 10000n) / debt18;
 }
 
+/** Seconds per year (V2 interest accrual): SECONDS_PER_YEAR = 365 days. */
+export const SECONDS_PER_YEAR = 31_536_000n;
+
+/**
+ * V2 linear interest accrual (matches the on-chain formula in VaultManager):
+ *   interest = recordedDebt18 * annualInterestRateBps * dt / (SECONDS_PER_YEAR * 10000)
+ *   currentDebt18 = recordedDebt18 + interest
+ *
+ * `dt` is seconds since the recorded debt's accrual timestamp. Used by the indexer
+ * to estimate the ENTIRE current debt on-read (the authoritative value is the
+ * contract's getVault/getTroveEntireDebt, which the keeper reads directly). Clamps
+ * a negative dt to 0.
+ */
+export function accrueDebt(recordedDebt18: bigint, annualInterestRateBps: bigint, dtSeconds: bigint): bigint {
+  if (recordedDebt18 <= 0n || annualInterestRateBps <= 0n || dtSeconds <= 0n) return recordedDebt18;
+  const interest = (recordedDebt18 * annualInterestRateBps * dtSeconds) / (SECONDS_PER_YEAR * 10000n);
+  return recordedDebt18 + interest;
+}
+
 /** How much FXRP (6-dec) a given USD amount (18-dec) buys at the current price. */
 export function usd18ToFxrp6(
   usd18: bigint,

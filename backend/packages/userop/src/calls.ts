@@ -37,17 +37,19 @@ export const personalAccountAbi = [
 /**
  * Build the 2-call batch for the XRPL-native atomic mint:
  *   Call[0] = FXRP.approve(zap, collateral6)
- *   Call[1] = zap.openVaultAndForward(collateral6, mint18, vusdDestination, prevHint, nextHint)
+ *   Call[1] = zap.openVaultAndForward(collateral6, mint18, annualInterestRateBps, vusdDestination, prevHint, nextHint)
  *
  * Both run from the PersonalAccount context, so the Zap pulls FXRP from the
  * PersonalAccount and opens a vault owned by it. Vault identity = owner address
- * (the PersonalAccount), matching the smartcontract authority.
+ * (the PersonalAccount), matching the smartcontract authority. `annualInterestRateBps`
+ * is V2: for the smoothest XRPL 1-payment UX pass the VaultManager's defaultInterestRateBps().
  */
 export function buildZapMintCalls(args: {
   fxrp: Address;
   zap: Address;
   collateral6: bigint;
   mint18: bigint;
+  annualInterestRateBps: bigint;
   vusdDestination: Address;
   prevHint?: Address;
   nextHint?: Address;
@@ -71,6 +73,7 @@ export function buildZapMintCalls(args: {
       args: [
         args.collateral6,
         args.mint18,
+        args.annualInterestRateBps,
         args.vusdDestination,
         args.prevHint ?? zeroAddr,
         args.nextHint ?? zeroAddr,

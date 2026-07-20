@@ -1,15 +1,18 @@
-// Vulcra VaultManager ABI — backend's working view.
+// Vulcra VaultManager ABI — backend's view of the deployed V2 contract.
 //
-// DRAFT — the smartcontract plan is the interface AUTHORITY
-// (smartcontract/docs/plans/2026-07-20-001-feat-vulcra-smartcontract-plan.md).
-// Aligned to that plan's decisions:
-//   - Vault identity is the OWNER ADDRESS (one vault per address), never a numeric vaultId.
-//   - `delegatedRepay` and `setGuardianFunder` live on VaultManager (no separate Guardian contract).
-//   - The sorted-vault list uses (prevHint, nextHint) owner-address hints (Liquity SortedTroves pattern).
-// Re-pin the exact ABI once the smartcontract worker publishes the compiled artifact.
+// V2 (Liquity-V2 user-set interest rates + by-rate redemption). Aligned to
+// smartcontract/src/VaultManager.sol on Coston2:
+//   - Vault identity = OWNER ADDRESS (one vault per address per branch).
+//   - open/openFor/openVaultAndForward take an `annualInterestRateBps`.
+//   - getVault(owner).debt18 is the ENTIRE current debt INCLUDING accrued interest.
+//   - Redemption is BY INTEREST RATE (lowest rate first) via the sorted list;
+//     the redemption-queue head is `redemptionQueueHead()` / `lowestRateVault()`.
+//   - `params()` is a struct getter (mcrBps, minDebt18, mintFeeBps, liqBonusBps,
+//     redemptionFeeBps); interest bounds are `minInterestRateBps()` /
+//     `maxInterestRateBps()` / `defaultInterestRateBps()`.
 
 export const vaultManagerAbi = [
-  // ---- vault lifecycle ----
+  // ---- vault lifecycle (V2: rate param) ----
   {
     type: "function",
     name: "openVault",
@@ -17,14 +20,13 @@ export const vaultManagerAbi = [
     inputs: [
       { name: "collateral6", type: "uint256" },
       { name: "mint18", type: "uint256" },
+      { name: "annualInterestRateBps", type: "uint256" },
       { name: "prevHint", type: "address" },
       { name: "nextHint", type: "address" },
     ],
     outputs: [],
   },
   {
-    // Called by VulcraZap during the 0xFE atomic mint: assigns the vault to `owner`
-    // (the PersonalAccount) while pulling collateral from msg.sender (the Zap).
     type: "function",
     name: "openVaultFor",
     stateMutability: "nonpayable",
@@ -32,6 +34,7 @@ export const vaultManagerAbi = [
       { name: "owner", type: "address" },
       { name: "collateral6", type: "uint256" },
       { name: "mint18", type: "uint256" },
+      { name: "annualInterestRateBps", type: "uint256" },
       { name: "debtRecipient", type: "address" },
       { name: "prevHint", type: "address" },
       { name: "nextHint", type: "address" },
@@ -40,11 +43,43 @@ export const vaultManagerAbi = [
   },
   {
     type: "function",
-    name: "adjustVault",
+    name: "adjustInterestRate",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "collateralDelta6", type: "int256" },
-      { name: "debtDelta18", type: "int256" },
+      { name: "newAnnualInterestRateBps", type: "uint256" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "addCollateral",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amount6", type: "uint256" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "withdrawCollateral",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amount6", type: "uint256" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
+    type: "function",
+    name: "mintMore",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "amount18", type: "uint256" },
       { name: "prevHint", type: "address" },
       { name: "nextHint", type: "address" },
     ],
@@ -54,17 +89,18 @@ export const vaultManagerAbi = [
     type: "function",
     name: "repay",
     stateMutability: "nonpayable",
-    inputs: [{ name: "amount18", type: "uint256" }],
+    inputs: [
+      { name: "amount18", type: "uint256" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
+    ],
     outputs: [],
   },
   {
     type: "function",
     name: "closeVault",
     stateMutability: "nonpayable",
-    inputs: [
-      { name: "prevHint", type: "address" },
-      { name: "nextHint", type: "address" },
-    ],
+    inputs: [],
     outputs: [],
   },
   // ---- peg mechanisms ----
@@ -72,24 +108,30 @@ export const vaultManagerAbi = [
     type: "function",
     name: "liquidate",
     stateMutability: "nonpayable",
-    inputs: [{ name: "vault", type: "address" }],
+    inputs: [{ name: "owner", type: "address" }],
     outputs: [],
   },
   {
+    // V2 by-rate redemption: draws from the lowest-rate vault first, bounded by maxIterations.
     type: "function",
     name: "redeem",
     stateMutability: "nonpayable",
-    inputs: [{ name: "vusdAmount18", type: "uint256" }],
-    outputs: [],
+    inputs: [
+      { name: "vusdAmount18", type: "uint256" },
+      { name: "maxIterations", type: "uint256" },
+    ],
+    outputs: [{ name: "collateralPaid6", type: "uint256" }],
   },
-  // ---- Vault Guardian (TEE) delegated repay ----
+  // ---- Vault Guardian (TEE) ----
   {
     type: "function",
     name: "delegatedRepay",
     stateMutability: "nonpayable",
     inputs: [
-      { name: "vault", type: "address" },
+      { name: "owner", type: "address" },
       { name: "maxAmount18", type: "uint256" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
     ],
     outputs: [],
   },
@@ -100,7 +142,15 @@ export const vaultManagerAbi = [
     inputs: [{ name: "funder", type: "address" }],
     outputs: [],
   },
-  // ---- views (used by pre-flight, indexer, keeper) ----
+  // ---- interest settlement ----
+  {
+    type: "function",
+    name: "mintInterest",
+    stateMutability: "nonpayable",
+    inputs: [],
+    outputs: [],
+  },
+  // ---- views (pre-flight, indexer, keeper) ----
   {
     type: "function",
     name: "getVault",
@@ -108,39 +158,151 @@ export const vaultManagerAbi = [
     inputs: [{ name: "owner", type: "address" }],
     outputs: [
       { name: "collateral6", type: "uint256" },
-      { name: "debt18", type: "uint256" },
+      { name: "debt18", type: "uint256" }, // ENTIRE current debt incl. accrued interest
       { name: "active", type: "bool" },
     ],
   },
   {
     type: "function",
-    name: "mcrBps",
+    name: "getTroveEntireDebt",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "annualInterestRateBpsOf",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "getEntireSystemDebt",
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
-    name: "minDebt18",
+    name: "pendingAggInterest",
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
-    name: "mintFeeBps",
+    name: "collateralRatioBps",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "isLiquidatable",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+  {
+    type: "function",
+    name: "redemptionQueueHead",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "lowestRateVault",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "nextVault",
+    stateMutability: "view",
+    inputs: [{ name: "owner", type: "address" }],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "riskiestVault",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  {
+    type: "function",
+    name: "vaultCount",
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
   {
     type: "function",
-    name: "liqBonusBps",
+    name: "previewOpen",
+    stateMutability: "view",
+    inputs: [
+      { name: "collateral6", type: "uint256" },
+      { name: "mint18", type: "uint256" },
+    ],
+    outputs: [
+      { name: "debt18", type: "uint256" },
+      { name: "crBps", type: "uint256" },
+      { name: "meetsMcr", type: "bool" },
+      { name: "meetsMinDebt", type: "bool" },
+    ],
+  },
+  {
+    type: "function",
+    name: "defaultInterestRateBps",
     stateMutability: "view",
     inputs: [],
     outputs: [{ name: "", type: "uint256" }],
   },
-  // ---- events (indexer + keeper consume these) ----
+  {
+    type: "function",
+    name: "minInterestRateBps",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "maxInterestRateBps",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
+    type: "function",
+    name: "collateralDecimals",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+  {
+    type: "function",
+    name: "params",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [
+      { name: "mcrBps", type: "uint256" },
+      { name: "minDebt18", type: "uint256" },
+      { name: "mintFeeBps", type: "uint256" },
+      { name: "liqBonusBps", type: "uint256" },
+      { name: "redemptionFeeBps", type: "uint256" },
+    ],
+  },
+  {
+    type: "function",
+    name: "vusd",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
+  // ---- events (indexer + keeper consume these; V2 shapes) ----
   {
     type: "event",
     name: "VaultOpened",
@@ -148,23 +310,63 @@ export const vaultManagerAbi = [
       { name: "owner", type: "address", indexed: true },
       { name: "collateral6", type: "uint256", indexed: false },
       { name: "debt18", type: "uint256", indexed: false },
-      { name: "nicr", type: "uint256", indexed: false },
+      { name: "annualInterestRateBps", type: "uint256", indexed: false },
     ],
   },
   {
     type: "event",
-    name: "VaultAdjusted",
+    name: "CollateralAdded",
     inputs: [
       { name: "owner", type: "address", indexed: true },
-      { name: "collateral6", type: "uint256", indexed: false },
-      { name: "debt18", type: "uint256", indexed: false },
-      { name: "nicr", type: "uint256", indexed: false },
+      { name: "amount6", type: "uint256", indexed: false },
+      { name: "newCollateral6", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "CollateralWithdrawn",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "amount6", type: "uint256", indexed: false },
+      { name: "newCollateral6", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "DebtMinted",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "minted18", type: "uint256", indexed: false },
+      { name: "fee18", type: "uint256", indexed: false },
+      { name: "newDebt18", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "DebtRepaid",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "amount18", type: "uint256", indexed: false },
+      { name: "newDebt18", type: "uint256", indexed: false },
     ],
   },
   {
     type: "event",
     name: "VaultClosed",
-    inputs: [{ name: "owner", type: "address", indexed: true }],
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "collateralReturned6", type: "uint256", indexed: false },
+      { name: "debtBurned18", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
+    name: "InterestRateAdjusted",
+    inputs: [
+      { name: "owner", type: "address", indexed: true },
+      { name: "newAnnualInterestRateBps", type: "uint256", indexed: false },
+      { name: "newDebt18", type: "uint256", indexed: false },
+    ],
   },
   {
     type: "event",
@@ -179,6 +381,16 @@ export const vaultManagerAbi = [
   },
   {
     type: "event",
+    name: "Redemption",
+    inputs: [
+      { name: "redeemer", type: "address", indexed: true },
+      { name: "vusdRedeemed18", type: "uint256", indexed: false },
+      { name: "collateralPaid6", type: "uint256", indexed: false },
+      { name: "fee6", type: "uint256", indexed: false },
+    ],
+  },
+  {
+    type: "event",
     name: "DelegatedRepay",
     inputs: [
       { name: "owner", type: "address", indexed: true },
@@ -188,11 +400,10 @@ export const vaultManagerAbi = [
   },
   {
     type: "event",
-    name: "Redeemed",
-    inputs: [
-      { name: "redeemer", type: "address", indexed: true },
-      { name: "vusdAmount18", type: "uint256", indexed: false },
-      { name: "fxrpPaid6", type: "uint256", indexed: false },
-    ],
+    name: "AggInterestMinted",
+    inputs: [{ name: "amount18", type: "uint256", indexed: false }],
   },
 ] as const;
+
+/** Seconds per year used by the V2 linear interest accrual (matches SECONDS_PER_YEAR = 365 days). */
+export const SECONDS_PER_YEAR = 31_536_000n;

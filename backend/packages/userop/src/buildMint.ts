@@ -34,6 +34,8 @@ export function buildMintUserOp(args: {
   zap: Address;
   collateral6: bigint;
   mint18: bigint;
+  /** V2 interest rate for the new vault (bps/year). Pass VaultManager.defaultInterestRateBps() for XRPL UX. */
+  annualInterestRateBps: bigint;
   vusdDestination: Address;
   walletId?: number;
   executorFeeUBA: bigint;
@@ -45,6 +47,7 @@ export function buildMintUserOp(args: {
     zap: args.zap,
     collateral6: args.collateral6,
     mint18: args.mint18,
+    annualInterestRateBps: args.annualInterestRateBps,
     vusdDestination: args.vusdDestination,
     prevHint: args.prevHint,
     nextHint: args.nextHint,

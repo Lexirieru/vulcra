@@ -20,6 +20,7 @@ function fixtureMint(nonce = 7n) {
     zap: ZAP,
     collateral6: 1_000_000n, // 1 FXRP
     mint18: 100_000000000000000000n, // 100 vUSD
+    annualInterestRateBps: 500n, // V2 default rate
     vusdDestination: SENDER,
     walletId: 0,
     executorFeeUBA: 100_000n, // 0.1 XRP
@@ -66,10 +67,11 @@ describe("GOLDEN VECTOR — locks the encoding so a 1-byte change fails loudly",
   // If this fails, the PackedUserOperation layout, Call encoding, or memo bytes
   // changed — every real mint would revert with CustomInstructionHashMismatch.
   // Re-pin ONLY after deliberately and verifiably changing the encoding.
+  // V2 fixture includes annualInterestRateBps=500 in the zap callData.
   const GOLDEN_USEROP_HASH =
-    "0x9e49e228b3fb7d5194350ead0034b095c68765425e59989e5ef0f31ba35ec7d9";
+    "0xd3188bdff0257cfb2d71863d31ca92f87a4ed27ed4fb8a001dcf45a0bbe87a62";
   const GOLDEN_MEMO =
-    "0xfe0000000000000186a09e49e228b3fb7d5194350ead0034b095c68765425e59989e5ef0f31ba35ec7d9";
+    "0xfe0000000000000186a0d3188bdff0257cfb2d71863d31ca92f87a4ed27ed4fb8a001dcf45a0bbe87a62";
 
   it("matches the pinned hash and memo", () => {
     const m = fixtureMint();

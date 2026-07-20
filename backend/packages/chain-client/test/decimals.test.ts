@@ -5,6 +5,7 @@ import {
   collateralValueUsd18,
   collateralValueUsd18At,
   usd18ToCollateral,
+  accrueDebt,
   crBps,
   usd18ToFxrp6,
 } from "../src/decimals.js";
@@ -66,6 +67,21 @@ describe("collateralValueUsd18At (branch-aware collateral decimals)", () => {
     expect(collateralValueUsd18At(1_000_000n, 6, 284_000n, 5)).toBe(
       collateralValueUsd18(1_000_000n, 284_000n, 5),
     );
+  });
+});
+
+describe("accrueDebt (V2 linear interest on-read)", () => {
+  it("adds no interest at dt=0 or zero rate/debt", () => {
+    expect(accrueDebt(100_000000000000000000n, 500n, 0n)).toBe(100_000000000000000000n);
+    expect(accrueDebt(100_000000000000000000n, 0n, 31_536_000n)).toBe(100_000000000000000000n);
+    expect(accrueDebt(0n, 500n, 31_536_000n)).toBe(0n);
+  });
+  it("accrues 5% over one year at 500 bps", () => {
+    // 100 vUSD at 5%/yr for 365 days -> 105 vUSD
+    expect(accrueDebt(100_000000000000000000n, 500n, 31_536_000n)).toBe(105_000000000000000000n);
+  });
+  it("accrues linearly for a partial year (half year at 800 bps = +4%)", () => {
+    expect(accrueDebt(100_000000000000000000n, 800n, 15_768_000n)).toBe(104_000000000000000000n);
   });
 });
 
