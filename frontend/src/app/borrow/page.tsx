@@ -55,7 +55,11 @@ function BranchCard({ branch }: { branch: CollateralBranch }) {
           <TokenIcon symbol={branch.collateralSymbol} size={40} alt="" />
           <span>
             <span className="block text-lg font-semibold text-ink">{branch.label}</span>
-            <span className="block text-xs text-muted">{branch.collateralSymbol} · Coston2</span>
+            <span className="block text-xs text-muted">
+              {branch.hasXrplMint
+                ? "Your XRP on Flare · via FAssets"
+                : `${branch.collateralSymbol} · Coston2`}
+            </span>
           </span>
         </span>
         {branch.hasXrplMint && <Badge tone="blue">XRPL-native mint</Badge>}
@@ -96,6 +100,7 @@ function BranchCard({ branch }: { branch: CollateralBranch }) {
             variant="ghost"
             className="flex-1"
           >
+            <TokenIcon symbol="XRP" size={16} alt="" />
             Pay from XRPL
           </PillButton>
         )}
@@ -133,6 +138,9 @@ export default function BorrowPage() {
           <p className="mt-1 max-w-2xl text-sm text-muted">
             Choose a collateral asset — each runs its own Vulcra branch on Flare
             Coston2. Deposit collateral, mint vUSD, and set your own interest rate.
+            Hold XRP? <span className="text-ink">FXRP is your XRP on Flare</span> —
+            mint straight from the XRP Ledger with a single payment, no EVM wallet
+            or FLR required.
           </p>
         </div>
       </Reveal>
