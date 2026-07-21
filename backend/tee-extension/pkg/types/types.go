@@ -64,6 +64,11 @@ type KeeperScanResult struct {
 // ABI-encoded (address owner, uint256 triggerCRBps, uint256 maxRepay18) tuple.
 type GuardianRegisterRequest struct {
 	Ciphertext string `json:"ciphertext"`
+	// Branch is PUBLIC routing metadata ("FXRP"/"WFLR") selecting which
+	// collateral branch the rule protects — a vault's branch is visible
+	// on-chain anyway. The private terms (trigger, max repay) stay inside the
+	// ciphertext. Empty defaults to FXRP at registration.
+	Branch string `json:"branch,omitempty"`
 }
 
 // GuardianRegisterResult returns ONLY the public termsCommitment. It reveals

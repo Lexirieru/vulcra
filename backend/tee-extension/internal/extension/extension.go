@@ -1,40 +1,45 @@
-// Package extension wires the Vulcra confidential logic into the
-// fce-extension-scaffold framework: it implements processAction, routes on
-// OPType then OPCommand, and calls into the dependency-free decision packages
-// (internal/keeper, internal/guardian).
+// Package extension wires the Vulcra confidential logic into the Flare
+// Confidential Compute framework (the fce-extension-scaffold pattern): it
+// serves POST /action, parses instruction.DataFixed out of each action, routes
+// on OPType then OPCommand, and calls into the dependency-free decision
+// packages (internal/keeper, internal/guardian).
 //
-// ============================ OFFLINE-BUILD NOTE ============================
-// This file imports the fce-extension-scaffold framework packages (teetypes,
-// instruction, teeutils). Those modules are NOT vendored in this repo, so THIS
-// PACKAGE DOES NOT COMPILE OFFLINE. That is expected and acceptable per the
-// task: all pure decision logic lives in internal/keeper and internal/guardian
-// (which DO build and test offline) and is merely CALLED from here.
+// Framework packages (the same ones the scaffold uses):
 //
-// To make this package build, the orchestrator must vendor the scaffold and add
-// the require line to go.mod. Every scaffold touch-point is marked `// SCAFFOLD:`
-// with the exact fce-extension-scaffold file/symbol to copy or confirm.
-// ===========================================================================
+//   - github.com/flare-foundation/go-flare-common/pkg/tee/instruction — DataFixed
+//   - github.com/flare-foundation/tee-node/pkg/types                  — Action, ActionResult
+//   - github.com/flare-foundation/tee-node/pkg/utils                  — ToHash
+//   - github.com/flare-foundation/tee-node/pkg/processorutils         — Parse
+//
+// Authoritative chain state (getVault + FTSO price) is re-read INSIDE the
+// enclave via internal/chain on every decision; the FCC indexer DB is consumed
+// by the ext-proxy for instruction transport only, never for decisions (KTD5).
 package extension
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"math/big"
+	"net/http"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/vulcra/tee-extension/internal/chain"
 	"github.com/vulcra/tee-extension/internal/config"
 	"github.com/vulcra/tee-extension/internal/guardian"
 	"github.com/vulcra/tee-extension/internal/keeper"
 	"github.com/vulcra/tee-extension/pkg/types"
 
-	// SCAFFOLD: confirm these import paths against fce-extension-scaffold.
-	// In the scaffold they are the framework packages used by
-	// internal/extension/extension.go. Replace the module path once vendored.
-	"github.com/flare-foundation/fce-extension-scaffold/pkg/instruction" // SCAFFOLD: DataFixed{OPType, OPCommand, OriginalMessage}
-	"github.com/flare-foundation/fce-extension-scaffold/pkg/teetypes"    // SCAFFOLD: Action, ActionResult
-	"github.com/flare-foundation/fce-extension-scaffold/pkg/teeutils"    // SCAFFOLD: ToHash(string) [32]byte
+	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/flare-foundation/go-flare-common/pkg/logger"
+	"github.com/flare-foundation/go-flare-common/pkg/tee/instruction"
+	"github.com/flare-foundation/tee-node/pkg/processorutils"
+	teetypes "github.com/flare-foundation/tee-node/pkg/types"
+	teeutils "github.com/flare-foundation/tee-node/pkg/utils"
 )
 
 // Extension is the stateful in-enclave server object. The guardian rule store
@@ -42,46 +47,107 @@ import (
 type Extension struct {
 	cfg   *config.Config
 	rules *guardian.Store
+	chain *chain.Client
+
+	// Server is the extension HTTP server (POST /action, GET /state).
+	Server *http.Server
 
 	mu      sync.Mutex
 	scanNum uint64
 	evalNum uint64
 }
 
-// New constructs the extension with a loaded config and an empty rule store.
-func New(cfg *config.Config) *Extension {
-	return &Extension{cfg: cfg, rules: guardian.NewStore()}
+// New constructs the extension with a loaded config, an empty rule store and a
+// live chain reader, and wires the HTTP mux (scaffold layout: GET /state,
+// POST /action).
+func New(cfg *config.Config, extensionPort int) (*Extension, error) {
+	cc, err := chain.Dial(cfg.RPCURL, cfg.FlareContractReg)
+	if err != nil {
+		return nil, fmt.Errorf("extension: %w", err)
+	}
+	e := &Extension{cfg: cfg, rules: guardian.NewStore(), chain: cc}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /state", e.stateHandler)
+	mux.HandleFunc("POST /action", e.actionHandler)
+	e.Server = &http.Server{Addr: fmt.Sprintf(":%d", extensionPort), Handler: mux}
+	return e, nil
 }
 
-// processAction is the scaffold entry point (POST /action). It routes on OPType
-// then OPCommand. A mismatched OPType/OPCommand returns an "unsupported"
-// error result, matching the scaffold's fall-through behavior.
-//
-// SCAFFOLD: signature/return type mirror the scaffold's processAction. Confirm
-// exact types (teetypes.Action, *instruction.DataFixed, teetypes.ActionResult).
-func (e *Extension) processAction(action teetypes.Action, df *instruction.DataFixed) teetypes.ActionResult {
+// stateHandler exposes only PUBLIC counters — never rule contents.
+func (e *Extension) stateHandler(w http.ResponseWriter, r *http.Request) {
+	e.mu.Lock()
+	state := map[string]any{
+		"version":      config.Version,
+		"simulatedTee": e.cfg.SimulatedTEE,
+		"branches":     len(e.cfg.Branches),
+		"scans":        e.scanNum,
+		"evaluations":  e.evalNum,
+		"rulesStored":  e.rules.Len(),
+	}
+	e.mu.Unlock()
+	if err := json.NewEncoder(w).Encode(state); err != nil {
+		http.Error(w, fmt.Sprintf("sending response: %v", err), http.StatusInternalServerError)
+	}
+}
+
+// actionHandler is the framework entry point (POST /action) — boilerplate
+// mirroring the scaffold.
+func (e *Extension) actionHandler(w http.ResponseWriter, r *http.Request) {
+	var action teetypes.Action
+	if err := json.NewDecoder(r.Body).Decode(&action); err != nil {
+		http.Error(w, fmt.Sprintf("decoding action: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	logger.Infof("received action, ID: %s", action.Data.ID)
+	status, body := e.ProcessAction(action)
+	logger.Infof("sending action result, ID: %s, http status: %d", action.Data.ID, status)
+
+	w.WriteHeader(status)
+	_, _ = w.Write(body)
+}
+
+// ProcessAction parses the DataFixed instruction out of the action and routes
+// on OPType then OPCommand. A mismatched OPType/OPCommand returns HTTP 501,
+// matching the scaffold's fall-through behavior.
+func (e *Extension) ProcessAction(action teetypes.Action) (int, []byte) {
+	df, err := processorutils.Parse[instruction.DataFixed](action.Data.Message)
+	if err != nil {
+		return http.StatusBadRequest, []byte(fmt.Sprintf("decoding fixed data: %v", err))
+	}
+
 	switch {
 	case df.OPType == teeutils.ToHash(config.OPTypeKeeper):
 		switch {
 		case df.OPCommand == teeutils.ToHash(config.OPCommandScan):
-			return e.processKeeperScan(action, df)
+			return marshalResult(e.processKeeperScan(action, df))
 		default:
-			return e.fail(action, df, fmt.Errorf("unsupported op command for KEEPER"))
+			return http.StatusNotImplemented, []byte(fmt.Sprintf(
+				"unsupported op command for KEEPER: %s", df.OPCommand.Hex()))
 		}
 
 	case df.OPType == teeutils.ToHash(config.OPTypeGuardian):
 		switch {
 		case df.OPCommand == teeutils.ToHash(config.OPCommandRegister):
-			return e.processGuardianRegister(action, df)
+			return marshalResult(e.processGuardianRegister(action, df))
 		case df.OPCommand == teeutils.ToHash(config.OPCommandEvaluate):
-			return e.processGuardianEvaluate(action, df)
+			return marshalResult(e.processGuardianEvaluate(action, df))
 		default:
-			return e.fail(action, df, fmt.Errorf("unsupported op command for GUARDIAN"))
+			return http.StatusNotImplemented, []byte(fmt.Sprintf(
+				"unsupported op command for GUARDIAN: %s", df.OPCommand.Hex()))
 		}
 
 	default:
-		return e.fail(action, df, fmt.Errorf("unsupported op type"))
+		return http.StatusNotImplemented, []byte(fmt.Sprintf(
+			"unsupported op type: %s", df.OPType.Hex()))
 	}
+}
+
+// marshalResult serializes an ActionResult for the HTTP response.
+func marshalResult(ar teetypes.ActionResult) (int, []byte) {
+	b, _ := json.Marshal(ar)
+	return http.StatusOK, b
 }
 
 // ---- KEEPER / SCAN ---------------------------------------------------------
@@ -113,7 +179,7 @@ func (e *Extension) processKeeperScan(action teetypes.Action, df *instruction.Da
 		}
 
 		// Branch collateral scale (10^decimals) drives the keeper CR math:
-		// 1e6 for FXRP, 1e18 for wFLR. This is the fix for the old hardcoded 1e6.
+		// 1e6 for FXRP, 1e18 for wFLR.
 		collateralScale := keeper.CollateralScale(br.CollateralDecimals)
 
 		mcrBps := br.MCRBps
@@ -126,8 +192,7 @@ func (e *Extension) processKeeperScan(action teetypes.Action, df *instruction.Da
 
 			// 3a. AUTHORITATIVE re-read INSIDE the enclave (KTD5): this branch's
 			// VaultManager.getVault(owner) + this branch's FTSO feed (scaled to
-			// 18-dec). SCAFFOLD/CHAIN: resolve the eth client from config.RPCURL /
-			// FlareContractRegistry; read br.VaultManager and br.FeedID.
+			// 18-dec).
 			collateralRaw, debt18, priceUsd18, active, err := e.readAuthoritativeVault(br, owner)
 			if err != nil {
 				vr.Error = err.Error()
@@ -157,8 +222,6 @@ func (e *Extension) processKeeperScan(action teetypes.Action, df *instruction.Da
 				if err := e.cfg.CanExecuteOnChain(); err != nil {
 					vr.Error = "decision-only (execution gated): " + err.Error()
 				} else {
-					// SCAFFOLD/CHAIN: e.chain.Liquidate(owner) on br.VaultManager via
-					// the TEE keeper wallet (permissionless liquidate(address owner)).
 					txHash, err := e.submitLiquidate(br, owner)
 					if err != nil {
 						vr.Error = err.Error()
@@ -192,11 +255,12 @@ func (e *Extension) processGuardianRegister(action teetypes.Action, df *instruct
 		return e.fail(action, df, fmt.Errorf("empty ciphertext"))
 	}
 
-	// 2. DECRYPT the ECIES ciphertext INSIDE the enclave, then decode the
-	// ABI-encoded (address owner, uint256 triggerCRBps, uint256 maxRepay18).
-	// SCAFFOLD: call the TEE node /decrypt endpoint (see fce-weather-insurance
-	// buyPolicyPrivate). The plaintext NEVER leaves the enclave.
-	rule, err := e.decryptRule(req.Ciphertext)
+	// 2. DECRYPT the ECIES ciphertext INSIDE the enclave (TEE node /decrypt on
+	// the sign port), then ABI-decode (address owner, uint256 triggerCRBps,
+	// uint256 maxRepay18). The plaintext NEVER leaves the enclave. req.Branch is
+	// public ROUTING metadata (a vault's branch is on-chain anyway); the private
+	// terms stay inside the ciphertext.
+	rule, err := e.decryptRule(req.Ciphertext, req.Branch)
 	if err != nil {
 		return e.fail(action, df, fmt.Errorf("decrypting rule: %w", err))
 	}
@@ -257,14 +321,13 @@ func (e *Extension) processGuardianEvaluate(action teetypes.Action, df *instruct
 	}
 	if should {
 		res.RepayAmount18 = amount.String()
-		// 6. EXECUTE (gated): br.VaultManager.delegatedRepay(owner, amount).
+		// 6. EXECUTE (gated): br.VaultManager.delegatedRepay(owner, amount) —
+		// gated to GUARDIAN_EXECUTOR_ROLE held by the TEE keeper wallet. No
+		// separate guardian contract.
 		if !req.DryRun {
 			if err := e.cfg.CanExecuteOnChain(); err != nil {
 				res.Error = "decision-only (execution gated): " + err.Error()
 			} else {
-				// SCAFFOLD/CHAIN: delegatedRepay is on this branch's VaultManager,
-				// gated to GUARDIAN_EXECUTOR_ROLE held by the TEE keeper wallet. No
-				// separate guardian contract.
 				txHash, err := e.submitDelegatedRepay(branch, rule.Owner, amount)
 				if err != nil {
 					res.Error = err.Error()
@@ -299,11 +362,9 @@ func bigStr(v *big.Int) string {
 	return v.String()
 }
 
-// ok / fail build the scaffold ActionResult.
-//
-// SCAFFOLD: replace with the scaffold's buildResult(action, df, data, status, err)
-// helper. status 1 = success (data), status 0 = error (err logged). The TEE node
-// signs the result hash; only status==1 results are accepted on-chain.
+// ok / fail build the framework ActionResult. Status 1 = success (data
+// returned), status 0 = error (err logged). The TEE node signs the result hash;
+// only status==1 results are accepted on-chain.
 func (e *Extension) ok(action teetypes.Action, df *instruction.DataFixed, payload any) teetypes.ActionResult {
 	data, err := json.Marshal(payload)
 	if err != nil {
@@ -316,13 +377,25 @@ func (e *Extension) fail(action teetypes.Action, df *instruction.DataFixed, err 
 	return buildResult(action, df, nil, 0, err)
 }
 
-// ---- SCAFFOLD/CHAIN stubs --------------------------------------------------
-// The following are the ONLY parts that need chain access. They are declared
-// here so the routing + decision flow above is complete and reviewable. The
-// orchestrator implements them against an eth client (go-ethereum) resolving
-// addresses via config.FlareContractReg / config env, and signing through the
-// TEE SIGN_PORT. They are NOT mocked — with no funded keeper key, execution is
-// gated off by config.CanExecuteOnChain and only decisions are produced.
+// buildResult mirrors the scaffold's helper of the same name.
+func buildResult(a teetypes.Action, df *instruction.DataFixed, data []byte, status uint8, err error) teetypes.ActionResult {
+	ar := teetypes.ActionResult{
+		ID:            a.Data.ID,
+		SubmissionTag: a.Data.SubmissionTag,
+		Version:       config.Version,
+		OPType:        df.OPType,
+		OPCommand:     df.OPCommand,
+		Data:          data,
+		Status:        status,
+	}
+	switch status {
+	case 0:
+		ar.Log = fmt.Sprintf("error: %v", err)
+	case 1:
+		ar.Log = "ok"
+	}
+	return ar
+}
 
 // branchMCR returns the MCR (bps) for a branch key: the branch's configured MCR
 // when the key resolves, else the global config MCR. Used both to validate a
@@ -336,25 +409,40 @@ func (e *Extension) branchMCR(branchKey string) *big.Int {
 	return e.cfg.MCRBps
 }
 
+// ---- chain reads (authoritative, in-enclave) -------------------------------
+
+// readTimeout bounds each authoritative read round-trip.
+const readTimeout = 20 * time.Second
+
+// contextWithTimeout returns the bounded context every chain read uses.
+func contextWithTimeout() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), readTimeout)
+}
+
 // readAuthoritativeVault re-reads br.VaultManager.getVault(owner) + br's FTSO
 // price (scaled to 18-dec) inside the enclave. The returned collateralRaw is in
 // br.CollateralDecimals; the caller scales it via keeper.CollateralScale.
-// SCAFFOLD/CHAIN: implement with a real eth client against br.VaultManager /
-// br.FeedID.
 func (e *Extension) readAuthoritativeVault(br *config.Branch, owner string) (collateralRaw, debt18, priceUsd18 *big.Int, active bool, err error) {
-	return nil, nil, nil, false, fmt.Errorf("readAuthoritativeVault[%s]: chain client not wired (SCAFFOLD)", branchKeyOf(br))
-}
+	if br == nil || br.VaultManager == "" {
+		return nil, nil, nil, false, fmt.Errorf("readAuthoritativeVault[%s]: branch has no VaultManager", branchKeyOf(br))
+	}
+	ctx, cancel := contextWithTimeout()
+	defer cancel()
 
-// decryptRule ECIES-decrypts the ciphertext via the TEE node and ABI-decodes
-// the (owner, triggerCRBps, maxRepay18) tuple. The branch is carried alongside
-// the ciphertext / plaintext and set on the returned Rule. SCAFFOLD/CHAIN.
-func (e *Extension) decryptRule(ciphertextHex string) (guardian.Rule, error) {
-	return guardian.Rule{}, fmt.Errorf("decryptRule: TEE /decrypt not wired (SCAFFOLD)")
+	collateralRaw, debt18, active, err = e.chain.GetVault(ctx, br.VaultManager, owner)
+	if err != nil {
+		return nil, nil, nil, false, fmt.Errorf("readAuthoritativeVault[%s]: %w", branchKeyOf(br), err)
+	}
+	priceUsd18, _, err = e.chain.FeedPrice18(ctx, br.FeedID)
+	if err != nil {
+		return nil, nil, nil, false, fmt.Errorf("readAuthoritativeVault[%s]: %w", branchKeyOf(br), err)
+	}
+	return collateralRaw, debt18, priceUsd18, active, nil
 }
 
 // resolveEvalState returns the authoritative CR (bps) and debt (18-dec), from
 // the request when provided (simulation), else read on-chain from the branch's
-// VaultManager + feed. SCAFFOLD/CHAIN.
+// VaultManager + feed.
 func (e *Extension) resolveEvalState(req *types.GuardianEvaluateRequest, br *config.Branch, owner string) (currentCRBps, currentDebt18 *big.Int, err error) {
 	if req.CurrentCRBps != "" && req.CurrentDebt18 != "" {
 		cr, ok1 := new(big.Int).SetString(req.CurrentCRBps, 10)
@@ -363,15 +451,105 @@ func (e *Extension) resolveEvalState(req *types.GuardianEvaluateRequest, br *con
 			return cr, d, nil
 		}
 	}
-	return nil, nil, fmt.Errorf("resolveEvalState[%s]: chain client not wired (SCAFFOLD)", branchKeyOf(br))
+	if br == nil {
+		return nil, nil, fmt.Errorf("resolveEvalState: unknown branch (configure VAULT_MANAGER_<KEY>_ADDRESS)")
+	}
+	collateralRaw, debt18, priceUsd18, active, err := e.readAuthoritativeVault(br, owner)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !active {
+		return nil, nil, fmt.Errorf("resolveEvalState[%s]: vault %s not active", br.Key, owner)
+	}
+	crBps, ok := keeper.ComputeCRBps(collateralRaw, debt18, priceUsd18, keeper.CollateralScale(br.CollateralDecimals))
+	if !ok {
+		return nil, nil, fmt.Errorf("resolveEvalState[%s]: CR undefined (zero debt)", br.Key)
+	}
+	return crBps, debt18, nil
 }
 
+// ---- rule decryption (TEE node /decrypt on the sign port) ------------------
+
+// ruleABIArgs describes the ABI plaintext tuple:
+// (address owner, uint256 triggerCRBps, uint256 maxRepay18).
+var ruleABIArgs = mustRuleABIArgs()
+
+func mustRuleABIArgs() abi.Arguments {
+	addrT, err := abi.NewType("address", "", nil)
+	if err != nil {
+		panic(err)
+	}
+	uintT, err := abi.NewType("uint256", "", nil)
+	if err != nil {
+		panic(err)
+	}
+	return abi.Arguments{{Type: addrT}, {Type: uintT}, {Type: uintT}}
+}
+
+// decryptRule ECIES-decrypts the ciphertext via the TEE node's /decrypt
+// endpoint (sign port) and ABI-decodes the (owner, triggerCRBps, maxRepay18)
+// tuple. branch is public routing metadata set on the returned Rule.
+func (e *Extension) decryptRule(ciphertextHex, branch string) (guardian.Rule, error) {
+	if e.cfg.SignPort == "" {
+		return guardian.Rule{}, fmt.Errorf("decryptRule: SIGN_PORT not configured (TEE node /decrypt unreachable)")
+	}
+	cipher := common.FromHex(strings.TrimSpace(ciphertextHex))
+	if len(cipher) == 0 {
+		return guardian.Rule{}, fmt.Errorf("decryptRule: empty/invalid ciphertext hex")
+	}
+
+	reqBody, err := json.Marshal(teetypes.DecryptRequest{EncryptedMessage: cipher})
+	if err != nil {
+		return guardian.Rule{}, fmt.Errorf("decryptRule: marshal: %w", err)
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%s/decrypt", e.cfg.SignPort)
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	resp, err := httpClient.Post(url, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		return guardian.Rule{}, fmt.Errorf("decryptRule: TEE node /decrypt: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return guardian.Rule{}, fmt.Errorf("decryptRule: TEE node /decrypt returned %d", resp.StatusCode)
+	}
+	var dr teetypes.DecryptResponse
+	if err := json.NewDecoder(resp.Body).Decode(&dr); err != nil {
+		return guardian.Rule{}, fmt.Errorf("decryptRule: decode response: %w", err)
+	}
+
+	vals, err := ruleABIArgs.Unpack(dr.DecryptedMessage)
+	if err != nil {
+		return guardian.Rule{}, fmt.Errorf("decryptRule: abi decode plaintext: %w", err)
+	}
+	owner, _ := vals[0].(common.Address)
+	trigger, _ := vals[1].(*big.Int)
+	maxRepay, _ := vals[2].(*big.Int)
+
+	branchKey := strings.ToUpper(strings.TrimSpace(branch))
+	if branchKey == "" {
+		branchKey = config.BranchKeyFXRP
+	}
+	return guardian.Rule{
+		Owner:        strings.ToLower(owner.Hex()),
+		Branch:       branchKey,
+		TriggerCRBps: trigger,
+		MaxRepay18:   maxRepay,
+	}, nil
+}
+
+// ---- transaction submission (gated) ----------------------------------------
+// Live submission requires the TEE keeper wallet (GUARDIAN_EXECUTOR_ROLE,
+// funded) signing through the TEE sign port. Until that wallet is provisioned,
+// config.CanExecuteOnChain keeps both paths decision-only; these methods are
+// only reachable once KEEPER_TEE_ADDRESS is set, and they fail loudly rather
+// than pretend.
+
 func (e *Extension) submitLiquidate(br *config.Branch, owner string) (txHash string, err error) {
-	return "", fmt.Errorf("submitLiquidate[%s]: keeper wallet not wired (SCAFFOLD)", branchKeyOf(br))
+	return "", fmt.Errorf("submitLiquidate[%s]: TEE keeper wallet signing not provisioned in this deployment (liquidate stays decision-only)", branchKeyOf(br))
 }
 
 func (e *Extension) submitDelegatedRepay(br *config.Branch, owner string, amount *big.Int) (txHash string, err error) {
-	return "", fmt.Errorf("submitDelegatedRepay[%s]: keeper wallet not wired (SCAFFOLD)", branchKeyOf(br))
+	return "", fmt.Errorf("submitDelegatedRepay[%s]: TEE keeper wallet signing not provisioned in this deployment (delegatedRepay stays decision-only)", branchKeyOf(br))
 }
 
 // branchKeyOf is a nil-safe accessor for a branch's key, for log/error messages.
@@ -380,10 +558,4 @@ func branchKeyOf(br *config.Branch) string {
 		return "?"
 	}
 	return br.Key
-}
-
-// buildResult is a placeholder for the scaffold helper of the same role.
-// SCAFFOLD: delete this and use the scaffold's buildResult once vendored.
-func buildResult(action teetypes.Action, df *instruction.DataFixed, data []byte, status int, err error) teetypes.ActionResult {
-	panic("SCAFFOLD: replace buildResult with fce-extension-scaffold's helper")
 }
