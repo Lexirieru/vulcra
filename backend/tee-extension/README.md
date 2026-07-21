@@ -22,41 +22,59 @@ Bounty 2.
 
 ```
 backend/tee-extension/
-├── go.mod                          # module github.com/vulcra/tee-extension (no external requires)
+├── go.mod                          # module github.com/vulcra/tee-extension (framework deps pinned)
 ├── internal/
 │   ├── keeper/    decide.go        # Liquidatable / ComputeCRBps — PURE, offline-tested
 │   ├── guardian/  rules.go eval.go # Rule store + ShouldRepay + local keccak256 — PURE, offline-tested
 │   ├── config/    config.go        # OP identifiers, env wiring (stdlib only)
-│   └── extension/ extension.go     # processAction router (needs scaffold deps — see below)
-├── cmd/extension/ main.go          # server entry point (needs scaffold deps)
+│   ├── chain/     client.go        # authoritative Coston2 reads: getVault + FTSO via registry
+│   └── extension/ extension.go     # POST /action server + OPType/OPCommand router
+├── cmd/extension/ main.go          # entry point (extension server + optional tee-node sidecar)
+├── tools/cmd/e2e-live/             # live Coston2 E2E driver (framework wire format, dry-run)
 ├── pkg/types/     types.go register.go  # request/response DTOs (stdlib json)
 ├── contracts/     VulcraInstructionSender.sol
 ├── config/proxy/  *.toml.example   # ext-proxy template (real .toml is gitignored)
 ├── scripts/       reproducible-build.sh
-└── docs/          attestation-evidence.md
+└── docs/          attestation-evidence.md, e2e-coston2-2026-07-22.md
 ```
 
 **The `internal/keeper` and `internal/guardian` packages are dependency-free**
 (Go stdlib only, including a self-contained Keccak-256) so their decision logic
-tests run OFFLINE. `internal/extension` and `cmd/extension` import the
-fce-extension-scaffold framework and **do not build offline** — every scaffold
-touch-point is marked `// SCAFFOLD:` with the exact file/symbol to wire.
+tests run OFFLINE. The framework wiring (`internal/extension`, `internal/chain`,
+`cmd/extension`, `tools/`) uses the same modules as fce-extension-scaffold —
+`go-flare-common` (instruction encoding), `tee-node` (Action types, ToHash,
+/decrypt wire types, server bootstrap) and `go-ethereum` — pinned in `go.mod`.
 
 ## Build & test
+
+Full build (fetches the pinned framework modules once):
+
+```bash
+cd backend/tee-extension
+go build ./...
+```
 
 Offline pure-logic tests (no network, no module downloads):
 
 ```bash
-cd backend/tee-extension
 GOPROXY=off go test ./internal/keeper/... ./internal/guardian/...
 # also offline-buildable:
 GOPROXY=off go build ./internal/keeper/... ./internal/guardian/... ./internal/config/... ./pkg/...
 ```
 
-Full build (after vendoring the scaffold + adding its `require` line to go.mod):
+Reproducible build (deterministic code hash — verified: two runs, same SHA-256):
 
 ```bash
 SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" ./scripts/reproducible-build.sh
+```
+
+Live Coston2 E2E (dry-run, submits no transactions; see
+[docs/e2e-coston2-2026-07-22.md](docs/e2e-coston2-2026-07-22.md) for the
+recorded evidence):
+
+```bash
+set -a; source .env; set +a
+go run ./tools/cmd/e2e-live
 ```
 
 ## Decision logic (must match the smart-contract interface)
@@ -104,10 +122,13 @@ cp config/proxy/extension_proxy.coston2.docker.toml.example \
 # fill the [db] block from vulcra-fcc.env (FCC_INDEXER_DB_*)
 ```
 
-> The Coston2 indexer DB may be **IP-restricted**. A `connection refused` from
-> `ext-proxy` means the **route to the indexer is down** (VPN/allowlist), not a
-> config error — document and retry; it does not block building or the offline
-> tests.
+> **Reachability (verified 2026-07-22):** the admin-provisioned Coston2 indexer
+> DB accepts connections + MySQL auth from this network and is fully caught up
+> with the chain (lag ≈ 3 blocks) — see
+> [docs/e2e-coston2-2026-07-22.md](docs/e2e-coston2-2026-07-22.md). The shared
+> DB is connection-capped: intermittent `connection refused`/timeouts happen and
+> retries succeed. A persistent refusal means the **route to the indexer is
+> down** (VPN/allowlist), not a config error.
 
 ## Dev deploy lifecycle (Coston2, simulated attestation)
 

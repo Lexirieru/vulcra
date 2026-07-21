@@ -154,12 +154,15 @@ env only — never committed. See `tee-extension/.env.example` and
 | `FCC_INDEXER_DB_HOST/PORT/NAME/USER/PASSWORD` | Coston2 indexer DB the ext-proxy reads |
 | `FCC_TEE_PROXY_URL` | `https://tee-proxy-coston2-1.flare.rocks` |
 
-> **Indexer DB reachability:** the Coston2 indexer DB (host/port from the
-> out-of-repo FCC env) is **IP-allowlisted** — from an unlisted host the TCP connect times out
-> (`connection refused / timeout = route down`). This does not block development:
-> the keeper/Guardian pure logic is offline-tested, and `SIMULATED_TEE=true`
-> against live Coston2 is the accepted dev path. Ask Flare support to allowlist
-> the deploy host before running the ext-proxy live.
+> **Indexer DB reachability (verified 2026-07-22):** the Coston2 indexer DB
+> (host/port from the out-of-repo FCC env) accepts TCP + MySQL auth from this
+> network and is fully caught up with the chain (lag ≈ 3 blocks) — evidence in
+> `tee-extension/docs/e2e-coston2-2026-07-22.md`. The shared hackathon DB is
+> connection-capped, so intermittent `connection refused`/timeouts happen and
+> retries succeed; a persistent refusal means the route (VPN/allowlist) is
+> down, not a config error. Development never blocks on it: the keeper/Guardian
+> pure logic is offline-tested, and `SIMULATED_TEE=true` against live Coston2
+> is the accepted dev path.
 
 See `tee-extension/README.md` and `tee-extension/docs/attestation-evidence.md`
 for the FCC deploy lifecycle and the reproducible-build / code-hash attestation
