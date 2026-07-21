@@ -1,10 +1,10 @@
 import './globals.css';
 
 export const metadata = {
-    title: 'Truus — We make advertising for you',
-    description: 'Truus is a creative advertising agency specialising in brand strategy, social media, video production, and activations.',
+    title: 'Vulcra — Forge dollars from your XRP',
+    description: 'Vulcra is a CDP stablecoin protocol on Flare. Deposit FXRP or wFLR to unlock vUSD dollars, or unlock them straight from XRPL in a single payment.',
     icons: {
-        icon: 'https://cdn.prod.website-files.com/683703490bc01e1b8c052e06/68381362603d6402ee03c00e_favicon.png',
+        icon: '/favicon.svg',
     },
 };
 

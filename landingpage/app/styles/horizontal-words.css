@@ -92,9 +92,9 @@
     position: absolute;
     top: 50%;
     left: 17.5%;
-    transform: translate(-50%, -110%);
+    /* Lifted higher so it floats above the text instead of covering "xrp" */
+    transform: translate(-50%, -168%);
     z-index: 10;
-    /* Put sticker over text */
 }
 
 .horizontal-words__placeholder-left-svg {

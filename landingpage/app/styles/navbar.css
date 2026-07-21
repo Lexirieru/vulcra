@@ -47,6 +47,30 @@
     transition: color 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ── Launch app CTA (top-right nav) ── */
+.nav-launch-cta {
+    display: inline-flex;
+    align-items: center;
+    padding: 11px 22px;
+    border-radius: 999px;
+    background-color: #E62058;
+    color: #ffffff;
+    font-size: 1.05rem;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: url("/assets/Cursor SVG/cursor-pointer.svg") 12 12, pointer;
+    box-shadow: 0 6px 18px rgba(230, 32, 88, 0.35);
+    transition: transform 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.nav-launch-cta:hover {
+    transform: translateY(-2px);
+    background-color: #ff2a68;
+    box-shadow: 0 10px 26px rgba(230, 32, 88, 0.5);
+}
+
 .navbar.on-dark {
     color: var(--bg-color);
 }

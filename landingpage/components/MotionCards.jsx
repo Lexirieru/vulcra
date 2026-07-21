@@ -128,12 +128,12 @@ export default function MotionCards() {
             {/* ─── Part 1: Bold Heading Text with SVG Sticker Placeholders ─── */}
             <div className="motion-card__heading">
                 <h2 className="motion-card__title">
-                    an agency built
+                    a stablecoin built
                     <br />
-                    for the future.
+                    on Flare.
                 </h2>
                 <p className="motion-card__subtitle">
-                    from TV to TikTok.
+                    straight from your XRP.
                     {/* SVG sticker placeholder — top-right area */}
                     <span className="motion-card__sticker motion-card__sticker--top">
                         <img
@@ -163,53 +163,45 @@ export default function MotionCards() {
                 {/* 4 Photo Cards */}
                 <div ref={containerRef} className="motion-card__cards">
                     <div className="motion-card__card motion-card__card--1">
-                        <div className="motion-card__card-image">
+                        <div className="motion-card__card-image" style={{ backgroundColor: '#23292f', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <img
-                                src="https://cdn.prod.website-files.com/683703490bc01e1b8c052e06/686b8e614494dac669a4099c_c310914b5a1a573b4c7499e9531f8d52_DE.avif"
+                                src="/assets/logos/xrp-white.svg"
                                 loading="lazy"
-                                width={1000}
-                                height={1000}
-                                alt=""
-                                className="cover-image"
+                                alt="XRP"
+                                style={{ width: '55%', height: 'auto', objectFit: 'contain' }}
                             />
                         </div>
                     </div>
 
                     <div className="motion-card__card motion-card__card--2">
-                        <div className="motion-card__card-image">
+                        <div className="motion-card__card-image" style={{ backgroundColor: '#E62058', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <img
-                                src="https://cdn.prod.website-files.com/683703490bc01e1b8c052e06/686b8e607142a7a25157d9dd_1875b9852ca289170917f9060c95b6a4_BolpuntJapie.avif"
+                                src="/assets/logos/flare-white.svg"
                                 loading="lazy"
-                                width={1000}
-                                height={1000}
-                                alt=""
-                                className="cover-image"
+                                alt="Flare"
+                                style={{ width: '60%', height: 'auto', objectFit: 'contain' }}
                             />
                         </div>
                     </div>
 
                     <div className="motion-card__card motion-card__card--3">
-                        <div className="motion-card__card-image">
+                        <div className="motion-card__card-image" style={{ backgroundColor: 'var(--color-darkblue, #1b2a4a)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <img
-                                src="https://cdn.prod.website-files.com/683703490bc01e1b8c052e06/686b8e60ba19eb1109d3daa5_b1280272f47b3cd3ea25b91391935efa_RonaldoMassage.avif"
+                                src="/assets/logos/vusd-white.svg"
                                 loading="lazy"
-                                width={1000}
-                                height={1000}
-                                alt=""
-                                className="cover-image"
+                                alt="vUSD"
+                                style={{ width: '58%', height: 'auto', objectFit: 'contain' }}
                             />
                         </div>
                     </div>
 
                     <div className="motion-card__card motion-card__card--4">
-                        <div className="motion-card__card-image">
+                        <div className="motion-card__card-image" style={{ backgroundColor: '#1a1a1a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <img
-                                src="https://cdn.prod.website-files.com/683703490bc01e1b8c052e06/686b8e607d351d1335f06e04_f1aafb2150d81c3990c906d901d2e7e4_Esprix.avif"
+                                src="/assets/logos/flare-white.svg"
                                 loading="lazy"
-                                width={1000}
-                                height={1000}
-                                alt=""
-                                className="cover-image"
+                                alt="Flare"
+                                style={{ width: '60%', height: 'auto', objectFit: 'contain' }}
                             />
                         </div>
                     </div>
@@ -218,13 +210,13 @@ export default function MotionCards() {
                 {/* Floating labels — positioned freely over the cards area */}
                 <div ref={containerRef} className="motion-card__floating-labels">
                     <div className="motion-card__floating-label motion-card__floating-label--pink">
-                        <p className="motion-card__floating-text">girls just wanna have fun!</p>
+                        <p className="motion-card__floating-text">your XRP wants to work!</p>
                     </div>
                     <div className="motion-card__floating-label motion-card__floating-label--orange">
-                        <p className="motion-card__floating-text">mainstream is not a dirty word</p>
+                        <p className="motion-card__floating-text">yield is not a dirty word</p>
                     </div>
                     <div className="motion-card__floating-label motion-card__floating-label--red">
-                        <p className="motion-card__floating-text">arrogance = old fashioned</p>
+                        <p className="motion-card__floating-text">no bridge, no hassle</p>
                     </div>
                 </div>
             </div>
@@ -232,10 +224,10 @@ export default function MotionCards() {
             {/* ─── Part 3: Bottom Paragraph Text ─── */}
             <div className="motion-card__footer-text">
                 <p className="motion-card__description">
-                    To reach the new generation you need to know where
-                    they are. We are a true 360° agency, working the
-                    whole spectrum from TikTok content to TVC and from influencer
-                    collabs to out of home spectaculars.
+                    Your XRP shouldn't sit idle. Vulcra brings it to Flare as
+                    FXRP collateral, reads a live FTSOv2 price, and lets you unlock
+                    vUSD dollars against it, all from a single XRP Ledger payment.
+                    No bridge to babysit, no EVM wallet, no FLR required.
                 </p>
             </div>
         </section>

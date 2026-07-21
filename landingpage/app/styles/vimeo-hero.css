@@ -49,12 +49,113 @@
 .vimeo-hero__fade {
     position: absolute;
     inset: 0;
+    /* Even dark scrim so the light-bg FAssets loop reads as a dark hero
+       (keeps white navbar + headline readable); darker at the bottom behind the title */
     background: linear-gradient(to bottom,
-            transparent 30%,
-            rgba(0, 0, 0, 0.2) 60%,
-            rgba(0, 0, 0, 0.7) 100%);
+            rgba(0, 0, 0, 0.55) 0%,
+            rgba(0, 0, 0, 0.48) 38%,
+            rgba(0, 0, 0, 0.62) 72%,
+            rgba(0, 0, 0, 0.82) 100%);
     z-index: 2;
     pointer-events: none;
+}
+
+/* ── Floating brand coins over the hero loop (XRP · Flare · vUSD) ── */
+.hero-brand-coins {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    /* Upper band above the bottom-left headline — coins sit centered inside it */
+    height: 58%;
+    /* Sit BELOW the vignette scrim (z-index 2) so the dark scrim washes over the
+       coins too and they read as part of the footage, not bright stickers on top */
+    z-index: 1;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(20px, 3vw, 54px);
+}
+
+.hero-coin {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: clamp(66px, 7vw, 116px);
+    aspect-ratio: 1 / 1;
+    border-radius: 50%;
+    box-shadow: 0 20px 45px rgba(0, 0, 0, 0.5),
+        inset 0 5px 14px rgba(255, 255, 255, 0.18),
+        inset 0 -8px 16px rgba(0, 0, 0, 0.25);
+    will-change: transform;
+}
+
+.hero-coin img {
+    width: 52%;
+    height: 52%;
+    object-fit: contain;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .hero-coin--xrp {
+        animation: heroCoinFloat1 7s ease-in-out infinite;
+    }
+
+    .hero-coin--flare {
+        animation: heroCoinFloat2 8.5s ease-in-out infinite;
+    }
+
+    .hero-coin--vusd {
+        animation: heroCoinFloat3 9.5s ease-in-out infinite;
+    }
+}
+
+@keyframes heroCoinFloat1 {
+
+    0%,
+    100% {
+        transform: translateY(0) rotate(-5deg);
+    }
+
+    50% {
+        transform: translateY(-20px) rotate(3deg);
+    }
+}
+
+@keyframes heroCoinFloat2 {
+
+    0%,
+    100% {
+        transform: translateY(0) rotate(4deg);
+    }
+
+    50% {
+        transform: translateY(-26px) rotate(-4deg);
+    }
+}
+
+@keyframes heroCoinFloat3 {
+
+    0%,
+    100% {
+        transform: translateY(0) rotate(-3deg);
+    }
+
+    50% {
+        transform: translateY(-16px) rotate(5deg);
+    }
+}
+
+@media (max-width: 768px) {
+    .hero-coin {
+        width: clamp(48px, 14vw, 74px);
+    }
+
+    .hero-brand-coins {
+        gap: clamp(14px, 4vw, 30px);
+    }
 }
 
 /* ─────────────────────────────────────────────────
@@ -112,8 +213,9 @@
 /* ─── ⑤ Smiley — NO animation ─────────────────── */
 .home-header__smiley {
     position: absolute;
-    top: -0.35em;
-    left: 0.4em;
+    /* Lifted above the word so it peeks over the top instead of covering "unlock" */
+    top: -0.95em;
+    left: 0.2em;
     width: 1em;
     height: 1em;
     pointer-events: none;
@@ -225,6 +327,8 @@
    (same elastic spring as .cursor-bubble)
 ───────────────────────────────────────────────── */
 .vimeo-mute-bubble {
+    /* Hidden: the hero loop is silent, so the hover mute/speaker bubble is not needed */
+    display: none;
     position: fixed;
     top: 0;
     left: 0;

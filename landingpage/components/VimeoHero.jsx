@@ -166,24 +166,40 @@ export default function VimeoHero() {
                 ref={playerRef}
                 onClick={toggleMute}
             >
-                {/* 
-                  Video Placeholder: 
-                  Currently left blank to display a solid black background while you work on text, SVGs, and the navbar.
-                  Once you have your personal video file in the `public/` folder, uncomment and update the src below!
+                {/*
+                  Hero background loop: official Flare FAssets animation (XRP spheres),
+                  self-hosted from flare.network/products/fassets. Silent, seamless, autoplay.
                 */}
                 <video
                     ref={iframeRef}
-                    // src="/your-personal-video.mp4"
                     autoPlay
                     loop
                     muted
                     playsInline
+                    preload="auto"
+                    onLoadedData={() => setIsLoaded(true)}
                     className="vimeo-hero__iframe"
-                    style={{ objectFit: 'cover', backgroundColor: '#111' }}
-                />
+                    style={{ objectFit: 'cover', backgroundColor: '#111', filter: 'brightness(0.62) saturate(1.15)' }}
+                >
+                    <source src="/assets/video/fassets-loop.webm" type="video/webm" />
+                    <source src="/assets/video/fassets-loop.mp4" type="video/mp4" />
+                </video>
 
                 {/* Gradient fade */}
                 <div className="vimeo-hero__fade" />
+
+                {/* Floating brand coins — our assets (XRP → Flare → vUSD) over the Flare loop */}
+                <div className="hero-brand-coins" aria-hidden="true">
+                    <span className="hero-coin hero-coin--xrp" style={{ backgroundColor: '#23292f' }}>
+                        <img src="/assets/logos/xrp-white.svg" alt="" />
+                    </span>
+                    <span className="hero-coin hero-coin--vusd" style={{ backgroundColor: '#3b4ef0' }}>
+                        <img src="/assets/logos/vusd-mark.svg" alt="" />
+                    </span>
+                    <span className="hero-coin hero-coin--flare" style={{ backgroundColor: '#E62058' }}>
+                        <img src="/assets/logos/flare-white.svg" alt="" />
+                    </span>
+                </div>
 
                 {/* ① Headline — bottom left, word-by-word layout */}
                 <div className="home-header__title">
@@ -192,9 +208,9 @@ export default function VimeoHero() {
                         {/* "we" */}
                         <span className="vimeo-hero__word">we </span>
 
-                        {/* "make" + ⑤ smiley (no animation) */}
+                        {/* "unlock" + ⑤ smiley (no animation) */}
                         <span className="vimeo-hero__word is--relative">
-                            <span>make </span>
+                            <span>unlock </span>
                             <div className="home-header__smiley">
                                 <img
                                     src="/assets/VimeoHero SVG/smiley-face.svg"
@@ -204,18 +220,15 @@ export default function VimeoHero() {
                             </div>
                         </span>
 
-                        {/* "advertising" italic */}
-                        <span className="vimeo-hero__word"><em>advertising </em></span>
+                        {/* "dollars" italic */}
+                        <span className="vimeo-hero__word"><em>dollars </em></span>
 
-                        {/* "for" */}
-                        <span className="vimeo-hero__word">for </span>
+                        {/* "on" */}
+                        <span className="vimeo-hero__word">on </span>
 
                         <div style={{ flexBasis: '100%', height: 0 }} />
 
-                        <span className="vimeo-hero__word">the </span>
-                        <span className="vimeo-hero__word">new </span>
-
-                        {/* "mainstream" + ⑤ pink star (no spin) + oval underline */}
+                        {/* "Flare" + ⑤ pink star (no spin) + oval underline */}
                         <span className="vimeo-hero__word is--relative">
                             <div className="home-header__star">
                                 <div className="home-header__star-inner">
@@ -232,8 +245,11 @@ export default function VimeoHero() {
                                 alt=""
                                 className="home-header__title-line-svg"
                             />
-                            <span>mainstream</span>
+                            <span>Flare</span>
                         </span>
+
+                        <span className="vimeo-hero__word">&nbsp;from </span>
+                        <span className="vimeo-hero__word">XRP</span>
 
                     </h1>
                 </div>
