@@ -145,6 +145,31 @@ export default function BorrowPage() {
         </div>
       </Reveal>
 
+      <Reveal delay={0.03}>
+        <Link
+          href="/borrow/fxrp?mode=xrpl"
+          className="group flex flex-col gap-4 rounded-[20px] bg-navy p-5 text-white shadow-[0_12px_30px_-16px_rgb(16_20_43/0.6)] transition-transform hover:-translate-y-0.5 sm:flex-row sm:items-center sm:justify-between sm:p-6"
+        >
+          <div className="flex items-center gap-4">
+            <span className="grid size-12 shrink-0 place-items-center rounded-full bg-white">
+              <TokenIcon symbol="XRP" size={30} alt="" />
+            </span>
+            <div>
+              <div className="text-base font-semibold sm:text-lg">
+                Have XRP? Borrow vUSD straight from your XRP wallet
+              </div>
+              <p className="mt-0.5 max-w-xl text-sm text-white/75">
+                Connect an XRPL wallet (Crossmark / GemWallet) and mint vUSD against
+                your XRP in a single XRP Ledger payment — no EVM wallet or FLR needed.
+              </p>
+            </div>
+          </div>
+          <span className="inline-flex shrink-0 items-center gap-2 self-start rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-navy transition-transform group-hover:translate-x-0.5 sm:self-auto">
+            Connect XRP wallet →
+          </span>
+        </Link>
+      </Reveal>
+
       <Stagger className="grid gap-4 sm:grid-cols-2" startDelay={0.05}>
         {BRANCH_ORDER.map((k) => (
           <BranchCard key={k} branch={BRANCHES[k]} />
