@@ -7,6 +7,7 @@
 // hooks and calls openVault(collateral, mint, rateBps, prevHint, nextHint).
 import { useEffect, useMemo, useState } from "react";
 import { useAccount } from "wagmi";
+import { useAppKit } from "@reown/appkit/react";
 import { zeroAddress } from "viem";
 import { ArrowDown, Gauge, Info, Percent } from "lucide-react";
 import { Badge, Button, Card, cn } from "@/components/ui";
@@ -42,6 +43,7 @@ function InfoRow({ left, right }: { left: React.ReactNode; right: React.ReactNod
 export function BorrowComposer() {
   const { branch, branchKey, setBranchKey } = useBranch();
   const { address: owner } = useAccount();
+  const { open } = useAppKit();
   const vaultManager = branch.vaultManager || undefined;
   const collDec = branch.collateralDecimals;
 
@@ -322,8 +324,8 @@ export function BorrowComposer() {
       {/* CTA */}
       <div className="mt-1 flex flex-col gap-2">
         {!owner ? (
-          <Button size="lg" disabled>
-            Connect your EVM wallet to borrow
+          <Button size="lg" onClick={() => open()}>
+            Connect wallet to borrow
           </Button>
         ) : needsApproval && collateralToken ? (
           <Button

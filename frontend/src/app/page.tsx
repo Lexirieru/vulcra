@@ -5,8 +5,7 @@
 // (position + actions + what-if) when a vault exists. All data is live per-branch
 // (FTSO price, params, interest) — wiring unchanged.
 import { useAccount } from "wagmi";
-import { useAppKit } from "@reown/appkit/react";
-import { Button, Card, Skeleton } from "@/components/ui";
+import { Card, Skeleton } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { PositionCard } from "@/components/vault/PositionCard";
 import { PriceSimulator } from "@/components/vault/PriceSimulator";
@@ -17,7 +16,6 @@ import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { useCollateralToken, useVault, useVaultParams } from "@/hooks/useVault";
 import { useVaultRate, useRedeemableBefore } from "@/hooks/useInterest";
 import { useBranch } from "@/context/branch";
-import type { CollateralBranch } from "@/config/branches";
 
 export default function DashboardPage() {
   const { branch } = useBranch();
@@ -47,9 +45,7 @@ export default function DashboardPage() {
 
       {notConfigured ? (
         <ContractsNotice branch={branch} />
-      ) : !isConnected ? (
-        <ConnectPromptCard branch={branch} />
-      ) : isLoading ? (
+      ) : isConnected && isLoading ? (
         <Card>
           <Skeleton className="h-64 w-full" />
         </Card>
@@ -101,21 +97,5 @@ export default function DashboardPage() {
         </Reveal>
       )}
     </div>
-  );
-}
-
-function ConnectPromptCard({ branch }: { branch: CollateralBranch }) {
-  const { open } = useAppKit();
-  return (
-    <Card className="mx-auto flex w-full max-w-xl flex-col items-center gap-3 py-12 text-center">
-      <p className="text-lg font-medium text-text">Connect your EVM wallet to begin</p>
-      <p className="max-w-sm text-sm text-muted">
-        MetaMask, Rabby, or WalletConnect. You&apos;ll deposit {branch.collateralSymbol},
-        mint vUSD, and manage your vault — all on Flare Coston2.
-      </p>
-      <Button size="lg" onClick={() => open()}>
-        Connect wallet
-      </Button>
-    </Card>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardTitle, Stat } from "@/components/ui";
+import { Badge, Card, CardTitle, Stat } from "@/components/ui";
 import { CrGauge } from "./CrGauge";
 import type { VaultParams, VaultState } from "@/hooks/useVault";
 import {
@@ -39,9 +39,16 @@ export function PositionCard({
   const annualCost =
     rateBps !== undefined ? annualInterest18(vault.debt18, rateBps) : undefined;
 
+  const riskLabel = band === "danger" ? "High risk" : band === "warning" ? "Watch" : "Healthy";
+
   return (
-    <Card>
-      <CardTitle>Your vault</CardTitle>
+    <Card className="p-6">
+      <div className="flex items-center justify-between">
+        <CardTitle>Your vault</CardTitle>
+        <Badge tone={band === "danger" ? "danger" : band === "warning" ? "warning" : "healthy"}>
+          {riskLabel}
+        </Badge>
+      </div>
       <div className="mt-4 grid gap-6 sm:grid-cols-[1fr_1.2fr] sm:items-center">
         <CrGauge crBps={crBps} mcrBps={params.mcrBps} />
         <div className="grid grid-cols-2 gap-5">
