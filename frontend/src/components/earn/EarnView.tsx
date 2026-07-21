@@ -5,7 +5,7 @@
 // and a "How it works" card. Live: useStabilityPool reads TVL/APR/deposits from
 // the per-branch StabilityPool contracts on Coston2 and writes deposit/withdraw.
 import { useRef, useState } from "react";
-import { SectionCard, Sticker, TokenIcon, cn } from "@/components/ui";
+import { SectionCard, Sticker, TokenIcon } from "@/components/ui";
 import { BRANCHES, BRANCH_ORDER, type BranchKey } from "@/config/branches";
 import { useBranch } from "@/context/branch";
 import { DepositPanel } from "./DepositPanel";
@@ -36,12 +36,18 @@ export function EarnView() {
   const [pickedKey, setPickedKey] = useState<BranchKey | null>(null);
   const activeKey = pickedKey ?? branchKey;
   const amountInputRef = useRef<HTMLInputElement>(null);
+  const depositRef = useRef<HTMLDivElement>(null);
 
-  function selectPool(key: BranchKey, focusAmount = false) {
+  // Selecting a pool = clicking its card. `goToDeposit` also brings the deposit
+  // form into view and focuses it (used by the card's Deposit button) so the
+  // whole select→deposit flow is one motion, not a separate top selector.
+  function selectPool(key: BranchKey, goToDeposit = false) {
     setPickedKey(key);
-    if (focusAmount) {
-      // After the deposit panel re-renders for the new pool.
-      requestAnimationFrame(() => amountInputRef.current?.focus());
+    if (goToDeposit) {
+      requestAnimationFrame(() => {
+        depositRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+        amountInputRef.current?.focus({ preventScroll: true });
+      });
     }
   }
 
@@ -72,39 +78,16 @@ export function EarnView() {
       </header>
 
       <section aria-labelledby="earn-pools-heading" className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <h2
             id="earn-pools-heading"
             className="text-lg font-semibold text-[var(--color-ink)]"
           >
             Stability pools
           </h2>
-          <div
-            role="group"
-            aria-label="Select stability pool"
-            className="inline-flex rounded-full border border-[var(--color-line)] bg-[var(--color-surface)] p-1"
-          >
-            {BRANCH_ORDER.map((key) => {
-              const active = activeKey === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => selectPool(key)}
-                  className={cn(
-                    "inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-medium transition-colors",
-                    active
-                      ? "bg-[var(--color-navy)] text-white"
-                      : "text-[var(--color-muted)] hover:text-[var(--color-ink)]",
-                  )}
-                >
-                  <TokenIcon symbol={BRANCHES[key].collateralSymbol} size={20} alt="" />
-                  {BRANCHES[key].label}
-                </button>
-              );
-            })}
-          </div>
+          <p className="text-sm text-[var(--color-muted)]">
+            Select a pool to deposit into
+          </p>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
@@ -113,13 +96,14 @@ export function EarnView() {
               key={key}
               branch={BRANCHES[key]}
               selected={activeKey === key}
-              onSelect={() => selectPool(key, true)}
+              onPick={() => selectPool(key)}
+              onDeposit={() => selectPool(key, true)}
             />
           ))}
         </div>
       </section>
 
-      <div className="grid items-start gap-4 lg:grid-cols-2">
+      <div ref={depositRef} className="grid items-start gap-4 scroll-mt-24 lg:grid-cols-2">
         <DepositPanel branch={BRANCHES[activeKey]} inputRef={amountInputRef} />
         <SectionCard
           title="How it works"

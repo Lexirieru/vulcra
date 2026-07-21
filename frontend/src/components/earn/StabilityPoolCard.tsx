@@ -30,12 +30,15 @@ function PoolStat({ label, value }: { label: string; value?: string }) {
 export function StabilityPoolCard({
   branch,
   selected,
-  onSelect,
+  onPick,
+  onDeposit,
 }: {
   branch: CollateralBranch;
   selected: boolean;
-  /** Selects this pool in the deposit panel below. */
-  onSelect: () => void;
+  /** Clicking anywhere on the card selects this pool (drives the deposit panel). */
+  onPick: () => void;
+  /** The Deposit button: select + jump to and focus the deposit form. */
+  onDeposit: () => void;
 }) {
   const pool = useStabilityPool(branch);
   const price = useFtsoPrice(branch.feedId);
@@ -44,9 +47,14 @@ export function StabilityPoolCard({
 
   return (
     <Card
+      onClick={onPick}
+      aria-current={selected ? "true" : undefined}
       className={cn(
-        "flex flex-col gap-5",
-        selected && "border-[var(--color-blue)] ring-1 ring-[var(--color-blue)]",
+        "flex cursor-pointer flex-col gap-5 transition-[transform,box-shadow,border-color]",
+        "hover:-translate-y-0.5",
+        selected
+          ? "border-[var(--color-blue)] ring-1 ring-[var(--color-blue)]"
+          : "hover:border-[var(--color-blue)]/50",
       )}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -111,7 +119,14 @@ export function StabilityPoolCard({
       </div>
 
       <div className="mt-auto">
-        <PillButton size="sm" variant={selected ? "primary" : "ghost"} onClick={onSelect}>
+        <PillButton
+          size="sm"
+          variant={selected ? "primary" : "ghost"}
+          onClick={(e) => {
+            e.stopPropagation();
+            onDeposit();
+          }}
+        >
           Deposit
           <span className="sr-only"> into the {branch.label} Stability Pool</span>
         </PillButton>
