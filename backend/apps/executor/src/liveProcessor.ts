@@ -116,8 +116,25 @@ export async function makeLiveProcessor(
         proofOwner: executorAddress,
       });
       const { roundId } = await submitAttestation(publicClient, walletSubmitAttestation, fdcConfig, abiEncodedRequest);
+      console.log(`[fdc] attestation submitted, votingRound=${roundId}; waiting for finalization`);
       await waitFinalized(publicClient, fdcConfig, roundId);
-      const proof = await fetchProof(fdcConfig, roundId, abiEncodedRequest);
+      // The DA layer indexes proofs shortly AFTER the round finalizes; poll
+      // rather than failing on the first "not found" (which would otherwise
+      // re-submit a brand-new attestation and never converge).
+      let proof: unknown;
+      let lastErr: unknown;
+      for (let i = 0; i < 24; i++) {
+        try {
+          proof = await fetchProof(fdcConfig, roundId, abiEncodedRequest);
+          break;
+        } catch (err) {
+          lastErr = err;
+          console.log(`[fdc] proof not ready for round ${roundId} (try ${i + 1}), retrying in 10s`);
+          await new Promise((r) => setTimeout(r, 10_000));
+        }
+      }
+      if (!proof) throw lastErr;
+      console.log(`[fdc] proof retrieved for round ${roundId}`);
       return { proof };
     },
 
