@@ -1,28 +1,32 @@
 "use client";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// EXTENSION POINT — real Stability Pool staking plugs in HERE.
-//
-// The Earn page is a structural scaffold (FE_ENOSYS_SPEC §4): the UI is fully
-// wired to this hook's return shape, so shipping real staking is a change to
-// THIS FILE ONLY:
-//
-//   1. Deploy a StabilityPool contract per collateral branch and add its
-//      address to `src/config/branches.ts` (e.g. `stabilityPool: Address | ""`).
-//   2. Add its ABI to `src/lib/contracts/abis.ts`.
-//   3. Replace the stub below with real wagmi reads/writes:
-//        - tvl18         ← pool.totalDeposits()          (useReadContract)
-//        - aprBps        ← derived from branch fee income
-//        - apr7dBps      ← trailing 7-day APR (needs an indexer / history)
-//        - userDeposit18 ← pool.depositOf(account)
-//        - deposit()     ← pool.provideToSP(amount)      (useWriteContract)
-//        - withdraw()    ← pool.withdrawFromSP(amount)
-//      then flip `deployed: true`.
-//
-// Every consumer (StabilityPoolCard, DepositPanel) renders "—" and disabled
-// actions while `deployed` is false — no fake numbers, per spec §5.
-// ─────────────────────────────────────────────────────────────────────────────
+// Real Stability Pool wiring (was the EARN-STAKING extension point; see git
+// history for the stub). Each branch's `stabilityPool` (config/branches.ts) is
+// a live UUPS proxy on Coston2 — deployed, verified and seeded — so every
+// figure here is on-chain state:
+//   - tvl18         ← pool.totalDeposits()
+//   - aprBps        ← pool.currentAprBps()      (live reward rate vs live TVL)
+//   - apr7dBps      ← pool.trailingAprBps(7d)   (realized, from the on-chain
+//                                                accumulator history — no indexer)
+//   - userDeposit18 ← pool.depositOf(account)
+//   - deposit()     ← vUSD.approve (if needed) + pool.provideToSP(amount)
+//   - withdraw()    ← pool.withdrawFromSP(amount)  (also pays pending rewards)
+// The vUSD address is resolved from the pool itself (pool.vusd(), the same
+// no-env pattern as StatsBar). A blank `stabilityPool` renders the honest
+// "coming soon" state — no fake numbers, per spec §5.
+import { useAccount, useConfig, useReadContracts } from "wagmi";
+import {
+  readContract,
+  waitForTransactionReceipt,
+  writeContract,
+} from "wagmi/actions";
+import { zeroAddress, type Address } from "viem";
+import { COSTON2_CHAIN_ID } from "@/config/contracts";
+import { erc20Abi, stabilityPoolAbi } from "@/lib/contracts/abis";
 import type { BranchKey, CollateralBranch } from "@/config/branches";
+
+const SEVEN_DAYS = 7n * 24n * 60n * 60n;
+const POLL_MS = 15_000;
 
 export interface StabilityPoolState {
   poolKey: BranchKey;
@@ -37,14 +41,106 @@ export interface StabilityPoolState {
   /** Connected account's deposit, 18 dec. `undefined` renders as "—". */
   userDeposit18?: bigint;
   isLoading: boolean;
-  /** Wire to StabilityPool.provideToSP — absent while the stub is in place. */
+  /** approve (when allowance is short) + StabilityPool.provideToSP. */
   deposit?: (amount18: bigint) => Promise<void>;
-  /** Wire to StabilityPool.withdrawFromSP — absent while the stub is in place. */
+  /** StabilityPool.withdrawFromSP (principal + pending rewards). */
   withdraw?: (amount18: bigint) => Promise<void>;
 }
 
 export function useStabilityPool(branch: CollateralBranch): StabilityPoolState {
-  // TODO(EARN-STAKING): replace this stub with real contract reads/writes as
-  // described in the header comment.
-  return { poolKey: branch.key, deployed: false, isLoading: false };
+  const pool = (branch.stabilityPool || undefined) as Address | undefined;
+  const { address: account } = useAccount();
+  const config = useConfig();
+
+  const base = { address: pool, abi: stabilityPoolAbi, chainId: COSTON2_CHAIN_ID } as const;
+  const { data, isLoading, refetch } = useReadContracts({
+    contracts: [
+      { ...base, functionName: "totalDeposits" },
+      { ...base, functionName: "currentAprBps" },
+      { ...base, functionName: "trailingAprBps", args: [SEVEN_DAYS] },
+      { ...base, functionName: "vusd" },
+      { ...base, functionName: "depositOf", args: [account ?? zeroAddress] },
+    ],
+    query: { enabled: Boolean(pool), refetchInterval: POLL_MS },
+  });
+
+  const read = <T,>(i: number): T | undefined =>
+    data?.[i]?.status === "success" ? (data[i].result as T) : undefined;
+
+  const tvl18 = read<bigint>(0);
+  const aprRaw = read<bigint>(1);
+  const apr7dRaw = read<bigint>(2);
+  const vusd = read<Address>(3);
+  const userDeposit18 = account ? read<bigint>(4) : undefined;
+
+  // The deposit panel has no error slot (scaffold contract): failures — user
+  // rejection included — surface on the console instead of crashing the tree.
+  async function deposit(amount18: bigint) {
+    if (!pool || !account || !vusd) return;
+    try {
+      await runDeposit(amount18);
+    } catch (err) {
+      console.error("[earn] deposit failed", err);
+    }
+  }
+
+  async function runDeposit(amount18: bigint) {
+    if (!pool || !account || !vusd) return;
+    const allowance = await readContract(config, {
+      address: vusd,
+      abi: erc20Abi,
+      functionName: "allowance",
+      args: [account, pool],
+      chainId: COSTON2_CHAIN_ID,
+    });
+    if (allowance < amount18) {
+      const approveHash = await writeContract(config, {
+        address: vusd,
+        abi: erc20Abi,
+        functionName: "approve",
+        args: [pool, amount18],
+        chainId: COSTON2_CHAIN_ID,
+      });
+      await waitForTransactionReceipt(config, {
+        hash: approveHash,
+        chainId: COSTON2_CHAIN_ID,
+      });
+    }
+    const hash = await writeContract(config, {
+      ...base,
+      address: pool,
+      functionName: "provideToSP",
+      args: [amount18],
+    });
+    await waitForTransactionReceipt(config, { hash, chainId: COSTON2_CHAIN_ID });
+    await refetch();
+  }
+
+  async function withdraw(amount18: bigint) {
+    if (!pool || !account) return;
+    try {
+      const hash = await writeContract(config, {
+        ...base,
+        address: pool,
+        functionName: "withdrawFromSP",
+        args: [amount18],
+      });
+      await waitForTransactionReceipt(config, { hash, chainId: COSTON2_CHAIN_ID });
+      await refetch();
+    } catch (err) {
+      console.error("[earn] withdraw failed", err);
+    }
+  }
+
+  return {
+    poolKey: branch.key,
+    deployed: Boolean(pool),
+    tvl18,
+    aprBps: aprRaw !== undefined ? Number(aprRaw) : undefined,
+    apr7dBps: apr7dRaw !== undefined ? Number(apr7dRaw) : undefined,
+    userDeposit18,
+    isLoading,
+    deposit: pool ? deposit : undefined,
+    withdraw: pool ? withdraw : undefined,
+  };
 }

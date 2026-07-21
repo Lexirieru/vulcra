@@ -6,7 +6,10 @@
   "version": "v2",
   "model": "multi-collateral CDP (isolated per-collateral), shared vUSD, Liquity-V2 user-set interest rates + by-rate redemption",
   "admin": "0x2917AcaAE420feEbc5eD76Efd3c37929A46eC81E",
-  "shared": { "VUSD": "0x333FDCf66792122e80654E197Eb6Fa3705f1B6D8" },
+  "shared": {
+    "VUSD": "0x333FDCf66792122e80654E197Eb6Fa3705f1B6D8",
+    "StabilityPoolImplementation": "0xAfC0d66405CB687c9208534f2c086d402A0172f7"
+  },
   "collaterals": {
     "FXRP": {
       "collateralToken": "0x0b6A3645c240605887a5532109323A3E12273dc7",
@@ -15,6 +18,7 @@
       "PriceOracle": "0x63Bf4a9d716Ce16C0E091EF9C3281f44829f953B",
       "VaultManager": "0x93e572cDbfb62557E041B53490e5208C147b5388",
       "VulcraZap": "0xCe4f886e67dE51418751314eEb19aC2D75B59dfE",
+      "StabilityPool": "0xfA2dCc4B93909ACc1dd6b2e92178D04cD1D851E4",
       "xrplNativeMint": true,
       "interest": { "minBps": 50, "maxBps": 25000, "defaultBps": 500 }
     },
@@ -24,6 +28,7 @@
       "feed": "FLR/USD",
       "PriceOracle": "0x914cd3509727afeED74267FDF5c9E7f1fB4453Df",
       "VaultManager": "0x1F079F205ca2857a3A199937Ace956ed51B0b3b8",
+      "StabilityPool": "0xB963D913CFb4688634184aB7b22e554B34557e07",
       "xrplNativeMint": false,
       "interest": { "minBps": 50, "maxBps": 25000, "defaultBps": 800 }
     }
@@ -32,6 +37,16 @@
     "FlareContractRegistry": "0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019",
     "WNat": "0xC67DCE33D7A8efA5FfEB961899C73fe01bCe9273",
     "AssetManagerFXRP": "0xc1Ca88b937d0b528842F95d5731ffB586f4fbDFA"
+  },
+  "stabilityPools": {
+    "deployedAt": "2026-07-22",
+    "model": "per-branch vUSD Stability Pool (UUPS proxy, shared implementation); rate-based vUSD reward stream; branch interestReceiver routed to its pool",
+    "upgradeRehearsal": "both proxies upgraded live via upgradeToAndCall to 0xAfC0d66405CB687c9208534f2c086d402A0172f7 (first impl 0x8b42a914361AAa66F6C58d70e7e5D53633e92314)",
+    "seed": {
+      "FXRP": { "deposit18": "3200000e18", "reward18": "58000e18", "durationDays": 60, "aprBpsAtSeed": 1102 },
+      "wFLR": { "deposit18": "850000e18", "reward18": "21000e18", "durationDays": 60, "aprBpsAtSeed": 1502 },
+      "note": "Seed vUSD minted via a temporary self-granted MINTER_ROLE (testnet treasury path), revoked in the same broadcast."
+    }
   },
   "note": "Testnet demo; per-collateral minDebt lowered on-chain for faucet-limited testing. Redemption is by interest rate (lowest first). Supersedes prior V1 deployments."
 }

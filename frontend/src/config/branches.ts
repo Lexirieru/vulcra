@@ -26,6 +26,8 @@ export interface CollateralBranch {
   wrapNative: boolean;
   /** Vulcra VaultManager instance for this branch (env; not in ContractRegistry). */
   vaultManager: Address | "";
+  /** This branch's Earn Stability Pool (UUPS proxy). Blank → Earn shows "coming soon". */
+  stabilityPool: Address | "";
   /** VulcraZap (0xFE atomic-mint helper) for XRPL-native branches. */
   zap: Address | "";
   /** Collateral token address override; else resolved via ContractRegistry. */
@@ -54,6 +56,10 @@ export const BRANCHES: Record<BranchKey, CollateralBranch> = {
     vaultManager: (env("NEXT_PUBLIC_VAULT_MANAGER_FXRP") ||
       env("NEXT_PUBLIC_VAULT_MANAGER_ADDRESS") ||
       "0x93e572cDbfb62557E041B53490e5208C147b5388") as Address,
+    // Earn Stability Pool, deployed + verified + seeded on Coston2
+    // (deployments/coston2.json → collaterals.FXRP.StabilityPool).
+    stabilityPool: (env("NEXT_PUBLIC_STABILITY_POOL_FXRP") ||
+      "0xfA2dCc4B93909ACc1dd6b2e92178D04cD1D851E4") as Address,
     zap: (env("NEXT_PUBLIC_ZAP_FXRP") ||
       "0xCe4f886e67dE51418751314eEb19aC2D75B59dfE") as Address,
     // FXRP fAsset; also resolvable via AssetManagerFXRP.fAsset().
@@ -73,6 +79,10 @@ export const BRANCHES: Record<BranchKey, CollateralBranch> = {
     // Vulcra V2, deployed + verified on Coston2 (deployments/coston2.json).
     vaultManager: (env("NEXT_PUBLIC_VAULT_MANAGER_WFLR") ||
       "0x1F079F205ca2857a3A199937Ace956ed51B0b3b8") as Address,
+    // Earn Stability Pool, deployed + verified + seeded on Coston2
+    // (deployments/coston2.json → collaterals.wFLR.StabilityPool).
+    stabilityPool: (env("NEXT_PUBLIC_STABILITY_POOL_WFLR") ||
+      "0xB963D913CFb4688634184aB7b22e554B34557e07") as Address,
     zap: "",
     // WNat/wFLR is resolved at runtime via ContractRegistry ("WNat"); the env
     // override / documented default is only a fallback.

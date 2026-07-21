@@ -78,6 +78,31 @@ export const wnatAbi = [
 // interprets decimals per branch. `params` is a public struct getter; collateral
 // operations are split (addCollateral / withdrawCollateral / mintMore / repay).
 // ─────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Vulcra Earn StabilityPool — REAL Coston2 ABI, reconciled against the deployed
+// contract (smartcontract/src/StabilityPool.sol; deployments/coston2.json →
+// stabilityPools). One UUPS proxy per collateral branch, same ABI; only the
+// instance address differs (branches.ts `stabilityPool`). All amounts are
+// 18-dec vUSD; APRs are basis points derived on-chain from the live reward
+// rate (currentAprBps) and the accumulator history (trailingAprBps).
+// ─────────────────────────────────────────────────────────────────────────────
+export const stabilityPoolAbi = [
+  // --- reads ---
+  { type: "function", name: "totalDeposits", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "depositOf", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "earned", stateMutability: "view", inputs: [{ name: "account", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "currentAprBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "trailingAprBps", stateMutability: "view", inputs: [{ name: "windowSeconds", type: "uint256" }], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "rewardRate", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "periodFinish", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint64" }] },
+  { type: "function", name: "vusd", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  { type: "function", name: "vaultManager", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "address" }] },
+  // --- writes ---
+  { type: "function", name: "provideToSP", stateMutability: "nonpayable", inputs: [{ name: "amount18", type: "uint256" }], outputs: [] },
+  { type: "function", name: "withdrawFromSP", stateMutability: "nonpayable", inputs: [{ name: "amount18", type: "uint256" }], outputs: [] },
+  { type: "function", name: "claimReward", stateMutability: "nonpayable", inputs: [], outputs: [] },
+] as const;
+
 export const vaultManagerAbi = [
   // --- reads ---
   {

@@ -2,8 +2,8 @@
 
 // Earn page composition (Enosys "Earn" layout, Vulcra light theme): heading +
 // explainer, pool selector, per-collateral Stability Pool cards, deposit panel,
-// and a "How it works" card. Structural scaffold — see useStabilityPool.ts for
-// the single file where real staking plugs in.
+// and a "How it works" card. Live: useStabilityPool reads TVL/APR/deposits from
+// the per-branch StabilityPool contracts on Coston2 and writes deposit/withdraw.
 import { useRef, useState } from "react";
 import { SectionCard, Sticker, TokenIcon, cn } from "@/components/ui";
 import { BRANCHES, BRANCH_ORDER, type BranchKey } from "@/config/branches";
@@ -58,9 +58,9 @@ export function EarnView() {
             into the branch&apos;s collateral at a discount.
           </p>
           <p className="text-sm text-[var(--color-muted)]">
-            Stability pools are not deployed on Coston2 yet, so pool figures show
-            “—” until the contract is live. Prices and branch debt are read live
-            from chain.
+            Pool TVL, APR and your deposit are read live from the Stability Pool
+            contracts on Coston2 — alongside prices and branch debt. Rewards
+            stream on-chain from real protocol interest.
           </p>
         </div>
         <Sticker

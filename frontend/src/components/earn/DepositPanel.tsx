@@ -1,9 +1,9 @@
 "use client";
 
-// Deposit/withdraw panel for the selected Stability Pool. The form is fully
-// wired to useStabilityPool: while the pool contract doesn't exist the actions
-// are disabled and clearly labelled "coming soon" (spec §4/§5 — no fake flow);
-// once useStabilityPool ships real deposit/withdraw they light up unchanged.
+// Deposit/withdraw panel for the selected Stability Pool, fully wired to
+// useStabilityPool's live deposit/withdraw against the branch's StabilityPool
+// on Coston2. If a branch ever ships without a pool address the actions fall
+// back to the disabled "coming soon" state (spec §4/§5 — no fake flow).
 import * as React from "react";
 import { useId, useState } from "react";
 import { Badge, Field, Input, PillButton, SectionCard, TokenIcon } from "@/components/ui";

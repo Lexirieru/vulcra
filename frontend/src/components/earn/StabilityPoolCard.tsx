@@ -1,8 +1,8 @@
 "use client";
 
 // Per-collateral Stability Pool card (Enosys Earn look). Pool TVL/APR/7d APR
-// come from the useStabilityPool scaffold and render as "—" until real staking
-// lands; the price + branch-debt row is live on-chain data, labelled as such.
+// are live reads from the branch's StabilityPool contract (useStabilityPool);
+// the price + branch-debt row is live on-chain data as well.
 import { Badge, Card, PillButton, Skeleton, TokenIcon, cn } from "@/components/ui";
 import type { CollateralBranch } from "@/config/branches";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
@@ -84,8 +84,7 @@ export function StabilityPoolCard({
         />
       </dl>
 
-      {/* These two figures ARE live (FTSO price + VaultManager debt) — the only
-          real numbers on the card until the pool contract ships. */}
+      {/* FTSO price + VaultManager branch debt, read live like the pool stats. */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-[var(--color-line)] pt-3 text-xs text-[var(--color-muted)]">
         <Badge tone="green">Live on-chain</Badge>
         <span className="flex items-center gap-1.5">
