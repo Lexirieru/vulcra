@@ -41,7 +41,7 @@ export default function RedeemPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Redeem vUSD</h1>
           <p className="mt-1 text-sm text-muted">
             Redeem vUSD for {branch.collateralSymbol} at face value. In V2, redemptions
-            are <span className="font-medium text-text">by interest rate</span> — the
+            are <span className="font-medium text-ink">by interest rate</span> — the
             lowest-rate {branch.label} vaults are redeemed first (borrowers who chose a
             lower rate accept redemption risk in exchange for cheaper debt). This is the
             arbitrage that holds the peg floor.
@@ -58,7 +58,7 @@ export default function RedeemPage() {
           <Card>
             <div className="flex items-center justify-between">
               <CardTitle>Redemption · {branch.label}</CardTitle>
-              <Badge tone="ember">face value · $1</Badge>
+              <Badge tone="brand">face value · $1</Badge>
             </div>
 
             {!configured && (
@@ -85,16 +85,16 @@ export default function RedeemPage() {
                 />
               </Field>
 
-              <div className="flex justify-center text-faint">
+              <div className="flex justify-center text-muted">
                 <ArrowDown className="h-4 w-4" aria-hidden />
               </div>
 
-              <div className="rounded-lg border border-border bg-surface-2/60 p-4">
+              <div className="rounded-lg border border-line bg-surface-2/60 p-4">
                 <Stat
                   label="You receive (est.)"
                   value={collOut !== null ? formatToken(collOut, collDec, 4) : "—"}
                   sub={`${branch.collateralSymbol} at the live oracle price`}
-                  tone="ember"
+                  tone="brand"
                 />
               </div>
 

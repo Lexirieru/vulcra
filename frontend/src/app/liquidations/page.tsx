@@ -74,7 +74,7 @@ export default function LiquidationsPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b border-border text-left text-xs uppercase text-muted">
+                    <tr className="border-b border-line text-left text-xs uppercase text-muted">
                       <th className="py-2 pr-4 font-medium">Owner</th>
                       <th className="py-2 pr-4 font-medium">Collateral</th>
                       <th className="py-2 pr-4 font-medium">Debt</th>
@@ -86,7 +86,7 @@ export default function LiquidationsPage() {
                     {rows.map((v) => {
                       const liquidatable = v.crBps < mcrBps;
                       return (
-                        <tr key={v.owner} className="border-b border-border/60">
+                        <tr key={v.owner} className="border-b border-line/60">
                           <td className="py-3 pr-4 font-mono">{shortenAddress(v.owner)}</td>
                           <td className="py-3 pr-4 font-mono tabular-nums">
                             {formatToken(BigInt(v.collateral6), branch.collateralDecimals, 2)}{" "}

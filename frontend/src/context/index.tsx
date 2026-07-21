@@ -21,9 +21,9 @@ createAppKit({
   projectId,
   metadata,
   features: { analytics: false },
-  themeMode: "dark",
+  themeMode: "light",
   themeVariables: {
-    "--w3m-accent": "#f0641e", // ember — Vulcra brand, not Flare's
+    "--w3m-accent": "#e62058", // --color-brand — Vulcra pink
     "--w3m-border-radius-master": "2px",
   },
 });

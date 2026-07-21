@@ -12,9 +12,9 @@ export function BranchSwitch() {
 
   return (
     <div className="flex items-center gap-2">
-      <Layers className="h-4 w-4 text-faint" aria-hidden />
+      <Layers className="h-4 w-4 text-muted" aria-hidden />
       <div
-        className="flex rounded-lg border border-border bg-surface p-0.5"
+        className="flex rounded-lg border border-line bg-surface p-0.5"
         role="tablist"
         aria-label="Collateral branch"
       >
@@ -29,7 +29,7 @@ export function BranchSwitch() {
               onClick={() => setBranchKey(key)}
               className={cn(
                 "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                active ? "bg-surface-2 text-ember" : "text-muted hover:text-text",
+                active ? "bg-surface-2 text-brand" : "text-muted hover:text-ink",
               )}
             >
               {b.label}

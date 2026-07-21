@@ -74,13 +74,13 @@ export default function GuardianPage() {
       <Reveal>
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-semibold tracking-tight">
-            <ShieldCheck className="h-6 w-6 text-ember" aria-hidden /> Vault Guardian
+            <ShieldCheck className="h-6 w-6 text-brand" aria-hidden /> Vault Guardian
           </h1>
           <p className="mt-1 text-sm text-muted">
             Private, TEE-enforced protection rules. Auto-repay before liquidation —
             without exposing your trigger on-chain beforehand. Guardian works across
             every collateral branch; the rule below protects your{" "}
-            <span className="font-medium text-text">{branch.label}</span> vault (switch
+            <span className="font-medium text-ink">{branch.label}</span> vault (switch
             branches to manage others).
           </p>
         </div>
@@ -90,8 +90,8 @@ export default function GuardianPage() {
         <Reveal>
           <Card>
             <CardTitle>New protection rule</CardTitle>
-            <p className="mt-2 flex items-start gap-2 rounded-lg border border-border bg-surface-2/50 p-3 text-xs text-muted">
-              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-ember-bright" aria-hidden />
+            <p className="mt-2 flex items-start gap-2 rounded-lg border border-line bg-surface-2/50 p-3 text-xs text-muted">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand" aria-hidden />
               Parameters are sent once to the TEE via the backend over TLS. They are
               evaluated only inside the enclave and are never published on-chain
               before execution.
@@ -170,17 +170,17 @@ export default function GuardianPage() {
                   {rulesQuery.data!.map((r) => (
                     <li
                       key={r.id}
-                      className="flex items-center justify-between rounded-lg border border-border bg-surface-2/40 px-4 py-3"
+                      className="flex items-center justify-between rounded-lg border border-line bg-surface-2/40 px-4 py-3"
                     >
                       <div className="text-sm">
-                        <div className="font-medium text-text">
+                        <div className="font-medium text-ink">
                           Auto-repay at CR {formatCr(BigInt(r.triggerCrBps))}
                         </div>
                         <div className="text-xs text-muted">
                           up to {r.maxRepay18} base-unit vUSD
                         </div>
                       </div>
-                      <Badge tone={r.enabled ? "healthy" : "neutral"}>
+                      <Badge tone={r.enabled ? "green" : "neutral"}>
                         {r.enabled ? "active" : "paused"}
                       </Badge>
                     </li>

@@ -45,7 +45,7 @@ export function PositionCard({
     <Card className="p-6">
       <div className="flex items-center justify-between">
         <CardTitle>Your vault</CardTitle>
-        <Badge tone={band === "danger" ? "danger" : band === "warning" ? "warning" : "healthy"}>
+        <Badge tone={band === "danger" ? "danger" : band === "warning" ? "warning" : "green"}>
           {riskLabel}
         </Badge>
       </div>
@@ -80,10 +80,10 @@ export function PositionCard({
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-surface-2/40 px-4 py-3 text-sm">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-line bg-surface-2/60 px-4 py-3 text-sm">
         <span className="text-muted">
           Collateral value:{" "}
-          <span className="font-mono text-text">
+          <span className="font-medium tabular-nums text-ink">
             {price18
               ? formatUsd(collateralValueUsd18(vault.collateral, collDec, price18))
               : "—"}
@@ -91,12 +91,12 @@ export function PositionCard({
         </span>
         <span className="text-muted">
           Redeemable before you:{" "}
-          <span className="font-mono text-text">
+          <span className="font-medium tabular-nums text-ink">
             {redeemableBefore18 !== undefined
               ? `${formatToken(redeemableBefore18, 18, 0)} vUSD`
               : "—"}
           </span>{" "}
-          <span className="text-faint">(lower-rate debt, redeemed first)</span>
+          <span className="text-muted/70">(lower-rate debt, redeemed first)</span>
         </span>
       </div>
     </Card>

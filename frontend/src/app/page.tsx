@@ -1,101 +1,67 @@
-"use client";
-
-// EVM vault dashboard, multi-collateral. Two clean states: an Enosys-style
-// single-column borrow composer when there is no vault, and a manage view
-// (position + actions + what-if) when a vault exists. All data is live per-branch
-// (FTSO price, params, interest) — wiring unchanged.
-import { useAccount } from "wagmi";
-import { Card, Skeleton } from "@/components/ui";
+// Enosys-style dashboard (FE_ENOSYS_SPEC §4 B2): hero cards into Borrow/Earn,
+// then the live borrow-markets table and the earn-pools table. Live reads live
+// in the client subcomponents under components/dashboard/.
+import { HeroCard, TokenIcon, Sticker } from "@/components/ui";
 import { Reveal } from "@/components/motion";
-import { PositionCard } from "@/components/vault/PositionCard";
-import { PriceSimulator } from "@/components/vault/PriceSimulator";
-import { VaultActions } from "@/components/vault/VaultActions";
-import { BorrowComposer } from "@/components/vault/BorrowComposer";
-import { ContractsNotice } from "@/components/vault/ContractsNotice";
-import { useFtsoPrice } from "@/hooks/useFtsoPrice";
-import { useCollateralToken, useVault, useVaultParams } from "@/hooks/useVault";
-import { useVaultRate, useRedeemableBefore } from "@/hooks/useInterest";
-import { useBranch } from "@/context/branch";
+import { BorrowMarketsCard } from "@/components/dashboard/BorrowMarketsCard";
+import { EarnPoolsCard } from "@/components/dashboard/EarnPoolsCard";
 
 export default function DashboardPage() {
-  const { branch } = useBranch();
-  const { address, isConnected } = useAccount();
-  const vaultManager = branch.vaultManager || undefined;
-  const { price18 } = useFtsoPrice(branch.feedId);
-  const { params } = useVaultParams(vaultManager);
-  const { vault, hasVault, notConfigured, isLoading } = useVault(address, vaultManager);
-  const { address: collateralToken } = useCollateralToken(branch);
-  const { rateBps } = useVaultRate(address, vaultManager);
-  const { data: redeemableBefore } = useRedeemableBefore(address, vaultManager, hasVault);
-
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8 sm:gap-10">
       <Reveal>
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">
-            {hasVault ? `Your ${branch.label} vault` : `Borrow vUSD against ${branch.collateralSymbol}`}
-          </h1>
-          <p className="mt-1 text-sm text-muted">
-            {hasVault
-              ? `Manage collateral, debt, and interest — live ${branch.feedLabel} pricing from FTSO.`
-              : `Deposit ${branch.collateralSymbol}, mint vUSD, and set your own interest rate.`}
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+              Open your <em className="font-display italic">first position</em>
+            </h1>
+            <p className="mt-2 max-w-xl text-sm text-muted">
+              Mint vUSD against FXRP or wFLR at a rate you choose, or put vUSD
+              to work in the stability pools — live on Flare Coston2.
+            </p>
+          </div>
+          <Sticker
+            name="sticker-heart"
+            size={52}
+            rotate={-8}
+            className="hidden shrink-0 sm:block"
+          />
         </div>
       </Reveal>
 
-      {notConfigured ? (
-        <ContractsNotice branch={branch} />
-      ) : isConnected && isLoading ? (
-        <Card>
-          <Skeleton className="h-64 w-full" />
-        </Card>
-      ) : hasVault && vault ? (
-        <div className="flex flex-col gap-6">
-          <Reveal>
-            <PositionCard
-              vault={vault}
-              price18={price18}
-              params={params}
-              collDec={branch.collateralDecimals}
-              collateralSymbol={branch.collateralSymbol}
-              feedLabel={branch.feedLabel}
-              rateBps={rateBps}
-              redeemableBefore18={redeemableBefore?.debt18}
-            />
-          </Reveal>
-          <div className="grid gap-6 lg:grid-cols-2">
-            <Reveal delay={0.05}>
-              <VaultActions
-                vault={vault}
-                price18={price18}
-                params={params}
-                branch={branch}
-                collateralToken={collateralToken}
-                owner={address}
-                disabled={notConfigured}
-              />
-            </Reveal>
-            <Reveal delay={0.1}>
-              {price18 ? (
-                <PriceSimulator
-                  vault={vault}
-                  livePrice18={price18}
-                  params={params}
-                  collDec={branch.collateralDecimals}
-                />
-              ) : (
-                <Card className="flex items-center justify-center text-center text-sm text-muted">
-                  Loading live price…
-                </Card>
-              )}
-            </Reveal>
-          </div>
-        </div>
-      ) : (
-        <Reveal>
-          <BorrowComposer />
+      <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
+        <Reveal delay={0.05}>
+          <HeroCard
+            tone="navy"
+            title="Borrow"
+            desc="Mint vUSD against your collateral at whatever interest rate you want"
+            href="/borrow"
+            icon={
+              <span className="flex items-center">
+                <TokenIcon symbol="FXRP" size={40} alt="" />
+                <TokenIcon symbol="WFLR" size={40} alt="" className="-ml-2.5" />
+              </span>
+            }
+          />
         </Reveal>
-      )}
+        <Reveal delay={0.1}>
+          <HeroCard
+            tone="blue"
+            title="Earn"
+            desc="Deposit vUSD to earn protocol revenues and liquidation proceeds"
+            href="/earn"
+            icon={<TokenIcon symbol="vUSD" size={40} alt="" />}
+          />
+        </Reveal>
+      </div>
+
+      <Reveal delay={0.15}>
+        <BorrowMarketsCard />
+      </Reveal>
+
+      <Reveal delay={0.2}>
+        <EarnPoolsCard />
+      </Reveal>
     </div>
   );
 }

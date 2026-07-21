@@ -10,10 +10,10 @@ const ENV_VAR: Record<string, string> = {
 
 export function ContractsNotice({ branch }: { branch: CollateralBranch }) {
   return (
-    <div className="flex items-start gap-3 rounded-xl border border-ember-soft/50 bg-ember-soft/10 px-4 py-3">
-      <Info className="mt-0.5 h-4 w-4 shrink-0 text-ember-bright" aria-hidden />
+    <div className="flex items-start gap-3 rounded-xl border border-warning/35 bg-warning/10 px-4 py-3">
+      <Info className="mt-0.5 h-4 w-4 shrink-0 text-orange" aria-hidden />
       <div className="text-sm text-muted">
-        <span className="font-medium text-text">
+        <span className="font-medium text-ink">
           The {branch.label} branch is not deployed on Coston2 yet.
         </span>{" "}
         Its vault actions unlock once the VaultManager address is set

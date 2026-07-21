@@ -6,7 +6,7 @@ import { formatCr } from "@/lib/format";
 import { healthBand, type HealthBand } from "@/lib/vault-math";
 
 const BAND_COLOR: Record<HealthBand, string> = {
-  healthy: "var(--color-healthy)",
+  healthy: "var(--color-green)",
   warning: "var(--color-warning)",
   danger: "var(--color-danger)",
 };
@@ -56,7 +56,7 @@ export function CrGauge({
         <path
           d={`M ${cx - r} ${cy} A ${r} ${r} 0 0 1 ${cx + r} ${cy}`}
           fill="none"
-          stroke="var(--color-surface-2)"
+          stroke="var(--color-line)"
           strokeWidth="12"
           strokeLinecap="round"
         />
@@ -74,15 +74,15 @@ export function CrGauge({
           y1={mcrInner.y}
           x2={mcrOuter.x}
           y2={mcrOuter.y}
-          stroke="var(--color-text)"
+          stroke="var(--color-ink)"
           strokeWidth="2"
         />
       </svg>
       <div className="-mt-6 text-center">
-        <div className="font-mono text-3xl tabular-nums" style={{ color }}>
+        <div className="text-3xl font-semibold tabular-nums" style={{ color }}>
           {formatCr(crBps)}
         </div>
-        <div className="text-xs text-faint">
+        <div className="text-xs text-muted/70">
           MCR {formatCr(mcrBps)} · {band}
         </div>
       </div>

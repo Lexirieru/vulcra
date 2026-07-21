@@ -21,20 +21,20 @@ export function TxStatus({
     <div className="mt-3 flex items-center gap-2 text-sm">
       {phase === "signing" && (
         <>
-          <Loader2 className="h-4 w-4 animate-spin text-ember" aria-hidden />
+          <Loader2 className="h-4 w-4 animate-spin text-brand" aria-hidden />
           <span className="text-muted">Confirm in your wallet…</span>
         </>
       )}
       {phase === "confirming" && (
         <>
-          <Loader2 className="h-4 w-4 animate-spin text-ember" aria-hidden />
+          <Loader2 className="h-4 w-4 animate-spin text-brand" aria-hidden />
           <span className="text-muted">Waiting for confirmation…</span>
         </>
       )}
       {phase === "success" && (
         <>
-          <CheckCircle2 className="h-4 w-4 text-healthy" aria-hidden />
-          <span className="text-healthy">Confirmed</span>
+          <CheckCircle2 className="h-4 w-4 text-green" aria-hidden />
+          <span className="text-green">Confirmed</span>
         </>
       )}
       {phase === "error" && (
@@ -50,7 +50,7 @@ export function TxStatus({
           href={`${EXPLORER}/${hash}`}
           target="_blank"
           rel="noopener noreferrer"
-          className="ml-auto inline-flex items-center gap-1 text-ember hover:text-ember-bright"
+          className="ml-auto inline-flex items-center gap-1 font-medium text-brand hover:underline"
         >
           Explorer <ExternalLink className="h-3 w-3" aria-hidden />
         </a>

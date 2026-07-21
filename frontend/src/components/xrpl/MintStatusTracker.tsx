@@ -62,17 +62,17 @@ export function MintStatusTracker({ mintId }: { mintId: string }) {
     <Card>
       <div className="flex items-center justify-between">
         <CardTitle>Mint status</CardTitle>
-        <Badge tone={state === "EXECUTED" ? "healthy" : state === "REVERTED" ? "danger" : "ember"}>
+        <Badge tone={state === "EXECUTED" ? "green" : state === "REVERTED" ? "danger" : "brand"}>
           {data?.stage ?? "tracking…"}
         </Badge>
       </div>
 
       {state === "DELAYED" && (
-        <div className="mt-4 flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
-          <Clock className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-warning/35 bg-warning/10 p-3 text-sm text-ink">
+          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-orange" aria-hidden />
           <div>
             <div className="font-medium">Delayed, not failed.</div>
-            <div className="text-warning/80">
+            <div className="text-muted">
               FAssets rate-limited this mint. The executor retries the same proof
               automatically
               {data?.executionAllowedAt
@@ -85,7 +85,7 @@ export function MintStatusTracker({ mintId }: { mintId: string }) {
       )}
 
       {state === "REVERTED" && (
-        <div className="mt-4 flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <div>
             No FXRP was minted and your XRP remains recoverable at the Core Vault.
@@ -102,17 +102,17 @@ export function MintStatusTracker({ mintId }: { mintId: string }) {
             <li key={step.state} className="flex items-center gap-3">
               <span className="flex h-6 w-6 items-center justify-center">
                 {done ? (
-                  <CheckCircle2 className="h-5 w-5 text-healthy" aria-hidden />
+                  <CheckCircle2 className="h-5 w-5 text-green" aria-hidden />
                 ) : active ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-ember" aria-hidden />
+                  <Loader2 className="h-5 w-5 animate-spin text-brand" aria-hidden />
                 ) : (
-                  <span className="h-2 w-2 rounded-full bg-border-strong" aria-hidden />
+                  <span className="h-2 w-2 rounded-full bg-line" aria-hidden />
                 )}
               </span>
               <span
                 className={cn(
                   "text-sm",
-                  done ? "text-muted" : active ? "text-text" : "text-faint",
+                  done ? "text-muted" : active ? "text-ink" : "text-muted/60",
                 )}
               >
                 {step.label}

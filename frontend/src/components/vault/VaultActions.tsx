@@ -46,10 +46,10 @@ function InterestSlider({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex items-baseline justify-between">
-        <label htmlFor="interest-rate" className="text-sm font-medium text-text">
+        <label htmlFor="interest-rate" className="text-sm font-medium text-ink">
           Interest rate
         </label>
-        <span className="font-mono text-sm tabular-nums text-ember">
+        <span className="text-sm font-semibold tabular-nums text-brand">
           {formatBps(rateBps)} / year
         </span>
       </div>
@@ -62,9 +62,9 @@ function InterestSlider({
         value={rateBps}
         onChange={(e) => onChange(Number(e.target.value))}
         aria-valuetext={`${formatBps(rateBps)} per year`}
-        className="w-full accent-[var(--color-ember)]"
+        className="w-full accent-[var(--color-brand)]"
       />
-      <div className="flex justify-between text-xs text-faint">
+      <div className="flex justify-between text-xs text-muted/70">
         <span>{formatBps(config.minBps)}</span>
         <span>
           {annual !== undefined
@@ -129,7 +129,7 @@ export function VaultActions({
       ) : (
         <>
           <div
-            className="mt-4 flex overflow-x-auto rounded-lg border border-border bg-surface p-0.5"
+            className="mt-4 flex overflow-x-auto rounded-full border border-line bg-surface-2 p-1"
             role="tablist"
             aria-label="Vault action"
           >
@@ -140,8 +140,8 @@ export function VaultActions({
                 aria-selected={tab === t.id}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  "flex-1 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  tab === t.id ? "bg-ember text-bg" : "text-muted hover:text-text",
+                  "min-h-10 flex-1 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+                  tab === t.id ? "bg-navy text-white" : "text-muted hover:text-ink",
                 )}
               >
                 {t.label}
@@ -215,8 +215,8 @@ function WrapPanel({
   const valid = wei !== null && wei > 0n && Boolean(wnat);
 
   return (
-    <div className="mt-4 rounded-lg border border-ember-soft/50 bg-ember-soft/10 p-4">
-      <div className="text-sm font-medium text-text">Wrap C2FLR → {symbol}</div>
+    <div className="mt-4 rounded-xl border border-line bg-surface-2/70 p-4">
+      <div className="text-sm font-medium text-ink">Wrap C2FLR → {symbol}</div>
       <p className="mt-1 text-xs text-muted">
         {symbol} is wrapped native C2FLR. Wrap here, then deposit it as collateral.
       </p>
@@ -507,7 +507,7 @@ function RateForm({
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted">
         Your current rate is{" "}
-        <span className="font-medium text-text">
+        <span className="font-medium text-ink">
           {currentRateBps !== undefined ? `${formatBps(Number(currentRateBps))} / year` : "—"}
         </span>
         . A lower rate is cheaper to carry but is redeemed first (redemption is by

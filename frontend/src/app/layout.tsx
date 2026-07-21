@@ -1,25 +1,29 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import { headers } from "next/headers";
 import "./globals.css";
 import ContextProvider from "@/context";
 import { BranchProvider } from "@/context/branch";
 import { AppShell } from "@/components/shell/AppShell";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+const epilogue = localFont({
+  src: "../../public/fonts/Epilogue-VariableFont_wght.ttf",
+  variable: "--font-epilogue",
+  weight: "100 900",
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+const dmSans = localFont({
+  src: "../../public/fonts/DMSans-VariableFont_opsz,wght.ttf",
+  variable: "--font-dm-sans",
+  weight: "100 900",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Vulcra — Forge dollars from your XRP",
+  title: "Vulcra — borrow vUSD on Flare · Coston2",
   description:
-    "A CDP stablecoin on Flare. Lock FXRP, mint vUSD, and mint natively from XRPL.",
+    "Borrow vUSD against FXRP and FLR collateral — a multi-collateral CDP stablecoin on Flare Coston2, with XRPL-native minting.",
 };
 
 export default async function RootLayout({
@@ -32,7 +36,7 @@ export default async function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${epilogue.variable} ${dmSans.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <ContextProvider cookies={cookies}>

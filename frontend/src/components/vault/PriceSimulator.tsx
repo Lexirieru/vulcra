@@ -34,18 +34,18 @@ export function PriceSimulator({
       </div>
 
       <div className="mt-4 flex items-baseline justify-between">
-        <span className="font-mono text-2xl tabular-nums text-text">
+        <span className="text-2xl font-semibold tabular-nums text-ink">
           {formatPrice(simPrice18)}
         </span>
         <span
-          className="font-mono text-lg tabular-nums"
+          className="text-lg font-semibold tabular-nums"
           style={{
             color:
               band === "danger"
                 ? "var(--color-danger)"
                 : band === "warning"
                   ? "var(--color-warning)"
-                  : "var(--color-healthy)",
+                  : "var(--color-green)",
           }}
         >
           CR {formatCr(crBps)}
@@ -64,9 +64,9 @@ export function PriceSimulator({
         value={pct}
         onChange={(e) => setPct(Number(e.target.value))}
         aria-valuetext={`${pct}% of live price`}
-        className="mt-4 w-full accent-[var(--color-ember)]"
+        className="mt-4 w-full accent-[var(--color-brand)]"
       />
-      <div className="mt-1 flex justify-between text-xs text-faint">
+      <div className="mt-1 flex justify-between text-xs text-muted/70">
         <span>−75%</span>
         <span>live</span>
         <span>+100%</span>

@@ -22,7 +22,7 @@ export function ConnectButton() {
         aria-label="Manage EVM wallet"
         title={address}
       >
-        <span className="h-2 w-2 rounded-full bg-healthy" aria-hidden />
+        <span className="h-2 w-2 rounded-full bg-green" aria-hidden />
         <span className="font-mono">{shortenAddress(address)}</span>
       </Button>
     );

@@ -1,16 +1,18 @@
 "use client";
 
-// Enosys-style borrow composer for opening a vault: three clean, spacious cards
-// (Collateral → Borrow vUSD → Interest rate) in a single column, with big number
-// inputs, a live collateral selector, projected liquidation price / CR, and the
-// interest slider with per-year cost. Wiring is unchanged — it reuses the same
-// hooks and calls openVault(collateral, mint, rateBps, prevHint, nextHint).
+// Enosys-style borrow composer for opening a vault (light Vulcra theme): three
+// spacious cards (Collateral → Loan → Interest rate) in a single column with big
+// number inputs, a collateral selector (live branches + "soon" chips), projected
+// liquidation price / CR, and the interest input+slider with per-year cost.
+// Wiring is unchanged — it reuses the same hooks and calls
+// openVault(collateral, mint, rateBps, prevHint, nextHint).
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import { zeroAddress } from "viem";
-import { ArrowDown, Gauge, Info, Percent } from "lucide-react";
-import { Badge, Button, Card, cn } from "@/components/ui";
+import { ArrowDown, Gauge, Info } from "lucide-react";
+import { Badge, Button, Card, PillButton, TokenIcon, cn } from "@/components/ui";
 import { TxStatus } from "./TxStatus";
 import { BRANCH_ORDER, BRANCHES } from "@/config/branches";
 import { useBranch } from "@/context/branch";
@@ -31,17 +33,70 @@ import { formatBps, formatPrice, formatToken, formatUsd, parseAmount } from "@/l
 const HINTS = [zeroAddress, zeroAddress] as const;
 const RISK_LABEL = { healthy: "Low", warning: "Medium", danger: "High" } as const;
 
+// Roadmap collaterals shown greyed-out in the selector (spec §4 — match the
+// Enosys four-asset look without faking live markets).
+const SOON = [
+  { symbol: "STXRP", title: "Staked XRP — coming soon" },
+  { symbol: "SFLR", title: "Staked FLR — coming soon" },
+] as const;
+
 function InfoRow({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between text-sm">
+    <div className="flex items-center justify-between gap-3 text-sm">
       <span className="text-muted">{left}</span>
-      <span className="font-mono tabular-nums text-text">{right}</span>
+      <span className="tabular-nums text-ink">{right}</span>
+    </div>
+  );
+}
+
+/**
+ * Collateral selector: live branches link to their /borrow/<key> page (and sync
+ * the shared branch context immediately), roadmap assets render as disabled
+ * "soon" chips.
+ */
+function CollateralSelector() {
+  const { branchKey, setBranchKey } = useBranch();
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1 rounded-full border border-line bg-surface-2 p-1"
+      aria-label="Collateral asset"
+    >
+      {BRANCH_ORDER.map((k) => {
+        const active = branchKey === k;
+        return (
+          <Link
+            key={k}
+            href={`/borrow/${k}`}
+            aria-current={active ? "page" : undefined}
+            onClick={() => setBranchKey(k)}
+            className={cn(
+              "inline-flex min-h-10 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+              active ? "bg-navy text-white" : "text-muted hover:text-ink",
+            )}
+          >
+            <TokenIcon symbol={BRANCHES[k].collateralSymbol} size={20} alt="" />
+            {BRANCHES[k].collateralSymbol}
+          </Link>
+        );
+      })}
+      {SOON.map((s) => (
+        <span
+          key={s.symbol}
+          aria-disabled
+          title={s.title}
+          className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-muted/60"
+        >
+          <TokenIcon symbol={s.symbol} size={20} alt="" className="opacity-50" />
+          {s.symbol}
+          <span className="text-[10px] font-semibold uppercase tracking-wide">soon</span>
+        </span>
+      ))}
     </div>
   );
 }
 
 export function BorrowComposer() {
-  const { branch, branchKey, setBranchKey } = useBranch();
+  const { branch } = useBranch();
   const { address: owner } = useAccount();
   const { open } = useAppKit();
   const vaultManager = branch.vaultManager || undefined;
@@ -59,6 +114,8 @@ export function BorrowComposer() {
   const [collateral, setCollateral] = useState("");
   const [mint, setMint] = useState("");
   const [rateBps, setRateBps] = useState(interest.defaultBps);
+  // Text mirror so the % field is freely editable while the slider stays synced.
+  const [rateText, setRateText] = useState((interest.defaultBps / 100).toString());
   const clampedRate = Math.min(Math.max(rateBps, interest.minBps), interest.maxBps);
 
   const [wrapAmount, setWrapAmount] = useState("");
@@ -123,59 +180,53 @@ export function BorrowComposer() {
   // Redemption-risk read from where the chosen rate sits in [min, max].
   const rateSpan = Math.max(1, interest.maxBps - interest.minBps);
   const ratePos = (clampedRate - interest.minBps) / rateSpan; // 0 lowest .. 1 highest
-  const redemptionRisk = ratePos < 0.15 ? "danger" : ratePos < 0.4 ? "warning" : "healthy";
+  const redemptionRisk = ratePos < 0.15 ? "danger" : ratePos < 0.4 ? "warning" : "green";
+
+  const setRateFromBps = (bps: number) => {
+    const next = Math.min(Math.max(bps, interest.minBps), interest.maxBps);
+    setRateBps(next);
+    setRateText((next / 100).toString());
+  };
+  const onRateTyped = (text: string) => {
+    setRateText(text);
+    const pct = Number.parseFloat(text);
+    if (Number.isFinite(pct)) setRateBps(Math.round(pct * 100));
+  };
 
   const wrapWei = parseAmount(wrapAmount, 18);
 
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-4">
+    <div className="flex w-full flex-col gap-4">
       {/* Card 1 — Collateral */}
-      <Card className="p-6">
-        <div className="flex items-center justify-between">
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-sm font-medium text-muted">Collateral</span>
-          <div
-            className="flex rounded-lg border border-border bg-surface p-0.5"
-            role="tablist"
-            aria-label="Collateral token"
-          >
-            {BRANCH_ORDER.map((k) => (
-              <button
-                key={k}
-                role="tab"
-                aria-selected={branchKey === k}
-                onClick={() => setBranchKey(k)}
-                className={cn(
-                  "rounded-md px-3 py-1.5 text-sm font-medium transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
-                  branchKey === k ? "bg-surface-2 text-ember" : "text-muted hover:text-text",
-                )}
-              >
-                {BRANCHES[k].collateralSymbol}
-              </button>
-            ))}
-          </div>
+          <CollateralSelector />
         </div>
 
-        <div className="mt-3 flex items-baseline gap-3">
+        <div className="mt-4 flex items-center gap-3">
           <input
             inputMode="decimal"
             placeholder="0.0"
             value={collateral}
             onChange={(e) => setCollateral(e.target.value)}
             aria-label={`${branch.collateralSymbol} to deposit`}
-            className="w-full bg-transparent font-mono text-4xl tabular-nums text-text outline-none placeholder:text-faint"
+            className="w-full min-w-0 bg-transparent text-4xl font-semibold tabular-nums text-ink outline-none placeholder:text-muted/50"
           />
-          <span className="shrink-0 text-lg font-semibold text-muted">{branch.collateralSymbol}</span>
+          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface-2 py-1.5 pl-1.5 pr-3.5 text-base font-semibold text-ink">
+            <TokenIcon symbol={branch.collateralSymbol} size={26} alt="" />
+            {branch.collateralSymbol}
+          </span>
         </div>
-        <div className="mt-1 font-mono text-sm text-faint">
+        <div className="mt-1 text-sm tabular-nums text-muted/70">
           {derived.collateralUsd !== undefined ? formatUsd(derived.collateralUsd) : "$0.00"}
         </div>
 
-        <div className="mt-4 space-y-1 border-t border-border pt-3">
+        <div className="mt-4 space-y-1.5 border-t border-line pt-3">
           <InfoRow
             left={
-              <span className="inline-flex items-center gap-1">
-                Price {isStale && <Badge tone="warning">stale</Badge>}
+              <span className="inline-flex items-center gap-1.5">
+                {branch.feedLabel} price {isStale && <Badge tone="warning">stale</Badge>}
               </span>
             }
             right={formatPrice(price18)}
@@ -184,7 +235,7 @@ export function BorrowComposer() {
         </div>
 
         {branch.wrapNative && (
-          <div className="mt-4 rounded-lg border border-ember-soft/50 bg-ember-soft/10 p-3">
+          <div className="mt-4 rounded-xl border border-line bg-surface-2/70 p-3">
             <div className="text-xs text-muted">
               {branch.collateralSymbol} is wrapped C2FLR — wrap first, then deposit.
             </div>
@@ -201,7 +252,7 @@ export function BorrowComposer() {
                 value={wrapAmount}
                 onChange={(e) => setWrapAmount(e.target.value)}
                 aria-label="C2FLR to wrap"
-                className="h-9 w-full rounded-md border border-border bg-bg px-3 font-mono text-sm tabular-nums text-text outline-none placeholder:text-faint focus:border-ember"
+                className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm tabular-nums text-ink outline-none placeholder:text-muted/60 focus:border-brand"
               />
               <Button
                 type="submit"
@@ -217,33 +268,36 @@ export function BorrowComposer() {
         )}
       </Card>
 
-      <div className="-my-1 flex justify-center text-faint" aria-hidden>
+      <div className="-my-1 flex justify-center text-muted/60" aria-hidden>
         <ArrowDown className="h-5 w-5" />
       </div>
 
-      {/* Card 2 — Borrow vUSD */}
-      <Card className="p-6">
-        <span className="text-sm font-medium text-muted">Borrow</span>
-        <div className="mt-3 flex items-baseline gap-3">
+      {/* Card 2 — Loan (borrow vUSD) */}
+      <Card>
+        <span className="text-sm font-medium text-muted">Loan</span>
+        <div className="mt-3 flex items-center gap-3">
           <input
             inputMode="decimal"
             placeholder="0.0"
             value={mint}
             onChange={(e) => setMint(e.target.value)}
-            aria-label="vUSD to mint"
-            className="w-full bg-transparent font-mono text-4xl tabular-nums text-text outline-none placeholder:text-faint"
+            aria-label="vUSD to borrow"
+            className="w-full min-w-0 bg-transparent text-4xl font-semibold tabular-nums text-ink outline-none placeholder:text-muted/50"
           />
-          <span className="shrink-0 text-lg font-semibold text-muted">vUSD</span>
+          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface-2 py-1.5 pl-1.5 pr-3.5 text-base font-semibold text-ink">
+            <TokenIcon symbol="vUSD" size={26} alt="" />
+            vUSD
+          </span>
         </div>
-        <div className="mt-1 flex items-center justify-between">
-          <span className="font-mono text-sm text-faint">
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <span className="text-sm tabular-nums text-muted/70">
             {mint18 !== null ? formatUsd(mint18) : "$0.00"}
           </span>
           {derived.maxMint !== undefined && (
             <button
               type="button"
               onClick={() => setMint(formatToken(derived.maxMint, 18, 2).replace(/,/g, ""))}
-              className="text-xs text-ember hover:text-ember-bright focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ember"
+              className="min-h-10 rounded-full px-2 text-xs font-medium text-brand hover:underline"
             >
               Max {formatToken(derived.maxMint, 18, 2)}
             </button>
@@ -251,15 +305,15 @@ export function BorrowComposer() {
         </div>
         {mintError && <p className="mt-2 text-xs text-danger">{mintError}</p>}
 
-        <div className="mt-4 space-y-1 border-t border-border pt-3">
+        <div className="mt-4 space-y-1.5 border-t border-line pt-3">
           <InfoRow
             left={
-              <span className="inline-flex items-center gap-1">
+              <span className="inline-flex items-center gap-1.5">
                 <Gauge className="h-3.5 w-3.5" aria-hidden /> Liquidation risk
               </span>
             }
             right={
-              <Badge tone={derived.band === "danger" ? "danger" : derived.band === "warning" ? "warning" : "healthy"}>
+              <Badge tone={derived.band === "danger" ? "danger" : derived.band === "warning" ? "warning" : "green"}>
                 {derived.crBps === null ? "—" : RISK_LABEL[derived.band]}
               </Badge>
             }
@@ -273,16 +327,26 @@ export function BorrowComposer() {
       </Card>
 
       {/* Card 3 — Interest rate */}
-      <Card className="p-6">
-        <div className="flex items-center justify-between">
-          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-muted">
-            <Percent className="h-4 w-4" aria-hidden /> Interest rate
-          </span>
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-sm font-medium text-muted">Interest rate</span>
           <Badge tone="neutral">You can change this anytime</Badge>
         </div>
-        <div className="mt-2 font-mono text-4xl tabular-nums text-text">
-          {formatBps(clampedRate)}
-          <span className="ml-2 text-base font-normal text-muted">per year</span>
+        <div className="mt-3 flex items-center gap-3">
+          <input
+            id="borrow-interest-rate"
+            type="number"
+            inputMode="decimal"
+            min={interest.minBps / 100}
+            max={interest.maxBps / 100}
+            step={0.1}
+            value={rateText}
+            onChange={(e) => onRateTyped(e.target.value)}
+            onBlur={() => setRateFromBps(rateBps)}
+            aria-label="Annual interest rate in percent"
+            className="w-32 bg-transparent text-4xl font-semibold tabular-nums text-ink outline-none [appearance:textfield] placeholder:text-muted/50 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+          />
+          <span className="text-base text-muted">% per year</span>
         </div>
         <input
           type="range"
@@ -290,17 +354,17 @@ export function BorrowComposer() {
           max={interest.maxBps}
           step={10}
           value={clampedRate}
-          onChange={(e) => setRateBps(Number(e.target.value))}
+          onChange={(e) => setRateFromBps(Number(e.target.value))}
           aria-label="Annual interest rate"
           aria-valuetext={`${formatBps(clampedRate)} per year`}
-          className="mt-4 w-full accent-[var(--color-ember)]"
+          className="mt-4 w-full accent-[var(--color-brand)]"
         />
-        <div className="mt-1 flex justify-between text-xs text-faint">
+        <div className="mt-1 flex justify-between text-xs text-muted/70">
           <span>{formatBps(interest.minBps)}</span>
           <span>{formatBps(interest.maxBps)}</span>
         </div>
 
-        <div className="mt-4 space-y-1 border-t border-border pt-3">
+        <div className="mt-4 space-y-1.5 border-t border-line pt-3">
           <InfoRow
             left="Interest cost"
             right={`≈ ${formatToken(derived.annualCost, 18, 2)} vUSD / year`}
@@ -314,7 +378,7 @@ export function BorrowComposer() {
             }
           />
         </div>
-        <p className="mt-3 flex items-start gap-1.5 text-xs text-faint">
+        <p className="mt-3 flex items-start gap-1.5 text-xs text-muted/80">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           Redemptions hit the lowest-rate vaults first. A higher rate costs more but is
           redeemed later.
@@ -324,20 +388,20 @@ export function BorrowComposer() {
       {/* CTA */}
       <div className="mt-1 flex flex-col gap-2">
         {!owner ? (
-          <Button size="lg" onClick={() => open()}>
+          <PillButton size="lg" onClick={() => open()}>
             Connect wallet to borrow
-          </Button>
+          </PillButton>
         ) : needsApproval && collateralToken ? (
-          <Button
+          <PillButton
             size="lg"
-            variant="secondary"
+            variant="dark"
             disabled={!collateralAmt || approval.isApproving}
             onClick={() => collateralAmt && approval.approve(collateralAmt)}
           >
             {approval.isApproving ? "Approving…" : `Approve ${branch.collateralSymbol}`}
-          </Button>
+          </PillButton>
         ) : (
-          <Button
+          <PillButton
             size="lg"
             disabled={!valid || action.isBusy}
             onClick={() =>
@@ -347,7 +411,7 @@ export function BorrowComposer() {
             }
           >
             {action.isBusy ? "Opening vault…" : "Open vault"}
-          </Button>
+          </PillButton>
         )}
         {approval.error && !action.error && (
           <p className="text-sm text-danger">{approval.error.message.split("\n")[0]}</p>

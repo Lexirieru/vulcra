@@ -20,19 +20,19 @@ export function LivePrice() {
         ) : isStale ? (
           <Badge tone="warning">stale</Badge>
         ) : (
-          <Badge tone="healthy">
+          <Badge tone="green">
             <Activity className="h-3 w-3" aria-hidden /> live
           </Badge>
         )}
       </div>
-      <div className="mt-3 font-mono text-4xl tabular-nums text-text">
+      <div className="mt-3 text-4xl font-semibold tabular-nums text-ink">
         {isLoading ? (
           <Skeleton className="h-10 w-40" />
         ) : (
           <RollingNumber value={formatPrice(price18)} />
         )}
       </div>
-      <p className="mt-2 text-xs text-faint">
+      <p className="mt-2 text-xs text-muted/70">
         {timestamp
           ? `Updated ${new Date(timestamp * 1000).toLocaleTimeString()} · block-latency feed`
           : "Reading FlareContractRegistry → FtsoV2 on Coston2"}
