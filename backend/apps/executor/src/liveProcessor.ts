@@ -70,6 +70,25 @@ export async function makeLiveProcessor(
   ]);
 
   const walletSubmitAttestation = async (data: Hex): Promise<{ blockTimestamp: bigint }> => {
+    // FdcHub charges a per-request fee; query it and send it as msg.value
+    // (a fixed/zero value reverts with "fee to low"). Fall back to an env
+    // override only if explicitly set.
+    const fee =
+      env.fdcRequestFeeWei ??
+      ((await publicClient.readContract({
+        address: fdcConfig.fdcHub,
+        abi: [
+          {
+            type: "function",
+            name: "getRequestFee",
+            stateMutability: "view",
+            inputs: [{ name: "_data", type: "bytes" }],
+            outputs: [{ name: "", type: "uint256" }],
+          },
+        ],
+        functionName: "getRequestFee",
+        args: [data],
+      })) as bigint);
     const hash = await walletClient.writeContract({
       address: fdcConfig.fdcHub,
       abi: fdcHubAbi,
@@ -77,7 +96,7 @@ export async function makeLiveProcessor(
       args: [data],
       account,
       chain: walletClient.chain,
-      value: env.fdcRequestFeeWei ?? 0n,
+      value: fee,
     });
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
     const block = await publicClient.getBlock({ blockNumber: receipt.blockNumber });
