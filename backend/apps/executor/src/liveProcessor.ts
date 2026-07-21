@@ -104,10 +104,15 @@ export async function makeLiveProcessor(
     return { blockTimestamp: block.timestamp };
   };
 
+  // XRPL tx hashes are 32-byte hex; ensure the 0x prefix so viem treats them as
+  // bytes32 (a bare 64-char hex is misread as bytes64).
+  const asBytes32 = (t: string): Hex =>
+    (t.startsWith("0x") ? t.toLowerCase() : "0x" + t.toLowerCase()) as Hex;
+
   const hooks: ProcessorHooks = {
     async attest(mint) {
       const abiEncodedRequest = await prepareXrpPaymentRequest(fdcConfig, {
-        transactionId: mint.xrplTxId as Hex,
+        transactionId: asBytes32(mint.xrplTxId),
         proofOwner: executorAddress,
       });
       const { roundId } = await submitAttestation(publicClient, walletSubmitAttestation, fdcConfig, abiEncodedRequest);
@@ -120,7 +125,8 @@ export async function makeLiveProcessor(
       try {
         const txHash = await submitDirectMinting(
           { publicClient, walletClient, assetManager },
-          { proof: (proof as { data?: unknown }).data ?? proof, userOpBytes },
+          // _payment is the full IXRPPayment.Proof tuple {merkleProof, data}.
+          { proof, userOpBytes },
         );
         const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
         // A delay does NOT revert — scan the receipt for a delay event.
@@ -149,7 +155,7 @@ export async function makeLiveProcessor(
         address: assetManager,
         abi: assetManagerAbi,
         functionName: "isTransactionIdUsed",
-        args: [xrplTxId as Hex],
+        args: [asBytes32(xrplTxId)],
       })) as boolean;
     },
 

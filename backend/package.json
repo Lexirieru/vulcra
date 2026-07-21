@@ -19,5 +19,8 @@
     "@types/node": "^22.10.0",
     "typescript": "^5.6.3",
     "vitest": "^2.1.8"
+  },
+  "dependencies": {
+    "@flarenetwork/flare-wagmi-periphery-package": "^3.6.0"
   }
 }

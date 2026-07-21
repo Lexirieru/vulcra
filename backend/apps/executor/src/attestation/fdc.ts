@@ -184,10 +184,13 @@ export async function fetchProof(
   roundId: bigint,
   requestBytes: Hex,
 ): Promise<XrpPaymentProof> {
-  const url = `${cfg.daLayerUrl.replace(/\/$/, "")}/api/v1/fdc/proof-by-request-round-raw`;
+  const url = `${cfg.daLayerUrl.replace(/\/$/, "")}/api/v1/fdc/proof-by-request-round`;
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": cfg.verifierApiKey,
+    },
     body: JSON.stringify({ votingRoundId: Number(roundId), requestBytes }),
   });
   if (!res.ok) {
