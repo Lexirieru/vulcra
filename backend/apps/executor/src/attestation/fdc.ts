@@ -122,7 +122,7 @@ export async function prepareXrpPaymentRequest(
   };
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "X-apikey": cfg.verifierApiKey },
+    headers: { "Content-Type": "application/json", "X-API-KEY": cfg.verifierApiKey },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
