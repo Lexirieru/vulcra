@@ -58,8 +58,9 @@ export async function makeLiveProcessor(
   if (!account) throw new Error("wallet client has no account (EXECUTOR_PRIVATE_KEY missing)");
   const executorAddress = account.address as Address;
 
-  const [assetManager, fdcConfig] = await Promise.all([
+  const [assetManager, fdcFeeConfig, fdcConfig] = await Promise.all([
     resolveContract(publicClient, "AssetManagerFXRP"),
+    resolveContract(publicClient, "FdcRequestFeeConfigurations"),
     resolveFdcConfig(publicClient, (n) => resolveContract(publicClient, n), {
       verifierUrl: env.verifierUrl!,
       verifierApiKey: env.verifierApiKey!,
@@ -70,13 +71,13 @@ export async function makeLiveProcessor(
   ]);
 
   const walletSubmitAttestation = async (data: Hex): Promise<{ blockTimestamp: bigint }> => {
-    // FdcHub charges a per-request fee; query it and send it as msg.value
-    // (a fixed/zero value reverts with "fee to low"). Fall back to an env
-    // override only if explicitly set.
+    // FdcHub charges a per-request fee; the amount is configured on the
+    // FdcRequestFeeConfigurations contract (getRequestFee reverts on FdcHub).
+    // Query it there and send it as msg.value (zero reverts with "fee to low").
     const fee =
       env.fdcRequestFeeWei ??
       ((await publicClient.readContract({
-        address: fdcConfig.fdcHub,
+        address: fdcFeeConfig,
         abi: [
           {
             type: "function",
