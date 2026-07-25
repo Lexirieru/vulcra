@@ -29,7 +29,6 @@ import {
   useDisconnect,
   useWalletInfo,
 } from "@reown/appkit/react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useAccount, useSwitchChain } from "wagmi";
 import {
   AlertTriangle,
@@ -42,6 +41,13 @@ import {
   X,
 } from "lucide-react";
 import { Badge, Button, PillButton, Skeleton, TokenIcon, cn } from "@/components/ui";
+import {
+  DUR,
+  EASE,
+  gsap,
+  prefersReducedMotion,
+  useIsomorphicLayoutEffect,
+} from "@/lib/gsap";
 import { BRANCHES } from "@/config/branches";
 import { COSTON2_CHAIN_ID } from "@/config/contracts";
 import { useXrplWalletContext } from "@/context/xrpl";
@@ -55,9 +61,6 @@ export const WALLET_SIDEBAR_ID = "wallet-sidebar";
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-const SLIDE_SPRING = { type: "spring", stiffness: 420, damping: 40, mass: 0.9 } as const;
-const INSTANT = { duration: 0 } as const;
 
 // The portal target (`document.body`) doesn't exist while the shell renders on
 // the server. useSyncExternalStore — the same trick BranchProvider uses — keeps
@@ -153,14 +156,26 @@ export function WalletSidebar({
   open: boolean;
   onClose: () => void;
 }) {
-  const reduced = useReducedMotion();
   const panelRef = useRef<HTMLDivElement>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const isClient = useSyncExternalStore(
     subscribeNever,
     clientSnapshot,
     serverSnapshot,
   );
+
+  // The panel must outlive `open` long enough to play its exit tween. Deriving
+  // `closing` from an open→closed transition during render (legal: this
+  // component owns the state) avoids a setState-in-effect; the GSAP timeline's
+  // onComplete then unmounts it.
+  const [closing, setClosing] = useState(false);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (wasOpen !== open) {
+    setWasOpen(open);
+    if (!open) setClosing(true);
+  }
+  const rendered = open || closing;
 
   // AppKit's modal renders above this drawer and owns the keyboard while open,
   // so the trap below must stand down rather than yank focus back.
@@ -226,32 +241,70 @@ export function WalletSidebar({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [open, appkitOpen]);
 
+  // ── GSAP slide + scrim fade ────────────────────────────────────────────────
+  // Layout effect so the panel is parked off-canvas before the browser paints —
+  // otherwise it would flash at x=0 for one frame on open.
+  useIsomorphicLayoutEffect(() => {
+    const panel = panelRef.current;
+    const scrim = scrimRef.current;
+    if (!panel || !scrim) return;
+
+    gsap.killTweensOf([panel, scrim]);
+    const reduced = prefersReducedMotion();
+
+    if (open) {
+      if (reduced) {
+        gsap.set(panel, { xPercent: 0 });
+        gsap.set(scrim, { opacity: 1 });
+        return;
+      }
+      gsap.set(panel, { xPercent: 100 });
+      gsap.set(scrim, { opacity: 0 });
+      const tl = gsap
+        .timeline()
+        .to(scrim, { opacity: 1, duration: DUR.fast, ease: EASE.out }, 0)
+        .to(panel, { xPercent: 0, duration: DUR.panel, ease: EASE.out }, 0);
+      return () => {
+        tl.kill();
+      };
+    }
+
+    // Closing: play out, then unmount from the tween's completion callback.
+    const finish = () => setClosing(false);
+    if (reduced) {
+      finish();
+      return;
+    }
+    const tl = gsap
+      .timeline({ onComplete: finish })
+      .to(panel, { xPercent: 100, duration: DUR.fast, ease: EASE.in }, 0)
+      .to(scrim, { opacity: 0, duration: DUR.fast, ease: EASE.in }, 0);
+    return () => {
+      tl.kill();
+    };
+  }, [open]);
+
   if (!isClient) return null;
 
   return createPortal(
-    <AnimatePresence>
-      {open ? (
+    rendered ? (
         <div className="fixed inset-0 z-50">
-          <motion.div
+          <div
+            ref={scrimRef}
             className="absolute inset-0 bg-navy/35 backdrop-blur-[2px]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={reduced ? INSTANT : { duration: 0.18 }}
             onClick={onClose}
             aria-hidden
           />
-          <motion.div
+          <div
             ref={panelRef}
             id={WALLET_SIDEBAR_ID}
             role="dialog"
             aria-modal="true"
             aria-labelledby={`${WALLET_SIDEBAR_ID}-title`}
+            // While the exit tween plays the panel is still painted but no
+            // longer interactive — `inert` keeps it out of the tab order.
+            inert={!open || undefined}
             className="absolute inset-y-0 right-0 flex w-full flex-col border-l border-line bg-bg shadow-[0_0_60px_-12px_rgb(16_20_43/0.35)] sm:w-96"
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={reduced ? INSTANT : SLIDE_SPRING}
           >
             <header className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
               <div className="min-w-0">
@@ -281,10 +334,9 @@ export function WalletSidebar({
               <hr className="my-6 border-line" />
               <XrplWalletSection onNavigate={onClose} />
             </div>
-          </motion.div>
+          </div>
         </div>
-      ) : null}
-    </AnimatePresence>,
+    ) : null,
     document.body,
   );
 }
@@ -430,26 +482,39 @@ function XrplWalletSection({ onNavigate }: { onNavigate: () => void }) {
           </div>
 
           <ul className="divide-y divide-line rounded-2xl border border-line bg-surface px-4">
+            {/* SPENDABLE, so this matches what Crossmark/GemWallet show —
+                the account reserve is locked by the ledger, not by us. */}
             <BalanceRow
               symbol="XRP"
               decimals={XRP_DECIMALS}
-              value={xrp.data?.drops}
+              value={xrp.data?.spendableDrops}
               isLoading={xrp.isLoading}
               note={
                 // The query keeps polling on its own interval, so a failed read
                 // heals itself — no tiny inline "retry" target needed.
-                xrp.isError
-                  ? "XRPL node unreachable — retrying"
-                  : xrp.data && !xrp.data.funded
-                    ? "not funded yet"
-                    : "on XRPL testnet"
+                xrp.isError ? (
+                  "XRPL node unreachable — retrying"
+                ) : xrp.data && !xrp.data.funded ? (
+                  "not funded yet"
+                ) : xrp.data ? (
+                  <>
+                    spendable · {formatToken(xrp.data.reserveDrops, XRP_DECIMALS, 2)}{" "}
+                    reserved
+                  </>
+                ) : (
+                  "on XRPL testnet"
+                )
               }
             />
             <BalanceRow
               symbol={BRANCHES.fxrp.collateralSymbol}
               decimals={BRANCHES.fxrp.collateralDecimals}
+              // The executor omits fxrpBalance on some builds — absent must read
+              // "—", never a fabricated 0.
               value={
-                account.data ? BigInt(account.data.fxrpBalance || "0") : undefined
+                account.data?.fxrpBalance !== undefined
+                  ? BigInt(account.data.fxrpBalance)
+                  : undefined
               }
               isLoading={account.isLoading}
               note={
@@ -489,21 +554,25 @@ function XrplWalletSection({ onNavigate }: { onNavigate: () => void }) {
         </div>
       ) : (
         <div className="mt-4 flex flex-col gap-2">
-          {XRPL_PROVIDER_ORDER.map((id) => (
-            <Button
-              key={id}
-              variant="secondary"
-              size="md"
-              className="w-full"
-              disabled={wallet.connecting}
-              onClick={() => wallet.connect(id)}
-            >
-              <Wallet className="h-4 w-4" aria-hidden />
-              {wallet.connecting
-                ? "Connecting…"
-                : `Connect ${XRPL_PROVIDERS[id].name}`}
-            </Button>
-          ))}
+          {XRPL_PROVIDER_ORDER.map((id) => {
+            // Per-provider: only the wallet you actually clicked reports
+            // progress. A shared flag made both buttons read "Connecting…",
+            // which looked like Crossmark had hung.
+            const busy = wallet.connectingId === id;
+            return (
+              <Button
+                key={id}
+                variant="secondary"
+                size="md"
+                className="w-full"
+                disabled={wallet.connectingId !== undefined}
+                onClick={() => wallet.connect(id)}
+              >
+                <Wallet className="h-4 w-4" aria-hidden />
+                {busy ? "Confirm in wallet…" : `Connect ${XRPL_PROVIDERS[id].name}`}
+              </Button>
+            );
+          })}
           <p className="text-xs text-muted/80">
             Browser extensions — no API key. Bring XRP straight from the XRPL and
             mint vUSD against it.

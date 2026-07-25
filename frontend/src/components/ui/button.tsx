@@ -2,6 +2,11 @@ import * as React from "react";
 import Link from "next/link";
 import { cn } from "./cn";
 
+// Marker picked up by <ButtonMotion /> (shell), which drives the GSAP hover /
+// press micro-interaction from one delegated document listener. It is a static
+// attribute on purpose: this module stays server-component-safe.
+const PRESS = { "data-gsap-press": "" } as const;
+
 // ── PillButton (Enosys-style rounded-full CTA) ───────────────────────────────
 export type PillButtonVariant = "primary" | "ghost" | "dark";
 export type PillButtonSize = "sm" | "md" | "lg";
@@ -77,21 +82,32 @@ export function PillButton(props: PillButtonProps) {
     const internal = props.href.startsWith("/") || props.href.startsWith("#");
     if (internal) {
       return (
-        <Link href={props.href} className={classes} {...rest}>
+        <Link href={props.href} className={classes} {...PRESS} {...rest}>
           {children}
         </Link>
       );
     }
     return (
-      <a href={props.href} className={classes} {...rest}>
+      <a href={props.href} className={classes} {...PRESS} {...rest}>
         {children}
       </a>
     );
   }
 
+  // `domRest` strips `disabled` (it is a PillButton-own key, used by the link
+  // branch above for aria-disabled), so read it off props before spreading —
+  // otherwise the <button> form silently ignores it and both the native
+  // disabled state and the GSAP press gate would be lost.
+  const disabled = (props as { disabled?: boolean }).disabled;
   const { type, ...rest } = domRest(props);
   return (
-    <button type={type ?? "button"} className={classes} {...rest}>
+    <button
+      type={type ?? "button"}
+      disabled={disabled}
+      className={classes}
+      {...PRESS}
+      {...rest}
+    >
       {children}
     </button>
   );
@@ -131,6 +147,7 @@ export function Button({
   return (
     <button
       className={cn(BUTTON_BASE, BUTTON_VARIANT[variant], BUTTON_SIZE[size], className)}
+      {...PRESS}
       {...props}
     />
   );

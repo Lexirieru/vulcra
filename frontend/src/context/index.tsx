@@ -16,6 +16,7 @@ import {
   projectId,
   wagmiAdapter,
 } from "@/config";
+import { WalletUiProvider } from "./wallet-ui";
 import { XrplWalletProvider } from "./xrpl";
 
 createAppKit({
@@ -51,7 +52,9 @@ export default function ContextProvider({
       initialState={initialState}
     >
       <QueryClientProvider client={queryClient}>
-        <XrplWalletProvider>{children}</XrplWalletProvider>
+        <XrplWalletProvider>
+          <WalletUiProvider>{children}</WalletUiProvider>
+        </XrplWalletProvider>
       </QueryClientProvider>
     </WagmiProvider>
   );

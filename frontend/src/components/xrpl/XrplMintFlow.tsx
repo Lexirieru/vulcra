@@ -1,20 +1,29 @@
 "use client";
 
-// XRPL-native mint flow (U8–U10 / R13, AE1, AE2, F1), extracted from the /xrpl
-// page so the Borrow page can surface it as a "Pay from XRPL" mode. Enter an
-// r-address, see the PersonalAccount, pre-flight the mint (blocking sub-minimum
-// before any XRP is sent), get a signable Payment (QR + Xaman deep link,
-// backend-built 0xFE memo), and track the mint end to end. The client never
-// builds the memo. Headingless on purpose — the host page owns the h1.
+// XRPL-native mint flow (U8–U10 / R13, AE1, AE2, F1). Enter the flow with an
+// XRPL wallet already connected, see the PersonalAccount, pre-flight the mint
+// (blocking sub-minimum before any XRP is sent), get a signable Payment (QR +
+// Xaman deep link, backend-built 0xFE memo), and track the mint end to end. The
+// client never builds the memo. Headingless on purpose — the host page owns h1.
 //
-// The XRPL wallet comes from the app-wide XrplWalletProvider, not a local hook:
-// connecting here or in the wallet sidebar is the same connection, so the
-// r-address is simply DERIVED from it (with a manual paste as the fallback when
-// no wallet is connected). Signing behaviour is unchanged.
+// There is NO "connect your XRPL wallet" step any more. The wallet is the
+// app-wide one from XrplWalletProvider — the same connection the right-hand
+// wallet drawer owns — so the Borrow page's XRP-Ledger rail is a continuation
+// of the same session rather than a second, competing connect screen. When
+// nothing is connected the flow opens with a compact prompt that either
+// connects inline (per provider) or raises the drawer; pasting an r-address you
+// don't hold is still supported for the QR / Xaman path.
 import { useState } from "react";
 import QRCode from "react-qr-code";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Copy, ExternalLink, PenLine, ShieldAlert, Wallet } from "lucide-react";
+import {
+  ChevronDown,
+  Copy,
+  ExternalLink,
+  PenLine,
+  ShieldAlert,
+  Wallet,
+} from "lucide-react";
 import {
   Badge,
   Button,
@@ -25,7 +34,7 @@ import {
   Input,
   PillButton,
   Skeleton,
-  Stat,
+  TokenIcon,
 } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
@@ -33,6 +42,7 @@ import { api } from "@/lib/api/client";
 import type { MintBuildResponse } from "@/lib/api/types";
 import { usePersonalAccount, isValidRAddress } from "@/hooks/usePersonalAccount";
 import { useXrplWalletContext } from "@/context/xrpl";
+import { useWalletUi } from "@/context/wallet-ui";
 import { XRPL_PROVIDER_ORDER, XRPL_PROVIDERS } from "@/lib/xrpl/wallets";
 import { BRANCHES } from "@/config/branches";
 import { formatToken, parseAmount, shortenAddress } from "@/lib/format";
@@ -43,7 +53,7 @@ const XRPL_DEFAULT_RATE_BPS = BRANCHES.fxrp.interest.defaultBps;
 export function XrplMintFlow() {
   const wallet = useXrplWalletContext();
   // A connected wallet IS the r-address — derived, so a connection made in the
-  // wallet sidebar shows up here instantly (and vice versa). The typed field is
+  // wallet drawer shows up here instantly (and vice versa). The typed field is
   // only the no-wallet fallback.
   const [pastedAddress, setPastedAddress] = useState("");
   const rAddress = wallet.address ?? pastedAddress;
@@ -95,97 +105,29 @@ export function XrplMintFlow() {
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Step 1 — r-address */}
       <Reveal>
-        <Card>
-          <CardTitle>1 · Connect your XRPL wallet</CardTitle>
-
-          {wallet.address ? (
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-green/30 bg-green/10 px-4 py-3">
-              <span className="flex items-center gap-2 text-sm text-ink">
-                <Wallet className="h-4 w-4 text-green" aria-hidden />
-                {wallet.providerId ? XRPL_PROVIDERS[wallet.providerId].name : "Wallet"} ·{" "}
-                <span className="font-mono">{shortenAddress(wallet.address)}</span>
-              </span>
-              <Button variant="ghost" size="sm" onClick={() => wallet.disconnect()}>
-                Disconnect
-              </Button>
-            </div>
-          ) : (
-            <div className="mt-4 flex flex-col gap-2">
-              <div className="flex flex-wrap gap-2">
-                {XRPL_PROVIDER_ORDER.map((id) => (
-                  <Button
-                    key={id}
-                    variant="secondary"
-                    disabled={wallet.connecting}
-                    onClick={() => wallet.connect(id)}
-                  >
-                    <Wallet className="h-4 w-4" aria-hidden />
-                    {wallet.connecting ? "Connecting…" : `Connect ${XRPL_PROVIDERS[id].name}`}
-                  </Button>
-                ))}
-              </div>
-              <p className="text-xs text-muted/80">
-                Browser extensions — no API key needed. Xaman (mobile) via QR is offered at
-                the payment step.
-              </p>
-              {wallet.error && <p className="text-xs text-danger">{wallet.error}</p>}
-            </div>
-          )}
-
-          <div className="mt-4 max-w-md">
-            <Field
-              label={wallet.address ? "XRPL r-address (from wallet)" : "…or paste an r-address"}
-              htmlFor="raddr"
-              error={rAddress && !validAddr ? "That doesn't look like a valid r-address." : undefined}
-            >
-              <Input
-                id="raddr"
-                placeholder="r..."
-                autoComplete="off"
-                spellCheck={false}
-                value={rAddress}
-                onChange={(e) => setPastedAddress(e.target.value)}
-                readOnly={Boolean(wallet.address)}
-              />
-            </Field>
-          </div>
-
-          {validAddr && (
-            <div className="mt-4">
-              {account.isLoading ? (
-                <Skeleton className="h-16 w-full" />
-              ) : account.isError ? (
-                <ErrorState
-                  title="Couldn't resolve the personal account"
-                  description="The backend is unavailable. It derives the account and FXRP balance."
-                  onRetry={() => account.refetch()}
-                />
-              ) : account.data ? (
-                <div className="grid grid-cols-2 gap-4 rounded-xl border border-line bg-surface-2/60 p-4">
-                  <Stat
-                    label="Personal account"
-                    value={<span className="text-base">{shortenAddress(account.data.personalAccount)}</span>}
-                    sub="derived on Flare"
-                  />
-                  <Stat
-                    label="FXRP balance"
-                    value={formatToken(BigInt(account.data.fxrpBalance || "0"), 6, 2)}
-                    sub="FXRP"
-                  />
-                </div>
-              ) : null}
-            </div>
-          )}
-        </Card>
+        {wallet.address ? (
+          <ConnectedStrip
+            address={wallet.address}
+            providerName={
+              wallet.providerId ? XRPL_PROVIDERS[wallet.providerId].name : undefined
+            }
+            account={account}
+          />
+        ) : (
+          <ConnectPrompt
+            pastedAddress={pastedAddress}
+            onPastedAddress={setPastedAddress}
+            invalidPaste={Boolean(pastedAddress) && !validAddr}
+          />
+        )}
       </Reveal>
 
-      {/* Step 2 — amount + pre-flight (AE2) */}
+      {/* Step 1 — amount + pre-flight (AE2) */}
       {account.data && (
         <Reveal>
           <Card>
-            <CardTitle>2 · Amount &amp; pre-flight</CardTitle>
+            <CardTitle>1 · Amount &amp; pre-flight</CardTitle>
             <div className="mt-4 max-w-md">
               <Field
                 label="Mint amount (FXRP)"
@@ -250,7 +192,7 @@ export function XrplMintFlow() {
         </Reveal>
       )}
 
-      {/* Step 3 — payment: sign in wallet, or QR/Xaman fallback */}
+      {/* Step 2 — payment: sign in wallet, or QR/Xaman fallback */}
       {build.data && (
         <Reveal>
           <PaymentPanel
@@ -269,13 +211,160 @@ export function XrplMintFlow() {
         </Reveal>
       )}
 
-      {/* Step 4 — tracking */}
+      {/* Step 3 — tracking */}
       {submit.data && (
         <Reveal>
           <MintStatusTracker mintId={submit.data.mintId} />
         </Reveal>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wallet header — connected strip vs compact connect prompt
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ConnectedStrip({
+  address,
+  providerName,
+  account,
+}: {
+  address: string;
+  providerName?: string;
+  account: ReturnType<typeof usePersonalAccount>;
+}) {
+  const { openWallets } = useWalletUi();
+  // The backend omits fxrpBalance on some builds — absent is "—", never 0.
+  const fxrp = account.data?.fxrpBalance;
+
+  return (
+    <Card className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <TokenIcon symbol="XRP" size={28} alt="" />
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm text-ink">
+            <span className="h-2 w-2 shrink-0 rounded-full bg-green" aria-hidden />
+            <span className="font-medium">{providerName ?? "XRPL wallet"}</span>
+            <span className="truncate font-mono text-muted" title={address}>
+              {shortenAddress(address)}
+            </span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted">
+            {account.isLoading ? (
+              "Resolving your Flare personal account…"
+            ) : account.isError ? (
+              "Personal account unavailable — the backend is offline."
+            ) : account.data ? (
+              <>
+                Personal account{" "}
+                <span className="font-mono">
+                  {shortenAddress(account.data.personalAccount)}
+                </span>{" "}
+                · FXRP {fxrp === undefined ? "—" : formatToken(BigInt(fxrp), 6, 2)}
+              </>
+            ) : (
+              "Paying from the XRP Ledger — no Flare gas needed."
+            )}
+          </p>
+        </div>
+      </div>
+      <Button variant="ghost" size="sm" onClick={openWallets}>
+        <Wallet className="h-4 w-4" aria-hidden />
+        Manage wallets
+      </Button>
+    </Card>
+  );
+}
+
+function ConnectPrompt({
+  pastedAddress,
+  onPastedAddress,
+  invalidPaste,
+}: {
+  pastedAddress: string;
+  onPastedAddress: (v: string) => void;
+  invalidPaste: boolean;
+}) {
+  const wallet = useXrplWalletContext();
+  const { openWallets } = useWalletUi();
+  const [showPaste, setShowPaste] = useState(false);
+
+  return (
+    <Card>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <TokenIcon symbol="XRP" size={28} alt="" />
+          <div className="min-w-0">
+            <CardTitle>Connect your XRP wallet</CardTitle>
+            <p className="mt-0.5 text-sm text-muted">
+              Bring XRP straight from the XRP Ledger — no Flare wallet, no FLR gas.
+            </p>
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" onClick={openWallets}>
+          <Wallet className="h-4 w-4" aria-hidden />
+          Open wallets
+        </Button>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        {XRPL_PROVIDER_ORDER.map((id) => {
+          // Per-provider: only the clicked wallet reports progress.
+          const busy = wallet.connectingId === id;
+          return (
+            <Button
+              key={id}
+              variant={id === "crossmark" ? "primary" : "secondary"}
+              disabled={wallet.connectingId !== undefined}
+              onClick={() => wallet.connect(id)}
+            >
+              <Wallet className="h-4 w-4" aria-hidden />
+              {busy ? "Confirm in wallet…" : `Connect ${XRPL_PROVIDERS[id].name}`}
+            </Button>
+          );
+        })}
+      </div>
+
+      {wallet.error && (
+        <p className="mt-2 text-xs text-danger" role="alert">
+          {wallet.error}
+        </p>
+      )}
+
+      <div className="mt-4">
+        <button
+          type="button"
+          aria-expanded={showPaste}
+          onClick={() => setShowPaste((v) => !v)}
+          className="inline-flex min-h-10 items-center gap-1 text-xs text-muted hover:text-ink"
+        >
+          <ChevronDown
+            className={`h-4 w-4 transition-transform ${showPaste ? "rotate-180" : ""}`}
+            aria-hidden
+          />
+          …or paste an r-address (sign later in Xaman)
+        </button>
+        {showPaste && (
+          <div className="mt-2 max-w-md">
+            <Field
+              label="XRPL r-address"
+              htmlFor="raddr"
+              error={invalidPaste ? "That doesn't look like a valid r-address." : undefined}
+            >
+              <Input
+                id="raddr"
+                placeholder="r..."
+                autoComplete="off"
+                spellCheck={false}
+                value={pastedAddress}
+                onChange={(e) => onPastedAddress(e.target.value)}
+              />
+            </Field>
+          </div>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -306,7 +395,7 @@ function PaymentPanel({
 }) {
   return (
     <Card>
-      <CardTitle>3 · Sign the XRPL Payment</CardTitle>
+      <CardTitle>2 · Sign the XRPL Payment</CardTitle>
       <p className="mt-2 text-sm text-muted">
         The 0xFE memo was built by the backend and is sent to your wallet verbatim.
         Never add a destination tag.

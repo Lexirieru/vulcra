@@ -10,14 +10,29 @@
 //
 // Wallets: one header button opens the right-side WalletSidebar, which holds
 // BOTH the Flare (EVM · Coston2) and XRP Ledger connections — they connect
-// independently and can be live at the same time.
+// independently and can be live at the same time. Its open state lives in
+// WalletUiProvider so any page can raise the drawer.
+//
+// Motion: the primary nav's active pill is a GSAP-driven indicator that slides
+// between tabs (measured from real layout, re-measured on resize); <ButtonMotion />
+// installs the delegated GSAP hover/press micro-interaction for every ui/ button.
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { cn, Wordmark } from "@/components/ui";
 import { useBranch } from "@/context/branch";
+import { useWalletUi } from "@/context/wallet-ui";
+import {
+  DUR,
+  EASE,
+  animate,
+  gsap,
+  prefersReducedMotion,
+  useIsomorphicLayoutEffect,
+} from "@/lib/gsap";
 import { BranchSwitch } from "./BranchSwitch";
+import { ButtonMotion } from "./ButtonMotion";
 import { NetworkGuard } from "./NetworkGuard";
 import { StatsBar } from "./StatsBar";
 import { WalletSidebar, WalletsButton } from "./WalletSidebar";
@@ -57,16 +72,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
 
-  // The wallet drawer's open state lives here so the route-change close below
-  // is a render-phase setState in the SAME component (calling a parent setter
-  // from the child's render is what React warns about).
-  const [walletsOpen, setWalletsOpen] = useState(false);
+  // The drawer's open state (and its own route-change close) lives in
+  // WalletUiProvider so pages can raise it too.
+  const { walletsOpen, openWallets, closeWallets } = useWalletUi();
 
   const [lastPathname, setLastPathname] = useState(pathname);
   if (lastPathname !== pathname) {
     setLastPathname(pathname);
     setMoreOpen(false);
-    setWalletsOpen(false);
   }
   useEffect(() => {
     if (!moreOpen) return;
@@ -84,6 +97,49 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     };
   }, [moreOpen]);
 
+  // ── GSAP active-tab indicator ──────────────────────────────────────────────
+  const navRef = useRef<HTMLElement>(null);
+  const navPillRef = useRef<HTMLSpanElement>(null);
+  const navLinkRefs = useRef<Record<string, HTMLAnchorElement | null>>({});
+  const navPositioned = useRef(false);
+  // Bumped by a ResizeObserver so the pill re-measures after font load / resize.
+  const [navTick, setNavTick] = useState(0);
+
+  useIsomorphicLayoutEffect(() => {
+    const nav = navRef.current;
+    if (!nav || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setNavTick((n) => n + 1));
+    ro.observe(nav);
+    return () => ro.disconnect();
+  }, []);
+
+  useIsomorphicLayoutEffect(() => {
+    const pill = navPillRef.current;
+    if (!pill) return;
+
+    const activeTab = TABS.find((t) => isActive(pathname, t.href));
+    const el = activeTab ? navLinkRefs.current[activeTab.href] : null;
+
+    // Utility routes (/redeem, /guardian, …) own no primary tab — retract the
+    // pill rather than parking it on an unrelated one.
+    if (!el) {
+      animate(pill, { autoAlpha: 0, duration: DUR.micro });
+      navPositioned.current = false;
+      return;
+    }
+
+    const to = { x: el.offsetLeft, width: el.offsetWidth };
+    if (!navPositioned.current || prefersReducedMotion()) {
+      navPositioned.current = true;
+      gsap.set(pill, { ...to, autoAlpha: 1 });
+    } else {
+      animate(pill, { ...to, autoAlpha: 1, duration: DUR.fast, ease: EASE.out });
+    }
+    return () => {
+      gsap.killTweensOf(pill);
+    };
+  }, [pathname, navTick]);
+
   return (
     <div className="flex min-h-dvh flex-col pb-14">
       <a
@@ -100,23 +156,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Wordmark size={32} className="text-ink" />
           </Link>
 
-          {/* Center: primary tabs (Enosys pill nav) */}
+          {/* Center: primary tabs (Enosys pill nav) — the navy pill is one
+              GSAP-animated indicator that slides between tabs. */}
           <nav
+            ref={navRef}
             aria-label="Primary"
             className="absolute left-1/2 hidden -translate-x-1/2 items-center rounded-full border border-line bg-surface p-1 md:flex"
           >
+            <span
+              ref={navPillRef}
+              aria-hidden
+              className="pointer-events-none absolute top-1 bottom-1 left-0 invisible rounded-full bg-navy"
+            />
             {TABS.map((t) => {
               const active = isActive(pathname, t.href);
               return (
                 <Link
                   key={t.href}
                   href={t.href}
+                  ref={(el) => {
+                    navLinkRefs.current[t.href] = el;
+                  }}
                   aria-current={active ? "page" : undefined}
                   className={cn(
-                    "rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors",
-                    active
-                      ? "bg-navy text-white"
-                      : "text-muted hover:text-ink",
+                    "relative z-10 rounded-full px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors",
+                    active ? "text-white" : "text-muted hover:text-ink",
                   )}
                 >
                   {t.label}
@@ -170,7 +234,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               ) : null}
             </div>
-            <WalletsButton open={walletsOpen} onOpen={() => setWalletsOpen(true)} />
+            <WalletsButton open={walletsOpen} onOpen={openWallets} />
           </div>
         </div>
 
@@ -242,7 +306,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <StatsBar />
 
-      <WalletSidebar open={walletsOpen} onClose={() => setWalletsOpen(false)} />
+      <WalletSidebar open={walletsOpen} onClose={closeWallets} />
+      <ButtonMotion />
     </div>
   );
 }

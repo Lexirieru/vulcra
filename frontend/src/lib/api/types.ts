@@ -10,8 +10,12 @@ export interface AccountResponse {
   /** Derived Flare PersonalAccount (EVM address) for this r-address. */
   personalAccount: Address;
   nonce: string;
-  /** FXRP balance already held by the personal account, 6-dec base units. */
-  fxrpBalance: string;
+  /**
+   * FXRP balance already held by the personal account, 6-dec base units.
+   * OPTIONAL: the running executor omits it, so consumers must render "—"
+   * rather than defaulting a missing field to 0.
+   */
+  fxrpBalance?: string;
 }
 
 // ── Pre-flight (POST /mint/preflight) — AE2 gate at the API layer ─────────────

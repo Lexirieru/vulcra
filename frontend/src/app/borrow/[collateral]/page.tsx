@@ -4,16 +4,20 @@
 // truth for the selected branch: the shared branch context is synced to the
 // [collateral] segment on mount. Two clean states, wiring unchanged from the
 // pre-reskin dashboard: the Enosys-style composer when there is no vault, and a
-// manage view (position + actions + what-if) when one exists. For the FXRP
-// branch the existing XRPL-native mint flow is surfaced as a "Pay from XRPL"
-// mode (real components, no mocks).
-import { Suspense, use, useEffect, useRef, useState } from "react";
+// manage view (position + actions + what-if) when one exists.
+//
+// For the FXRP branch the page is ONE page with a rail toggle: Flare wallet ↔
+// XRP Ledger. Flipping the toggle swaps the panel below it — it does not open a
+// second flow with its own connect screen, because the XRPL connection is
+// app-wide (XrplWalletProvider) and shared with the wallet drawer.
+import { Suspense, use, useEffect, useState } from "react";
 import Link from "next/link";
 import { notFound, useSearchParams } from "next/navigation";
 import { useAccount } from "wagmi";
 import { ArrowLeft } from "lucide-react";
-import { Card, Skeleton, TokenIcon, cn } from "@/components/ui";
+import { Card, Skeleton, TokenIcon } from "@/components/ui";
 import { Reveal } from "@/components/motion";
+import { RailToggle, type Rail } from "@/components/borrow/RailToggle";
 import { BorrowComposer } from "@/components/vault/BorrowComposer";
 import { ContractsNotice } from "@/components/vault/ContractsNotice";
 import { LivePrice } from "@/components/vault/LivePrice";
@@ -27,8 +31,6 @@ import { useBranch } from "@/context/branch";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { useCollateralToken, useVault, useVaultParams } from "@/hooks/useVault";
 import { useVaultRate, useRedeemableBefore } from "@/hooks/useInterest";
-
-type Mode = "evm" | "xrpl";
 
 export default function BorrowCollateralPage({
   params,
@@ -65,10 +67,11 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
     if (branchKey !== urlKey) setBranchKey(urlKey);
   }, [branchKey, urlKey, setBranchKey]);
 
-  // Deep link: /borrow/fxrp?mode=xrpl (read once on mount; tabs own it after).
+  // Deep link: /borrow/fxrp?mode=xrpl (read once on mount; the toggle owns it
+  // after). `mode=xrpl` is kept as the query name for existing links.
   const search = useSearchParams();
-  const [mode, setMode] = useState<Mode>(() =>
-    search.get("mode") === "xrpl" ? "xrpl" : "evm",
+  const [rail, setRail] = useState<Rail>(() =>
+    search.get("mode") === "xrpl" ? "xrpl" : "flare",
   );
 
   const vaultManager = branch.vaultManager || undefined;
@@ -80,7 +83,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
   const { data: redeemableBefore } = useRedeemableBefore(address, vaultManager, hasVault);
 
   const synced = branchKey === urlKey;
-  const xrplMode = mode === "xrpl" && urlBranch.hasXrplMint;
+  const xrplMode = rail === "xrpl" && urlBranch.hasXrplMint;
   // Vault state comes from the context branch's hooks — only meaningful for
   // this page once the context has caught up with the URL.
   const showVault = synced && hasVault;
@@ -115,15 +118,24 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
 
       {urlBranch.hasXrplMint && (
         <Reveal delay={0.05}>
-          <ModeTabs mode={mode} onChange={setMode} />
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <RailToggle value={rail} onChange={setRail} idPrefix="rail" />
+            <p className="text-xs text-muted">
+              {xrplMode
+                ? "Pay from the XRP Ledger — no Flare wallet or FLR gas needed."
+                : `Deposit ${urlBranch.collateralSymbol} you already hold on Flare.`}
+            </p>
+          </div>
         </Reveal>
       )}
 
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div
           role={urlBranch.hasXrplMint ? "tabpanel" : undefined}
-          id={urlBranch.hasXrplMint ? `panel-${xrplMode ? "xrpl" : "evm"}` : undefined}
-          aria-labelledby={urlBranch.hasXrplMint ? `tab-${xrplMode ? "xrpl" : "evm"}` : undefined}
+          id={urlBranch.hasXrplMint ? `rail-panel-${xrplMode ? "xrpl" : "flare"}` : undefined}
+          aria-labelledby={
+            urlBranch.hasXrplMint ? `rail-tab-${xrplMode ? "xrpl" : "flare"}` : undefined
+          }
           className="flex flex-col gap-6"
         >
           {!synced ? (
@@ -200,60 +212,3 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
   );
 }
 
-// Accessible segmented tabs for the payment mode (EVM wallet vs XRPL-native).
-function ModeTabs({ mode, onChange }: { mode: Mode; onChange: (m: Mode) => void }) {
-  const evmRef = useRef<HTMLButtonElement>(null);
-  const xrplRef = useRef<HTMLButtonElement>(null);
-
-  const select = (m: Mode) => {
-    onChange(m);
-    (m === "evm" ? evmRef : xrplRef).current?.focus();
-  };
-  const onKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
-      e.preventDefault();
-      select(mode === "evm" ? "xrpl" : "evm");
-    }
-  };
-
-  const tabClass = (active: boolean) =>
-    cn(
-      "inline-flex min-h-10 items-center gap-2 rounded-full px-4 text-sm font-medium transition-colors",
-      active ? "bg-navy text-white" : "text-muted hover:text-ink",
-    );
-
-  return (
-    <div
-      role="tablist"
-      aria-label="Payment method"
-      className="inline-flex w-fit max-w-full flex-wrap gap-1 rounded-full border border-line bg-surface p-1"
-      onKeyDown={onKeyDown}
-    >
-      <button
-        ref={evmRef}
-        role="tab"
-        id="tab-evm"
-        aria-selected={mode === "evm"}
-        aria-controls="panel-evm"
-        tabIndex={mode === "evm" ? 0 : -1}
-        onClick={() => onChange("evm")}
-        className={tabClass(mode === "evm")}
-      >
-        Pay with Flare wallet
-      </button>
-      <button
-        ref={xrplRef}
-        role="tab"
-        id="tab-xrpl"
-        aria-selected={mode === "xrpl"}
-        aria-controls="panel-xrpl"
-        tabIndex={mode === "xrpl" ? 0 : -1}
-        onClick={() => onChange("xrpl")}
-        className={tabClass(mode === "xrpl")}
-      >
-        <TokenIcon symbol="XRP" size={18} alt="" />
-        Pay from XRPL
-      </button>
-    </div>
-  );
-}
