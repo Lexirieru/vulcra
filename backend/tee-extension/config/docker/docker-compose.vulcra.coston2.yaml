@@ -1,0 +1,54 @@
+# Vulcra overlay for the fce-extension-scaffold Coston2 stack.
+#
+# It is the THIRD compose file, layered on top of the scaffold's own two:
+#
+#   docker compose \
+#     -f docker-compose.yaml \
+#     -f docker-compose.coston2.yaml \
+#     -f "$VULCRA_EXT_DIR/config/docker/docker-compose.vulcra.coston2.yaml" \
+#     up -d --build
+#
+# It does exactly two things:
+#   1. repoints the `extension-tee` image build at THIS repo (backend/tee-extension)
+#      so the enclave runs Vulcra's keeper + guardian instead of the scaffold's
+#      HelloWorld sample, and
+#   2. injects the Vulcra-specific runtime env (VaultManager branches, MCR, TEE
+#      keeper address, simulated-attestation flag).
+#
+# Everything else — redis, ext-proxy, ports, governance, CHAIN_ID — is inherited
+# unchanged from the scaffold compose files. See
+# docs/fcc-production-registration.md for the full ordered run book.
+#
+# REQUIRED env (exported before `docker compose`, or set in the scaffold's .env):
+#   VULCRA_EXT_DIR   absolute path to this repo's backend/tee-extension
+#   SOURCE_DATE_EPOCH  commit timestamp, for the reproducible build
+
+services:
+  extension-tee:
+    build:
+      context: ${VULCRA_EXT_DIR}
+      dockerfile: Dockerfile
+      args:
+        SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH}
+    environment:
+      # --- Vulcra chain wiring (read by internal/config.Load) --------------
+      # The extension re-reads authoritative vault state INSIDE the enclave, so
+      # it needs its own RPC handle; CHAIN_URL is the scaffold/tee-node one.
+      - COSTON2_RPC_URL=${COSTON2_RPC_URL:-https://coston2-api.flare.network/ext/C/rpc}
+      - FLARE_CONTRACT_REGISTRY=${FLARE_CONTRACT_REGISTRY:-0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019}
+
+      # --- Multi-collateral branches (one VaultManager per collateral) -----
+      - VAULT_MANAGER_FXRP_ADDRESS=${VAULT_MANAGER_FXRP_ADDRESS}
+      - VAULT_MANAGER_WFLR_ADDRESS=${VAULT_MANAGER_WFLR_ADDRESS}
+      - MCR_BPS=${MCR_BPS:-13000}
+
+      # --- TEE keeper wallet (public address only; the key never leaves the
+      #     enclave and is used via SIGN_PORT). Must hold
+      #     GUARDIAN_EXECUTOR_ROLE on both VaultManagers for live execution. --
+      - KEEPER_TEE_ADDRESS=${KEEPER_TEE_ADDRESS:-}
+
+      # --- Attestation mode -----------------------------------------------
+      # SIMULATED_TEE=true is the judge-approved Coston2 posture: real chain,
+      # simulated attestation. Flip to false only on a real Confidential Space VM.
+      - SIMULATED_TEE=${SIMULATED_TEE:-true}
+      - LOCAL_MODE=${LOCAL_MODE:-false}

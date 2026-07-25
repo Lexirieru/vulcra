@@ -33,9 +33,12 @@ backend/tee-extension/
 ├── tools/cmd/e2e-live/             # live Coston2 E2E driver (framework wire format, dry-run)
 ├── pkg/types/     types.go register.go  # request/response DTOs (stdlib json)
 ├── contracts/     VulcraInstructionSender.sol
+├── Dockerfile                      # reproducible enclave image (entry ./cmd/extension)
 ├── config/proxy/  *.toml.example   # ext-proxy template (real .toml is gitignored)
+├── config/docker/ docker-compose.vulcra.coston2.yaml  # overlay for the scaffold stack
 ├── scripts/       reproducible-build.sh
-└── docs/          attestation-evidence.md, e2e-coston2-2026-07-22.md
+└── docs/          attestation-evidence.md, e2e-coston2-2026-07-22.md,
+                   fcc-production-registration.md
 ```
 
 **The `internal/keeper` and `internal/guardian` packages are dependency-free**
@@ -122,26 +125,53 @@ cp config/proxy/extension_proxy.coston2.docker.toml.example \
 # fill the [db] block from vulcra-fcc.env (FCC_INDEXER_DB_*)
 ```
 
-> **Reachability (verified 2026-07-22):** the admin-provisioned Coston2 indexer
-> DB accepts connections + MySQL auth from this network and is fully caught up
-> with the chain (lag ≈ 3 blocks) — see
-> [docs/e2e-coston2-2026-07-22.md](docs/e2e-coston2-2026-07-22.md). The shared
-> DB is connection-capped: intermittent `connection refused`/timeouts happen and
-> retries succeed. A persistent refusal means the **route to the indexer is
-> down** (VPN/allowlist), not a config error.
+The template follows the schema `tee-proxy` v0.0.18 actually parses:
+`[db]` keys are `database` / `username` / `password` (not `name` / `user`), and
+`[ports]` holds the **container** ports (`internal = 6663`, `external = 6664`).
+Docker publishes those on the **host** as `6673 -> 6663` and `6674 -> 6664`, so
+the public tunnel targets **host port 6674**.
 
-## Dev deploy lifecycle (Coston2, simulated attestation)
+> **Reachability (re-verified 2026-07-25):** the admin-provisioned Coston2
+> indexer DB accepts connections + MySQL auth from this network and is fully
+> caught up with the chain. TCP connect ≈ 0.2–0.4 s, MySQL ping 0.86–1.22 s,
+> `SELECT 1` ≈ 0.23 s, server `8.0.44-google`, `last_database_block ==
+> last_chain_block == 33 232 404` against a live head of 33 232 407 (lag ≈ 3
+> blocks) — see [docs/e2e-coston2-2026-07-22.md](docs/e2e-coston2-2026-07-22.md)
+> for the original run. The shared DB is connection-capped: intermittent
+> `connection refused`/timeouts happen and retries succeed. A persistent refusal
+> means the **route to the indexer is down** (VPN/allowlist), not a config error.
 
-Dev mode: `SIMULATED_TEE=true`, `LOCAL_MODE=false` (real Coston2 chain).
+## Deploy lifecycle (Coston2, simulated attestation)
+
+Mode: `SIMULATED_TEE=true`, `LOCAL_MODE=false` (real Coston2 chain, simulated
+attestation — the judge-approved posture for the hackathon).
+
+The lifecycle scripts (`pre-build.sh`, `start-services.sh`, `post-build.sh`) and
+the `tools/` binaries they call live in Flare's
+[`fce-extension-scaffold`](https://github.com/flare-foundation/fce-extension-scaffold),
+**not** in this repo. This repo supplies the payload: the enclave `Dockerfile`,
+`contracts/VulcraInstructionSender.sol`, and the compose overlay in
+`config/docker/`.
 
 ```bash
-./scripts/use-chain.sh local coston2 go   # activate: SIMULATED_TEE=true, LOCAL_MODE=false
-# reserve a public HTTPS tunnel to port 6674 (ngrok/cloudflared); set EXT_PROXY_URL
-./scripts/pre-build.sh                     # deploy VulcraInstructionSender, register extension
-./scripts/start-services.sh               # redis + ext-proxy + extension-tee
-./scripts/post-build.sh                   # allow-tee-version + register-tee -command rRap
-./scripts/test.sh                          # end-to-end round trip
+# in an fce-extension-scaffold checkout, with this repo's .env + proxy .toml copied in:
+./scripts/pre-build.sh          # deploy VulcraInstructionSender, register extension → EXTENSION_ID
+docker compose -f docker-compose.yaml -f docker-compose.coston2.yaml \
+  -f "$VULCRA_EXT_DIR/config/docker/docker-compose.vulcra.coston2.yaml" up -d --build
+./scripts/post-build.sh         # allow-tee-version → set-governance → register-tee (rap)
 ```
+
+> **`FlareTeeManager` was redeployed on 2026-07-22** to
+> `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE`; the old
+> `0x004224faB7BF19a1a67Ee5AF87Cb2b0F0925d41F` has no bytecode any more. The
+> address is config-driven — it comes from the scaffold's
+> `config/coston2/deployed-addresses.json`, never from `tee-node`. `tee-node`
+> must also be current (this repo pins the `20260722` develop commit) or every
+> data-provider vote in the availability check is rejected.
+
+**The full, verbatim, ordered procedure — prerequisites, the named-tunnel
+requirement, governance, and the `getTeeMachineStatus == 2` verification — is
+[`docs/fcc-production-registration.md`](docs/fcc-production-registration.md).**
 
 Verify the deploy: `curl -s "$EXT_PROXY_URL/info" | jq '.machineData'` — see
 `docs/attestation-evidence.md`.

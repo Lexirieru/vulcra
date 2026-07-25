@@ -19,11 +19,22 @@ go 1.25.1
 // go-flare-common (instruction encoding), tee-node (Action types, ToHash,
 // /decrypt wire types, extension server bootstrap) and go-ethereum (eth client
 // + ABI for the authoritative in-enclave chain reads).
+//
+// tee-node PIN POLICY — keep it current, this is not cosmetic.
+// Pinned to develop c687a8631bca239a6188fccc3469f3a676aa48eb (2026-07-22), the
+// first commit after Flare redeployed FCC on Coston2. It changes the
+// data-provider weight check in pkg/processorutils/thresholds.go
+// (`weight <= dpThreshold` -> `dpThreshold > 0 && weight <= dpThreshold`, and
+// drops the Wallet/KeyDataProviderRestore zero-threshold case). An older node
+// rejects the votes the current data providers cast, so register-tee's
+// availability check never accrues weight and the machine never reaches
+// PRODUCTION. go-flare-common stays at the exact version tee-node requires.
+// See docs/fcc-production-registration.md.
 
 require (
 	github.com/ethereum/go-ethereum v1.17.2
 	github.com/flare-foundation/go-flare-common v1.2.2-0.20260623111601-c573c79c0924
-	github.com/flare-foundation/tee-node v0.0.23-0.20260720101630-751c6e92bb55
+	github.com/flare-foundation/tee-node v0.0.23-0.20260722073401-c687a8631bca
 )
 
 require (

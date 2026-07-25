@@ -1,37 +1,67 @@
 # ext-proxy configuration for Coston2 (Docker) — TEMPLATE.
 #
-# Copy this file to `extension_proxy.coston2.docker.toml` (which is GITIGNORED)
-# and fill the [db] block from the FCC indexer credentials. The real values live
-# OUTSIDE the repo in vulcra-fcc.env (FCC_INDEXER_DB_* / FCC_TEE_PROXY_URL) and
-# are provided by the Flare hackathon admins on request. NEVER commit real
-# credentials.
+# Schema verified against tee-proxy v0.0.18 `config.example.toml` and
+# fce-extension-scaffold `config/proxy/extension_proxy.coston2.docker.toml.example`
+# (scaffold main @ 3d0d8f2, 2026-07-22 — the post-redeploy revision). Key names
+# here are the ones the proxy actually parses: `database`/`username`/`password`
+# under [db] (NOT name/user), and `[ports]` holding the CONTAINER ports.
+#
+# Copy this file to `extension_proxy.coston2.docker.toml` (GITIGNORED) and fill
+# the [db] block from the FCC indexer credentials. The real values live OUTSIDE
+# the repo in vulcra-fcc.env (FCC_INDEXER_DB_*) and are shared hackathon
+# infrastructure provided by the Flare admins. NEVER commit real credentials.
 #
 #   cp config/proxy/extension_proxy.coston2.docker.toml.example \
 #      config/proxy/extension_proxy.coston2.docker.toml
 #   # then fill [db] from vulcra-fcc.env
+#
+# This file is mounted into the ext-proxy container at /app/config/config.toml
+# by the scaffold's docker-compose.coston2.yaml.
+#
+# PORTS — do not confuse the two layers:
+#   [ports] below are the ports INSIDE the container: 6663 internal, 6664 external.
+#   docker-compose publishes them on the HOST as 6673 -> 6663 and 6674 -> 6664.
+#   The public tunnel (cloudflared/ngrok) therefore targets HOST port 6674.
 
-[chain]
-name = "coston2"
+redis_port = "redis:6379"
+private_key_variable = "PROXY_PRIVATE_KEY"
+initial_signing_policy_offset = 2
+signing_policy_fetch_interval = "20s"
+
 chain_id = 114
-rpc_url = "https://coston2-api.flare.network/ext/C/rpc"
 
-[proxy]
-# ext-proxy external host port exposed to the internet (via ngrok/cloudflared).
-external_port = 6674
-# internal port used between the extension container and the proxy.
-internal_port = 6673
-
-[redis]
-host = "redis"
-port = 6379
-
-# Coston2 indexer DB read by the proxy. Fill from FCC_INDEXER_DB_* env /
-# vulcra-fcc.env; the real file is gitignored. The indexer DB may be
-# IP-restricted — a "connection refused" means the route to it is down, not a
-# config error (see README).
+# Coston2 indexer DB read by the proxy for signing policies + the instruction
+# pipeline. Fill from FCC_INDEXER_DB_* / vulcra-fcc.env; the real .toml is
+# gitignored. The DB is shared and connection-capped: an intermittent
+# "connection refused" means route/limit, not a config error (see README).
 [db]
-host = "FILL_FROM_FCC_INDEXER_DB_HOST"      # e.g. the admin-provided indexer host
-port = 3306                                  # FCC_INDEXER_DB_PORT
-name = "indexer"                             # FCC_INDEXER_DB_NAME
-user = "FILL_FROM_FCC_INDEXER_DB_USER"       # FCC_INDEXER_DB_USER
-password = "FILL_FROM_FCC_INDEXER_DB_PASSWORD" # FCC_INDEXER_DB_PASSWORD
+host = "<FCC_INDEXER_DB_HOST>"
+port = 3306
+database = "<FCC_INDEXER_DB_NAME>"      # "indexer"
+username = "<FCC_INDEXER_DB_USER>"
+password = "<FCC_INDEXER_DB_PASSWORD>"
+log_queries = false
+
+# Coston2 system contracts. Verified 2026-07-25 against the post-redeploy
+# fce-extension-scaffold config/coston2/deployed-addresses.json.
+# NOTE: the FlareTeeManager diamond (0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE)
+# is deliberately NOT here — the proxy never calls it. Only the scaffold's
+# tools/ (deploy-contract, register-extension, allow-tee-version,
+# set-governance, register-tee) use it, via deployed-addresses.json.
+[addresses]
+flare_systems_manager = "0xA90Db6D10F856799b10ef2A77EBCbF460aC71e52"
+relay = "0xa10B672D1c62e5457b17af63d4302add6A99d7dE"
+voter_registry = "0x6a0AF07b7972177B176d3D422555cbc98DfDe914"
+
+# Container-internal ports (see the PORTS note above).
+[ports]
+internal = "6663"
+external = "6664"
+
+[info_timing]
+cycle_internal = "10s"
+cycle_queue_response_wait = "2s"
+
+[voting]
+proposal_expiration = "12s"
+max_pending_request = 10000

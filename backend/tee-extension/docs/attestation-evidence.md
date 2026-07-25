@@ -55,15 +55,26 @@ the TEE:
 ```bash
 ./scripts/post-build.sh
 # internally:
-#   allow-tee-version           # whitelist this code hash on-chain for the extension
-#   register-tee -command rRap  # register machine, issue FRESH attestation challenge
-#                               # (capital R avoids Verification.ChallengeExpired),
-#                               # run the FTDC check, promote to production
+#   allow-tee-version   # whitelist this code hash on-chain for the extension
+#   set-governance      # register (GOVERNANCE_SIGNERS, GOVERNANCE_THRESHOLD);
+#                       # must match what the TEE node signs with, or register-tee
+#                       # reverts with InvalidGovernanceHash
+#   register-tee        # default -command rap: register machine (or re-attest if
+#                       # already registered), run the FTDC availability check,
+#                       # promote to production. Resumable via -state.
 ```
 
 `allow-tee-version` is what binds "this exact code hash is allowed to serve this
-extension." `register-tee -command rRap` re-attests on every run so re-runs do
-not hit `Verification.ChallengeExpired`.
+extension." The `r` step re-attests when the machine already exists, so re-runs
+do not hit `Verification.ChallengeExpired`; pass `-command rRap` to force a fresh
+attestation challenge explicitly.
+
+> **Manager address (2026-07-22 redeploy):** all of the above target the
+> `FlareTeeManager` diamond at
+> `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE`, read from the scaffold's
+> `config/coston2/deployed-addresses.json`. The old
+> `0x004224faB7BF19a1a67Ee5AF87Cb2b0F0925d41F` has no bytecode. Full procedure:
+> [`fcc-production-registration.md`](fcc-production-registration.md).
 
 ## 4. Verify the running TEE (`/info` machineData)
 
