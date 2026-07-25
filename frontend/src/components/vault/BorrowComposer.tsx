@@ -7,7 +7,6 @@
 // Wiring is unchanged — it reuses the same hooks and calls
 // openVault(collateral, mint, rateBps, prevHint, nextHint).
 import { useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import { zeroAddress } from "viem";
@@ -20,7 +19,6 @@ import {
   type BranchKey,
   type CollateralBranch,
 } from "@/config/branches";
-import { useBranch } from "@/context/branch";
 import {
   DUR,
   EASE,
@@ -53,13 +51,6 @@ const SOON = [
   { symbol: "SFLR", title: "Staked FLR — coming soon" },
 ] as const;
 
-// Which collateral the selector last rendered as active. Module-scoped because
-// a collateral switch remounts this subtree (App Router segment change), so no
-// component state survives to tell the pill where to slide from. Cleared on
-// unmount so arriving from another route doesn't animate. Written only from an
-// effect, so it stays null on the server and never desyncs hydration.
-let lastSelectorKey: BranchKey | null = null;
-
 function InfoRow({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
@@ -70,33 +61,30 @@ function InfoRow({ left, right }: { left: React.ReactNode; right: React.ReactNod
 }
 
 /**
- * Collateral selector: live branches link to their /borrow/<key> page (a soft
- * navigation — the page swaps in place, it does not remount), roadmap assets
- * render as disabled "soon" chips.
+ * Collateral selector — a LOCAL toggle, not navigation. Picking an asset calls
+ * `onSelect`; it does not link anywhere, so the page never changes route and
+ * never remounts. Same shape as the Flare ↔ XRP `RailToggle`.
+ *
+ * Semantics are `radiogroup`/`radio` (pick one of a set) rather than tabs: the
+ * choice re-frames the whole page — header, market panel and composer — not one
+ * labelled tabpanel. Roving tabindex + arrow keys, per APG. Roadmap assets stay
+ * inert "soon" chips.
  *
  * The active chip is one GSAP-animated pill that slides to the selected asset.
  * It tracks offsetTop/offsetHeight as well as left/width so it stays correct
  * when the row wraps on narrow viewports. Reduced motion snaps it instead.
  */
-function CollateralSelector({ activeKey }: { activeKey: BranchKey }) {
-  const { setBranchKey } = useBranch();
+function CollateralSelector({
+  activeKey,
+  onSelect,
+}: {
+  activeKey: BranchKey;
+  onSelect: (key: BranchKey) => void;
+}) {
   const listRef = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLSpanElement>(null);
-  const itemRefs = useRef<Partial<Record<BranchKey, HTMLAnchorElement | null>>>({});
+  const itemRefs = useRef<Partial<Record<BranchKey, HTMLButtonElement | null>>>({});
   const positioned = useRef(false);
-  // Which chip the pill should slide FROM. A collateral switch is a router
-  // remount, so the outgoing pill is gone by the time we mount — but the chips
-  // themselves sit at the same offsets in the new DOM, so the previous key is
-  // all we need to start the tween in the right place. Frozen at mount.
-  const [fromKey] = useState(() =>
-    lastSelectorKey !== null && lastSelectorKey !== activeKey ? lastSelectorKey : null,
-  );
-  useEffect(() => {
-    lastSelectorKey = activeKey;
-    return () => {
-      lastSelectorKey = null;
-    };
-  }, [activeKey]);
   // Bumped by a ResizeObserver so the pill re-measures on wrap / font load.
   const [resizeTick, setResizeTick] = useState(0);
 
@@ -112,41 +100,45 @@ function CollateralSelector({ activeKey }: { activeKey: BranchKey }) {
     const pill = pillRef.current;
     const el = itemRefs.current[activeKey];
     if (!pill || !el) return;
-    const rect = (n: HTMLElement) => ({
-      x: n.offsetLeft,
-      y: n.offsetTop,
-      width: n.offsetWidth,
-      height: n.offsetHeight,
-    });
-    const to = rect(el);
-    const first = !positioned.current;
-    positioned.current = true;
-
-    if (prefersReducedMotion()) {
+    const to = {
+      x: el.offsetLeft,
+      y: el.offsetTop,
+      width: el.offsetWidth,
+      height: el.offsetHeight,
+    };
+    // First paint parks the pill; every later change slides it — the component
+    // stays mounted now, so there is always something to tween from.
+    if (!positioned.current || prefersReducedMotion()) {
+      positioned.current = true;
       gsap.set(pill, { ...to, autoAlpha: 1 });
-    } else if (first) {
-      const fromEl = fromKey ? itemRefs.current[fromKey] : null;
-      // Arrived by switching collateral → start on the old chip and slide.
-      // Arrived fresh → just be there.
-      if (fromEl) {
-        gsap.set(pill, { ...rect(fromEl), autoAlpha: 1 });
-        animate(pill, { ...to, duration: DUR.fast, ease: EASE.thumb });
-      } else {
-        gsap.set(pill, { ...to, autoAlpha: 1 });
-      }
     } else {
       animate(pill, { ...to, autoAlpha: 1, duration: DUR.fast, ease: EASE.thumb });
     }
     return () => {
       gsap.killTweensOf(pill);
     };
-  }, [activeKey, resizeTick, fromKey]);
+  }, [activeKey, resizeTick]);
+
+  const select = (k: BranchKey) => {
+    onSelect(k);
+    itemRefs.current[k]?.focus();
+  };
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    e.preventDefault();
+    const i = BRANCH_ORDER.indexOf(activeKey);
+    const step = e.key === "ArrowRight" ? 1 : BRANCH_ORDER.length - 1;
+    select(BRANCH_ORDER[(i + step) % BRANCH_ORDER.length]);
+  };
 
   return (
     <div
       ref={listRef}
-      className="relative flex flex-wrap items-center gap-1 rounded-full border border-line bg-surface-2 p-1"
+      role="radiogroup"
       aria-label="Collateral asset"
+      onKeyDown={onKeyDown}
+      className="relative flex flex-wrap items-center gap-1 rounded-full border border-line bg-surface-2 p-1"
     >
       <span
         ref={pillRef}
@@ -156,14 +148,16 @@ function CollateralSelector({ activeKey }: { activeKey: BranchKey }) {
       {BRANCH_ORDER.map((k) => {
         const active = activeKey === k;
         return (
-          <Link
+          <button
             key={k}
-            href={`/borrow/${k}`}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            tabIndex={active ? 0 : -1}
             ref={(el) => {
               itemRefs.current[k] = el;
             }}
-            aria-current={active ? "page" : undefined}
-            onClick={() => setBranchKey(k)}
+            onClick={() => onSelect(k)}
             className={cn(
               "relative z-10 inline-flex min-h-10 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
               active ? "text-white" : "text-muted hover:text-ink",
@@ -171,7 +165,7 @@ function CollateralSelector({ activeKey }: { activeKey: BranchKey }) {
           >
             <TokenIcon symbol={BRANCHES[k].collateralSymbol} size={20} alt="" />
             {BRANCHES[k].collateralSymbol}
-          </Link>
+          </button>
         );
       })}
       {SOON.map((s) => (
@@ -191,13 +185,18 @@ function CollateralSelector({ activeKey }: { activeKey: BranchKey }) {
 }
 
 /**
- * @param branch Pin the composer to a specific collateral branch. The borrow
- * page passes the URL's branch so a collateral switch is correct on the first
- * frame; without it the composer follows the shared branch context.
+ * @param branch The collateral branch to compose against — fully controlled by
+ * the borrow page, which owns it as local state.
+ * @param onSelectBranch Called when the user picks a different asset in the
+ * selector. The page swaps state; nothing navigates.
  */
-export function BorrowComposer({ branch: pinned }: { branch?: CollateralBranch } = {}) {
-  const { branch: contextBranch } = useBranch();
-  const branch = pinned ?? contextBranch;
+export function BorrowComposer({
+  branch,
+  onSelectBranch,
+}: {
+  branch: CollateralBranch;
+  onSelectBranch: (key: BranchKey) => void;
+}) {
   const { address: owner } = useAccount();
   const { open } = useAppKit();
   const vaultManager = branch.vaultManager || undefined;
@@ -318,7 +317,7 @@ export function BorrowComposer({ branch: pinned }: { branch?: CollateralBranch }
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-sm font-medium text-muted">Collateral</span>
-          <CollateralSelector activeKey={branch.key} />
+          <CollateralSelector activeKey={branch.key} onSelect={onSelectBranch} />
         </div>
 
         <div className="mt-4 flex items-center gap-3">

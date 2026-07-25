@@ -15,9 +15,10 @@ const ENTER_SPRING = { type: "spring", stiffness: 380, damping: 30, mass: 0.7 } 
 
 /**
  * A single spring entrance. Static when reduced-motion is requested, or when
- * `enabled` is false — the borrow page turns entrances off for a collateral
- * SWITCH (which the App Router serves as a remount) so the page doesn't replay
- * its whole entrance choreography every time you change asset.
+ * `enabled` is false — an escape hatch for callers that remount a subtree for
+ * reasons the user shouldn't perceive as a fresh entrance. Currently unused:
+ * the borrow page needed it while a collateral switch was a route change, and
+ * now that the switch is local state nothing remounts.
  */
 export function Reveal({
   children,

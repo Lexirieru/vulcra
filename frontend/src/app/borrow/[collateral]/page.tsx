@@ -1,28 +1,23 @@
 "use client";
 
-// Per-collateral borrow page (Enosys borrow layout). The URL is the source of
-// truth for the selected branch — each collateral keeps its own /borrow/<key>
-// URL so it stays shareable — while switching collateral READS as one page:
+// Per-collateral borrow page (Enosys borrow layout). ONE page, two toggles.
 //
-//   • no `key` on this component (it used to force a remount on top of the
-//     router's own, doubling the teardown);
-//   • every read is driven off the URL's branch directly, so there is never a
-//     frame where the branch context hasn't caught up and we render a Skeleton
-//     — that gap was the visible "flash";
-//   • the branch context is still synced for OTHER consumers (wallet drawer,
-//     branch-scoped utility pages), it just never gates what we render;
-//   • the App Router still remounts the subtree when the [collateral] segment
-//     changes (see `lastRenderedKey`), so a switch is detected and the per-
-//     section `Reveal` entrances are suppressed — the whole page no longer
-//     replays its entrance choreography every time you change asset. One
-//     subtle GSAP crossfade stands in for it, and the selector pill slides
-//     from the old chip to the new one. Both reduced-motion gated.
-//   • the composer's transient inputs (amounts, rate) reset on branch change.
+// The collateral selector is LOCAL STATE (`activeKey`), seeded once from the
+// [collateral] URL segment — exactly the same pattern as the Flare ↔ XRP Ledger
+// rail below it. Switching collateral is a setState: no <Link>, no router.push,
+// no segment change, so the App Router never remounts the subtree and the page
+// genuinely stays put. (It used to navigate /borrow/fxrp → /borrow/wflr, which
+// the router serves as a different segment value and therefore a full remount —
+// that is what read as "a new page".)
 //
-// For the FXRP branch the page is ONE page with a rail toggle: Flare wallet ↔
-// XRP Ledger. Flipping the toggle swaps the panel below it — it does not open a
-// second flow with its own connect screen, because the XRPL connection is
-// app-wide (XrplWalletProvider) and shared with the wallet drawer.
+// Everything below — header, FTSO/vault/params hooks, composer, rail
+// availability, the wrap-C2FLR panel, the XRPL flow — reads off `activeKey`.
+// The shared branch context is still synced so the wallet drawer and the
+// branch-scoped utility routes stay consistent; nothing here waits on it.
+//
+// The URL is the ENTRY POINT, not a mirror of in-page state: /borrow/<key>
+// seeds the initial asset and the /borrow picker still deep-links into it, but
+// toggling does not rewrite it (see the note by `activeKey` for why).
 import { Suspense, use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { notFound, useSearchParams } from "next/navigation";
@@ -52,21 +47,6 @@ import {
   useIsomorphicLayoutEffect,
 } from "@/lib/gsap";
 
-// The App Router serves /borrow/fxrp and /borrow/wflr as different values of the
-// same dynamic segment, and it REMOUNTS the page subtree when that value changes
-// (verified: <body>/<header>/<main> survive a switch, the page root does not).
-// Removing the old `key` was necessary but can't undo that, so component state
-// cannot tell "switched collateral" from "arrived fresh".
-//
-// This module-scoped memory can: the module is evaluated once and survives soft
-// navigations. It is cleared on unmount, so coming back from /borrow (or any
-// other route) still counts as a fresh arrival and gets the full entrance.
-//
-// Only ever WRITTEN from an effect, which never runs on the server — so it
-// stays null during SSR, can't leak between requests, and the hydration render
-// always agrees with the server (a fresh document load is never a "switch").
-let lastRenderedKey: BranchKey | null = null;
-
 export default function BorrowCollateralPage({
   params,
 }: {
@@ -76,9 +56,7 @@ export default function BorrowCollateralPage({
   if (!isBranchKey(collateral)) notFound();
   return (
     // useSearchParams (the ?mode=xrpl deep link) needs a Suspense boundary to
-    // prerender. Deliberately NO `key` here: keying on the collateral remounted
-    // the entire subtree on every switch, which is what made an in-page swap
-    // look like a full page navigation.
+    // prerender. No `key`: the collateral is state now, not identity.
     <Suspense
       fallback={
         <Card>
@@ -94,27 +72,26 @@ export default function BorrowCollateralPage({
 function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
   const { branchKey, setBranchKey } = useBranch();
   const { address, isConnected } = useAccount();
-  // THE branch for this page. Everything below reads from the URL, never from
-  // the context, so a collateral switch is correct on the very first frame.
-  const branch = BRANCHES[urlKey];
 
-  // Is this mount a collateral SWITCH (came from another collateral) or a fresh
-  // arrival? Frozen at mount, before the effect below rewrites the memory.
-  const [isSwitch] = useState(
-    () => lastRenderedKey !== null && lastRenderedKey !== urlKey,
-  );
-  useEffect(() => {
-    lastRenderedKey = urlKey;
-    return () => {
-      lastRenderedKey = null;
-    };
-  }, [urlKey]);
+  // The selected collateral. Local, seeded once from the URL — switching it is
+  // a plain setState, the same as `rail` below.
+  const [activeKey, setActiveKey] = useState<BranchKey>(urlKey);
+  const branch = BRANCHES[activeKey];
 
-  // URL → context, one way, for other consumers only (wallet drawer, the
-  // branch-scoped utility routes). Nothing on this page waits for it.
+  // Keep the shared branch context in step for OTHER consumers (wallet drawer,
+  // /redeem · /guardian · /liquidations · /xrpl). Nothing on this page waits.
   useEffect(() => {
-    if (branchKey !== urlKey) setBranchKey(urlKey);
-  }, [branchKey, urlKey, setBranchKey]);
+    if (branchKey !== activeKey) setBranchKey(activeKey);
+  }, [branchKey, activeKey, setBranchKey]);
+
+  // The address bar is deliberately NOT rewritten on switch. A bare
+  // `history.replaceState` was tried and measurably desyncs: it updates the URL
+  // but not the App Router's own history entry, so Back → Forward restores the
+  // router's remembered /borrow/<original> and silently drops the choice. The
+  // only way to move the segment for real is a navigation, which is exactly the
+  // remount we are removing. So the URL is the ENTRY POINT, not a mirror of
+  // in-page state — identical to how the rail toggle below reads `?mode=xrpl`
+  // once and never writes it back. Deep links and the /borrow picker still work.
 
   // Deep link: /borrow/fxrp?mode=xrpl (read once on mount; the toggle owns it
   // after). `mode=xrpl` is kept as the query name for existing links. The rail
@@ -134,14 +111,16 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
 
   const xrplMode = rail === "xrpl" && branch.hasXrplMint;
 
-  // On a switch the per-section `Reveal` entrances are off (see `enabled` below)
-  // and this ONE subtle GSAP crossfade stands in for them, over the two regions
-  // whose content actually changes. No-op on a fresh arrival (the Reveals own
-  // that) and under reduced motion.
+  // Subtle GSAP crossfade over the two regions whose content actually changes.
+  // The page no longer remounts, so a plain ref comparison is enough to tell a
+  // switch from the first render. Reduced-motion gated.
   const headerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const shownKey = useRef(activeKey);
   useIsomorphicLayoutEffect(() => {
-    if (!isSwitch || prefersReducedMotion()) return;
+    if (shownKey.current === activeKey) return;
+    shownKey.current = activeKey;
+    if (prefersReducedMotion()) return;
     const targets = [headerRef.current, panelRef.current].filter(Boolean);
     if (!targets.length) return;
     gsap.killTweensOf(targets);
@@ -159,11 +138,11 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
     return () => {
       gsap.killTweensOf(targets);
     };
-  }, [isSwitch]);
+  }, [activeKey]);
 
   return (
     <div className="flex flex-col gap-6">
-      <Reveal enabled={!isSwitch}>
+      <Reveal>
         <div className="flex flex-col gap-3">
           <Link
             href="/borrow"
@@ -190,7 +169,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
       </Reveal>
 
       {branch.hasXrplMint && (
-        <Reveal delay={0.05} enabled={!isSwitch}>
+        <Reveal delay={0.05}>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             <RailToggle value={rail} onChange={setRail} idPrefix="rail" />
             <p className="text-xs text-muted">
@@ -222,7 +201,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
             </Card>
           ) : hasVault && vault ? (
             <>
-              <Reveal enabled={!isSwitch}>
+              <Reveal>
                 <PositionCard
                   vault={vault}
                   price18={price18}
@@ -235,7 +214,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
                 />
               </Reveal>
               <div className="grid gap-6 xl:grid-cols-2">
-                <Reveal delay={0.05} enabled={!isSwitch}>
+                <Reveal delay={0.05}>
                   <VaultActions
                     vault={vault}
                     price18={price18}
@@ -246,7 +225,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
                     disabled={notConfigured}
                   />
                 </Reveal>
-                <Reveal delay={0.1} enabled={!isSwitch}>
+                <Reveal delay={0.1}>
                   {price18 ? (
                     <PriceSimulator
                       vault={vault}
@@ -263,18 +242,17 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
               </div>
             </>
           ) : (
-            <Reveal enabled={!isSwitch}>
-              {/* URL-driven, same as the page — never one frame behind. */}
-              <BorrowComposer branch={branch} />
+            <Reveal>
+              <BorrowComposer branch={branch} onSelectBranch={setActiveKey} />
             </Reveal>
           )}
         </div>
 
         <aside className="flex flex-col gap-4" aria-label="Market info">
-          <Reveal delay={0.1} enabled={!isSwitch}>
+          <Reveal delay={0.1}>
             <LivePrice branch={branch} />
           </Reveal>
-          <Reveal delay={0.15} enabled={!isSwitch}>
+          <Reveal delay={0.15}>
             <RedemptionsExplainer />
           </Reveal>
         </aside>
