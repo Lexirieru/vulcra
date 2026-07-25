@@ -2,6 +2,9 @@
 
 // Client provider tree (KTD1). createAppKit runs once at module scope; the
 // WagmiProvider is hydrated from the SSR cookie so there is no mismatch.
+// Two wallets live side by side here: the EVM one (AppKit/wagmi, Coston2) and
+// the XRPL one (XrplWalletProvider, Crossmark/GemWallet). They connect
+// independently and can both be connected at the same time.
 import { createAppKit } from "@reown/appkit/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React, { useState, type ReactNode } from "react";
@@ -13,6 +16,7 @@ import {
   projectId,
   wagmiAdapter,
 } from "@/config";
+import { XrplWalletProvider } from "./xrpl";
 
 createAppKit({
   adapters: [wagmiAdapter],
@@ -46,7 +50,9 @@ export default function ContextProvider({
       config={wagmiAdapter.wagmiConfig as Config}
       initialState={initialState}
     >
-      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+      <QueryClientProvider client={queryClient}>
+        <XrplWalletProvider>{children}</XrplWalletProvider>
+      </QueryClientProvider>
     </WagmiProvider>
   );
 }

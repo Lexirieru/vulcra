@@ -3,10 +3,14 @@
 // App shell, Enosys structure on the light theme: cursive Vulcra wordmark,
 // centered tab nav (Dashboard · Borrow · Earn · Incentives), a "More"
 // disclosure for the utility routes (Redeem / Guardian / Liquidations / XRPL
-// mint), the existing wallet connect + wrong-network guard, and a fixed bottom
+// mint), the dual-wallet entry point + wrong-network guard, and a fixed bottom
 // stats bar. The XRPL entry only exists on branches that support the native
 // mint (FXRP). BranchSwitch appears on the branch-scoped utility routes, which
 // act on the active collateral branch.
+//
+// Wallets: one header button opens the right-side WalletSidebar, which holds
+// BOTH the Flare (EVM · Coston2) and XRP Ledger connections — they connect
+// independently and can be live at the same time.
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -14,9 +18,9 @@ import { ChevronDown } from "lucide-react";
 import { cn, Wordmark } from "@/components/ui";
 import { useBranch } from "@/context/branch";
 import { BranchSwitch } from "./BranchSwitch";
-import { ConnectButton } from "./ConnectButton";
 import { NetworkGuard } from "./NetworkGuard";
 import { StatsBar } from "./StatsBar";
+import { WalletSidebar, WalletsButton } from "./WalletSidebar";
 
 const TABS = [
   { href: "/", label: "Dashboard" },
@@ -52,10 +56,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   // roles). Closes on route change, Escape, and pointer-down outside.
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement>(null);
+
+  // The wallet drawer's open state lives here so the route-change close below
+  // is a render-phase setState in the SAME component (calling a parent setter
+  // from the child's render is what React warns about).
+  const [walletsOpen, setWalletsOpen] = useState(false);
+
   const [lastPathname, setLastPathname] = useState(pathname);
   if (lastPathname !== pathname) {
     setLastPathname(pathname);
     setMoreOpen(false);
+    setWalletsOpen(false);
   }
   useEffect(() => {
     if (!moreOpen) return;
@@ -159,7 +170,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 </div>
               ) : null}
             </div>
-            <ConnectButton />
+            <WalletsButton open={walletsOpen} onOpen={() => setWalletsOpen(true)} />
           </div>
         </div>
 
@@ -230,6 +241,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </footer>
 
       <StatsBar />
+
+      <WalletSidebar open={walletsOpen} onClose={() => setWalletsOpen(false)} />
     </div>
   );
 }

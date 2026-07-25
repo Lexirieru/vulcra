@@ -6,6 +6,11 @@
 // before any XRP is sent), get a signable Payment (QR + Xaman deep link,
 // backend-built 0xFE memo), and track the mint end to end. The client never
 // builds the memo. Headingless on purpose — the host page owns the h1.
+//
+// The XRPL wallet comes from the app-wide XrplWalletProvider, not a local hook:
+// connecting here or in the wallet sidebar is the same connection, so the
+// r-address is simply DERIVED from it (with a manual paste as the fallback when
+// no wallet is connected). Signing behaviour is unchanged.
 import { useState } from "react";
 import QRCode from "react-qr-code";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -27,7 +32,7 @@ import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
 import { api } from "@/lib/api/client";
 import type { MintBuildResponse } from "@/lib/api/types";
 import { usePersonalAccount, isValidRAddress } from "@/hooks/usePersonalAccount";
-import { useXrplWallet } from "@/hooks/useXrplWallet";
+import { useXrplWalletContext } from "@/context/xrpl";
 import { XRPL_PROVIDER_ORDER, XRPL_PROVIDERS } from "@/lib/xrpl/wallets";
 import { BRANCHES } from "@/config/branches";
 import { formatToken, parseAmount, shortenAddress } from "@/lib/format";
@@ -36,8 +41,12 @@ import { formatToken, parseAmount, shortenAddress } from "@/lib/format";
 const XRPL_DEFAULT_RATE_BPS = BRANCHES.fxrp.interest.defaultBps;
 
 export function XrplMintFlow() {
-  const [rAddress, setRAddress] = useState("");
-  const wallet = useXrplWallet();
+  const wallet = useXrplWalletContext();
+  // A connected wallet IS the r-address — derived, so a connection made in the
+  // wallet sidebar shows up here instantly (and vice versa). The typed field is
+  // only the no-wallet fallback.
+  const [pastedAddress, setPastedAddress] = useState("");
+  const rAddress = wallet.address ?? pastedAddress;
   const account = usePersonalAccount(rAddress);
   const validAddr = isValidRAddress(rAddress);
 
@@ -98,14 +107,7 @@ export function XrplMintFlow() {
                 {wallet.providerId ? XRPL_PROVIDERS[wallet.providerId].name : "Wallet"} ·{" "}
                 <span className="font-mono">{shortenAddress(wallet.address)}</span>
               </span>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  wallet.disconnect();
-                  setRAddress("");
-                }}
-              >
+              <Button variant="ghost" size="sm" onClick={() => wallet.disconnect()}>
                 Disconnect
               </Button>
             </div>
@@ -117,10 +119,7 @@ export function XrplMintFlow() {
                     key={id}
                     variant="secondary"
                     disabled={wallet.connecting}
-                    onClick={async () => {
-                      const a = await wallet.connect(id);
-                      if (a) setRAddress(a);
-                    }}
+                    onClick={() => wallet.connect(id)}
                   >
                     <Wallet className="h-4 w-4" aria-hidden />
                     {wallet.connecting ? "Connecting…" : `Connect ${XRPL_PROVIDERS[id].name}`}
@@ -147,7 +146,7 @@ export function XrplMintFlow() {
                 autoComplete="off"
                 spellCheck={false}
                 value={rAddress}
-                onChange={(e) => setRAddress(e.target.value)}
+                onChange={(e) => setPastedAddress(e.target.value)}
                 readOnly={Boolean(wallet.address)}
               />
             </Field>
