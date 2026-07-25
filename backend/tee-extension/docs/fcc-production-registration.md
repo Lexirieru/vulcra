@@ -387,7 +387,7 @@ In order:
 ```
 go run ./cmd/register-tee -a "$ADDRESSES_FILE" -c "$CHAIN_URL" \
     -p "$EXT_PROXY_URL" -h "${EXT_PROXY_HOST_URL:-$EXT_PROXY_URL}" \
-    -ep "$NORMAL_PROXY_URL" -state ../config/register-tee.state
+    -ep "$NORMAL_PROXY_URL" -state "$PROJECT_DIR/config/register-tee.state"
 ```
 
 `register-tee`'s default `-command rap` walks the whole lifecycle:
