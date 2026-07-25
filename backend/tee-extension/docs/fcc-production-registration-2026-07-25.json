@@ -1,0 +1,39 @@
+{
+  "network": "coston2",
+  "chainId": 114,
+  "recordedAt": "2026-07-25T11:25Z",
+  "flareTeeManager": "0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE",
+  "teeId": "0xEAAEF13871e71db24FC47e7c76Be8a925057caa6",
+  "teeProxyId": "0x77d85445B801064a2190750f3581c4c63b8976F9",
+  "status": 2,
+  "statusLabel": "PRODUCTION",
+  "onchainUrl": "https://zoloft-harbor-prior-educators.trycloudflare.com",
+  "owner": "0x77d85445B801064a2190750f3581c4c63b8976F9",
+  "extensionId": 65701,
+  "extensionIdHex": "0x00000000000000000000000000000000000000000000000000000000000100a5",
+  "instructionSender": "0x978Ad6Ae225BEA5745a7fb87A66BC7a57FA7c555",
+  "lastStatusChangeTs": 1784978699,
+  "initialSigningPolicyId": 5856,
+  "teeVersion": "v0.1.0",
+  "attestation": {
+    "simulatedTee": true,
+    "mode": 1,
+    "codeHash": "0x194844cf417dde867073e5ab7199fa4d21fd82b5dbe2bdea8b3d7fc18d10fdc2",
+    "platform": "0x544553545f504c4154464f524d00000000000000000000000000000000000000",
+    "platformAscii": "TEST_PLATFORM",
+    "governanceHash": "0xb74d1df9e8c2580b9d7b2afd27db95a9b1e4f0441f1698d51fa18ba1a4b4a080",
+    "governanceSigners": [
+      "0x77d85445B801064a2190750f3581c4c63b8976F9"
+    ],
+    "governanceThreshold": 1
+  },
+  "teeNodePin": "github.com/flare-foundation/tee-node v0.0.23-0.20260722073401-c687a8631bca",
+  "scaffoldCommit": "3d0d8f2babde42298c934b15ebf4d4398eb52efe",
+  "gasSpentC2FLR": "1.868152652",
+  "registerTeeCommand": "rap (post-build.sh default)",
+  "availabilityCheck": {
+    "attestationInstructionId": "0x8f22107739b5f52c344c24334ad3edc757325e16dc4a40c48550c0a178e88dde",
+    "availabilityInstructionId": "0xc1b402f24677c11eb931790d9efd7071aa2f11e0712daa72a0399c2054778a90",
+    "ftdcPolicyConsistency": "OK: FTDC proxy signing policy 5858 == on-chain reward epoch 5858"
+  }
+}

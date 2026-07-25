@@ -4,6 +4,11 @@ Ordered, verbatim steps to take the Vulcra confidential extension (liquidation
 keeper + Vault Guardian) from source to a TEE machine whose on-chain status is
 **PRODUCTION** on the **redeployed** Flare TEE manager.
 
+> **Executed successfully on 2026-07-25** — teeId
+> `0xEAAEF13871e71db24FC47e7c76Be8a925057caa6`, status **2 = PRODUCTION**,
+> extension `65701`. Full transcript, cast output and the caveats that run
+> surfaced: [`fcc-production-registration-2026-07-25.md`](fcc-production-registration-2026-07-25.md).
+
 **No secrets in this file.** Every credential lives in the gitignored `.env` /
 `config/proxy/*.toml` (templates: `*.example`).
 
@@ -204,10 +209,77 @@ Both constructors take `(ITeeExtensionRegistry, ITeeMachineRegistry)`, and
 **both** — the diamond routes each call to the right facet — so the deploy path
 is ABI-compatible as-is.
 
-> Note: our `setExtensionId(uint256)` is `onlyOwner` and takes the id, whereas
-> the scaffold's is a no-arg self-discovering `setExtensionId()`. That only
-> affects `scripts/test.sh`, which is **not** part of this run book;
-> `pre-build.sh` / `post-build.sh` never call it.
+**Patch `tools/pkg/utils/instructions.go` — this is mandatory, not optional.**
+Our contract's ABI differs from HelloWorld's in three places, and because
+`tools/pkg/utils` is a single package that `cmd/deploy-contract` imports,
+`pre-build.sh` dies at **Step 1 pre-flight** without it:
+
+```
+pkg/utils/instructions.go:59:35: not enough arguments in call to sender.SetExtensionId
+pkg/utils/instructions.go:117:20: sender.SendSayHello undefined
+pkg/utils/instructions.go:186:20: sender.SendSayGoodbye undefined
+```
+
+Apply these edits (verified 2026-07-25 — after them the whole `tools` module,
+including `cmd/run-test`, builds clean):
+
+```bash
+cd "$FCC_WORKSPACE/fce-extension-scaffold/tools/pkg/utils"
+
+# 1. setExtensionId(uint256): our setter takes the id explicitly.
+#    Insert the lookup right before the call, and pass it to both Pack sites.
+#    (a) before `tx, err := sender.SetExtensionId(opts)` add:
+#          extensionID, err := discoverExtensionId(s, instructionSenderAddress)
+#          if err != nil { return errors.Errorf("failed to discover extension id: %s", err) }
+#    (b) `sender.SetExtensionId(opts)`      -> `sender.SetExtensionId(opts, extensionID)`
+#    (c) `parsed.Pack("setExtensionId")`    -> `parsed.Pack("setExtensionId", extensionID)`  (both occurrences)
+# 2. `sender.SendSayHello(opts, message)`   -> `sender.SendKeeperScan(opts, message)`
+#    `parsed.Pack("sendSayHello", message)` -> `parsed.Pack("sendKeeperScan", message)`
+# 3. `sender.SendSayGoodbye(opts, name, reason)`
+#      -> `sender.SendGuardianEvaluate(opts, []byte(name+"|"+reason))`
+```
+
+…then append the id-discovery helper, which reproduces in Go the loop the
+scaffold's Solidity ran internally (so `SetExtensionId` keeps its 2-argument
+signature and every existing caller still compiles):
+
+```go
+// discoverExtensionId scans the TeeExtensionRegistry for the public extension
+// whose registered instructions-sender is instructionSenderAddress.
+func discoverExtensionId(s *support.Support, instructionSenderAddress common.Address) (*big.Int, error) {
+	callOpts := &bind.CallOpts{Context: context.Background()}
+
+	next, err := s.TeeExtensionRegistry.NextPublicExtensionId(callOpts)
+	if err != nil {
+		return nil, err
+	}
+
+	const firstPublicExtensionId = 0x10000
+	for i := big.NewInt(firstPublicExtensionId); i.Cmp(next) < 0; i.Add(i, big.NewInt(1)) {
+		senderAddr, err := s.TeeExtensionRegistry.GetTeeExtensionInstructionsSender(callOpts, i)
+		if err != nil {
+			return nil, err
+		}
+		if senderAddr == instructionSenderAddress {
+			return new(big.Int).Set(i), nil
+		}
+	}
+	return nil, errors.New("extension id not found for this instruction sender")
+}
+```
+
+Confirm before spending gas:
+
+```bash
+cd "$FCC_WORKSPACE/fce-extension-scaffold/tools"
+go build ./pkg/... ./cmd/deploy-contract ./cmd/register-extension \
+         ./cmd/allow-tee-version ./cmd/set-governance ./cmd/register-tee ./cmd/query-tee
+```
+
+> `tools/integration/checktx_test.go` calls the generated binding's
+> `SetExtensionId(opts)` with one argument and will no longer compile. It is a
+> `_test.go` in a package nothing on this path builds, so it does not block
+> registration — leave it, or drop the file.
 
 ### 3.2 The enclave image → this repo
 
@@ -334,13 +406,27 @@ docker compose \
 
 > **Apple Silicon / any arm64 host.** The enclave `Dockerfile` builds the Go
 > binary with `GOARCH=amd64` (Confidential Space is x86) but the final
-> `gcr.io/distroless/static` layer is pulled for the *host* platform, so on an
-> arm64 Mac you get an arm64 image wrapping an x86-64 binary that will not run
-> locally. Verified 2026-07-25: the image builds clean and the binary inside is
-> `ELF 64-bit LSB executable, x86-64, statically linked, stripped`. Add
-> `--platform linux/amd64` (via `docker compose build --platform linux/amd64`,
-> or `platforms: [linux/amd64]` under the overlay's `build:`) when you need the
-> container to actually start on such a host. A standalone build check:
+> `gcr.io/distroless/static` layer is pulled for the *host* platform, so a plain
+> build on an arm64 Mac yields an arm64 image wrapping an x86-64 binary that
+> cannot start. Add a fourth, host-only compose file:
+>
+> ```bash
+> cat > "$FCC_WORKSPACE/docker-compose.arm64host.yaml" <<'EOF'
+> services:
+>   extension-tee:
+>     platform: linux/amd64
+>     build:
+>       platforms:
+>         - linux/amd64
+> EOF
+> # …then append `-f "$FCC_WORKSPACE/docker-compose.arm64host.yaml"` to the
+> # `docker compose … up -d --build` invocation above.
+> ```
+>
+> Only `extension-tee` needs this. `local/tee-proxy` builds and runs **natively
+> arm64** — a mixed-architecture stack is fine. Verified 2026-07-25 on an arm64
+> Mac (Docker 29.4.0): the emulated image built in ~4 minutes and the container
+> ran without incident. A standalone build check:
 >
 > ```bash
 > cd "$VULCRA_EXT_DIR"
