@@ -35,6 +35,25 @@ function PickerRow({ left, right }: { left: React.ReactNode; right: React.ReactN
   );
 }
 
+// Chain badge (top-right of a card): which network(s) the collateral touches.
+// XRP-based collateral bridges the XRP Ledger → Flare; FLR-based is Flare-only.
+function ChainLogos({ xrp }: { xrp: boolean }) {
+  return (
+    <span
+      className="flex items-center gap-1"
+      title={xrp ? "XRP Ledger → Flare Coston2" : "Flare Coston2"}
+      aria-label={xrp ? "Chains: XRP Ledger and Flare" : "Chain: Flare"}
+    >
+      {xrp && <TokenIcon symbol="XRP" size={22} alt="" />}
+      <TokenIcon symbol="FLR" size={22} alt="" />
+    </span>
+  );
+}
+
+function isXrpBased(symbol: string): boolean {
+  return symbol.toUpperCase().includes("XRP");
+}
+
 function BranchCard({ branch }: { branch: CollateralBranch }) {
   const vaultManager = branch.vaultManager || undefined;
   const { price18, isStale } = useFtsoPrice(branch.feedId);
@@ -62,7 +81,10 @@ function BranchCard({ branch }: { branch: CollateralBranch }) {
             </span>
           </span>
         </span>
-        {branch.hasXrplMint && <Badge tone="blue">XRPL-native mint</Badge>}
+        <span className="flex flex-col items-end gap-1.5">
+          <ChainLogos xrp={branch.hasXrplMint || isXrpBased(branch.collateralSymbol)} />
+          {branch.hasXrplMint && <Badge tone="blue">XRPL-native mint</Badge>}
+        </span>
       </div>
 
       <div className="space-y-1.5 border-t border-line pt-3">
@@ -120,7 +142,10 @@ function SoonCard({ symbol, label, note }: (typeof SOON)[number]) {
             <span className="block text-xs text-muted">{symbol}</span>
           </span>
         </span>
-        <Badge tone="neutral">Soon</Badge>
+        <span className="flex flex-col items-end gap-1.5">
+          <ChainLogos xrp={isXrpBased(symbol)} />
+          <Badge tone="neutral">Soon</Badge>
+        </span>
       </div>
       <p className="border-t border-line pt-3 text-sm text-muted">{note}</p>
     </Card>
