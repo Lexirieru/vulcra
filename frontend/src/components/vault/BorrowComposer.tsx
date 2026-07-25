@@ -6,7 +6,7 @@
 // liquidation price / CR, and the interest input+slider with per-year cost.
 // Wiring is unchanged — it reuses the same hooks and calls
 // openVault(collateral, mint, rateBps, prevHint, nextHint).
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
@@ -14,8 +14,21 @@ import { zeroAddress } from "viem";
 import { ArrowDown, Gauge, Info } from "lucide-react";
 import { Badge, Button, Card, PillButton, TokenIcon, cn } from "@/components/ui";
 import { TxStatus } from "./TxStatus";
-import { BRANCH_ORDER, BRANCHES } from "@/config/branches";
+import {
+  BRANCH_ORDER,
+  BRANCHES,
+  type BranchKey,
+  type CollateralBranch,
+} from "@/config/branches";
 import { useBranch } from "@/context/branch";
+import {
+  DUR,
+  EASE,
+  animate,
+  gsap,
+  prefersReducedMotion,
+  useIsomorphicLayoutEffect,
+} from "@/lib/gsap";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { useCollateralToken, useVaultParams } from "@/hooks/useVault";
 import { useTokenApproval, useVaultAction, useWrapNative } from "@/hooks/useVaultAction";
@@ -40,6 +53,13 @@ const SOON = [
   { symbol: "SFLR", title: "Staked FLR — coming soon" },
 ] as const;
 
+// Which collateral the selector last rendered as active. Module-scoped because
+// a collateral switch remounts this subtree (App Router segment change), so no
+// component state survives to tell the pill where to slide from. Cleared on
+// unmount so arriving from another route doesn't animate. Written only from an
+// effect, so it stays null on the server and never desyncs hydration.
+let lastSelectorKey: BranchKey | null = null;
+
 function InfoRow({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 text-sm">
@@ -50,28 +70,103 @@ function InfoRow({ left, right }: { left: React.ReactNode; right: React.ReactNod
 }
 
 /**
- * Collateral selector: live branches link to their /borrow/<key> page (and sync
- * the shared branch context immediately), roadmap assets render as disabled
- * "soon" chips.
+ * Collateral selector: live branches link to their /borrow/<key> page (a soft
+ * navigation — the page swaps in place, it does not remount), roadmap assets
+ * render as disabled "soon" chips.
+ *
+ * The active chip is one GSAP-animated pill that slides to the selected asset.
+ * It tracks offsetTop/offsetHeight as well as left/width so it stays correct
+ * when the row wraps on narrow viewports. Reduced motion snaps it instead.
  */
-function CollateralSelector() {
-  const { branchKey, setBranchKey } = useBranch();
+function CollateralSelector({ activeKey }: { activeKey: BranchKey }) {
+  const { setBranchKey } = useBranch();
+  const listRef = useRef<HTMLDivElement>(null);
+  const pillRef = useRef<HTMLSpanElement>(null);
+  const itemRefs = useRef<Partial<Record<BranchKey, HTMLAnchorElement | null>>>({});
+  const positioned = useRef(false);
+  // Which chip the pill should slide FROM. A collateral switch is a router
+  // remount, so the outgoing pill is gone by the time we mount — but the chips
+  // themselves sit at the same offsets in the new DOM, so the previous key is
+  // all we need to start the tween in the right place. Frozen at mount.
+  const [fromKey] = useState(() =>
+    lastSelectorKey !== null && lastSelectorKey !== activeKey ? lastSelectorKey : null,
+  );
+  useEffect(() => {
+    lastSelectorKey = activeKey;
+    return () => {
+      lastSelectorKey = null;
+    };
+  }, [activeKey]);
+  // Bumped by a ResizeObserver so the pill re-measures on wrap / font load.
+  const [resizeTick, setResizeTick] = useState(0);
+
+  useIsomorphicLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setResizeTick((n) => n + 1));
+    ro.observe(list);
+    return () => ro.disconnect();
+  }, []);
+
+  useIsomorphicLayoutEffect(() => {
+    const pill = pillRef.current;
+    const el = itemRefs.current[activeKey];
+    if (!pill || !el) return;
+    const rect = (n: HTMLElement) => ({
+      x: n.offsetLeft,
+      y: n.offsetTop,
+      width: n.offsetWidth,
+      height: n.offsetHeight,
+    });
+    const to = rect(el);
+    const first = !positioned.current;
+    positioned.current = true;
+
+    if (prefersReducedMotion()) {
+      gsap.set(pill, { ...to, autoAlpha: 1 });
+    } else if (first) {
+      const fromEl = fromKey ? itemRefs.current[fromKey] : null;
+      // Arrived by switching collateral → start on the old chip and slide.
+      // Arrived fresh → just be there.
+      if (fromEl) {
+        gsap.set(pill, { ...rect(fromEl), autoAlpha: 1 });
+        animate(pill, { ...to, duration: DUR.fast, ease: EASE.thumb });
+      } else {
+        gsap.set(pill, { ...to, autoAlpha: 1 });
+      }
+    } else {
+      animate(pill, { ...to, autoAlpha: 1, duration: DUR.fast, ease: EASE.thumb });
+    }
+    return () => {
+      gsap.killTweensOf(pill);
+    };
+  }, [activeKey, resizeTick, fromKey]);
+
   return (
     <div
-      className="flex flex-wrap items-center gap-1 rounded-full border border-line bg-surface-2 p-1"
+      ref={listRef}
+      className="relative flex flex-wrap items-center gap-1 rounded-full border border-line bg-surface-2 p-1"
       aria-label="Collateral asset"
     >
+      <span
+        ref={pillRef}
+        aria-hidden
+        className="pointer-events-none absolute top-0 left-0 invisible rounded-full bg-navy"
+      />
       {BRANCH_ORDER.map((k) => {
-        const active = branchKey === k;
+        const active = activeKey === k;
         return (
           <Link
             key={k}
             href={`/borrow/${k}`}
+            ref={(el) => {
+              itemRefs.current[k] = el;
+            }}
             aria-current={active ? "page" : undefined}
             onClick={() => setBranchKey(k)}
             className={cn(
-              "inline-flex min-h-10 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
-              active ? "bg-navy text-white" : "text-muted hover:text-ink",
+              "relative z-10 inline-flex min-h-10 items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors",
+              active ? "text-white" : "text-muted hover:text-ink",
             )}
           >
             <TokenIcon symbol={BRANCHES[k].collateralSymbol} size={20} alt="" />
@@ -84,7 +179,7 @@ function CollateralSelector() {
           key={s.symbol}
           aria-disabled
           title={s.title}
-          className="inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-muted/60"
+          className="relative z-10 inline-flex min-h-10 cursor-not-allowed items-center gap-2 rounded-full px-3.5 py-1.5 text-sm font-medium text-muted/60"
         >
           <TokenIcon symbol={s.symbol} size={20} alt="" className="opacity-50" />
           {s.symbol}
@@ -95,8 +190,14 @@ function CollateralSelector() {
   );
 }
 
-export function BorrowComposer() {
-  const { branch } = useBranch();
+/**
+ * @param branch Pin the composer to a specific collateral branch. The borrow
+ * page passes the URL's branch so a collateral switch is correct on the first
+ * frame; without it the composer follows the shared branch context.
+ */
+export function BorrowComposer({ branch: pinned }: { branch?: CollateralBranch } = {}) {
+  const { branch: contextBranch } = useBranch();
+  const branch = pinned ?? contextBranch;
   const { address: owner } = useAccount();
   const { open } = useAppKit();
   const vaultManager = branch.vaultManager || undefined;
@@ -119,6 +220,22 @@ export function BorrowComposer() {
   const clampedRate = Math.min(Math.max(rateBps, interest.minBps), interest.maxBps);
 
   const [wrapAmount, setWrapAmount] = useState("");
+
+  // Switching collateral resets ONLY the transient inputs — amounts and the
+  // rate, which are denominated in the old asset and would be nonsense on the
+  // new one. Done as a render-phase adjustment rather than a `key` remount or a
+  // setState-in-effect: the DOM survives, so focus/scroll are kept, the framer
+  // `Reveal` wrapper around this composer never re-animates, and there is no
+  // extra render pass. (React's documented "adjusting state when props change".)
+  const [lastBranchKey, setLastBranchKey] = useState(branch.key);
+  if (lastBranchKey !== branch.key) {
+    setLastBranchKey(branch.key);
+    setCollateral("");
+    setMint("");
+    setWrapAmount("");
+    setRateBps(interest.defaultBps);
+    setRateText((interest.defaultBps / 100).toString());
+  }
 
   useEffect(() => {
     if (approval.approved) approval.refetchAllowance();
@@ -201,7 +318,7 @@ export function BorrowComposer() {
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-sm font-medium text-muted">Collateral</span>
-          <CollateralSelector />
+          <CollateralSelector activeKey={branch.key} />
         </div>
 
         <div className="mt-4 flex items-center gap-3">

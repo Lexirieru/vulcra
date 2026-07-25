@@ -6,9 +6,16 @@ import { RollingNumber } from "@/components/motion";
 import { formatPrice } from "@/lib/format";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { useBranch } from "@/context/branch";
+import type { CollateralBranch } from "@/config/branches";
 
-export function LivePrice() {
-  const { branch } = useBranch();
+/**
+ * Live FTSO price for a collateral branch. Defaults to the shared branch
+ * context; pass `branch` to pin it (the borrow page drives everything off the
+ * URL branch so a collateral switch is never one frame behind the context).
+ */
+export function LivePrice({ branch: pinned }: { branch?: CollateralBranch } = {}) {
+  const { branch: contextBranch } = useBranch();
+  const branch = pinned ?? contextBranch;
   const { price18, timestamp, isStale, isLoading, isError } = useFtsoPrice(branch.feedId);
 
   return (

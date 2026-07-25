@@ -13,18 +13,25 @@ export const TIMING = {
 
 const ENTER_SPRING = { type: "spring", stiffness: 380, damping: 30, mass: 0.7 } as const;
 
-/** A single spring entrance. Static when reduced-motion is requested. */
+/**
+ * A single spring entrance. Static when reduced-motion is requested, or when
+ * `enabled` is false — the borrow page turns entrances off for a collateral
+ * SWITCH (which the App Router serves as a remount) so the page doesn't replay
+ * its whole entrance choreography every time you change asset.
+ */
 export function Reveal({
   children,
   delay = 0,
   className,
+  enabled = true,
 }: {
   children: React.ReactNode;
   delay?: number;
   className?: string;
+  enabled?: boolean;
 }) {
   const reduced = useReducedMotion();
-  if (reduced) return <div className={className}>{children}</div>;
+  if (reduced || !enabled) return <div className={className}>{children}</div>;
   return (
     <motion.div
       className={className}
