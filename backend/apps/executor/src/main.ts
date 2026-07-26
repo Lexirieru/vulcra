@@ -1,6 +1,16 @@
+import { config as dotenvConfig } from "dotenv";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 import { makePublicClient, makeWalletClient } from "@vulcra/chain-client";
 import { loadEnv, requirePreflightConfig, requireLiveExecutionConfig } from "./env.js";
 import { buildServer } from "./server.js";
+
+// Load backend/.env (branch addresses, RPC, gated secrets) BEFORE loadEnv reads
+// process.env. `npm -w apps/executor start` runs with cwd = the package dir, so
+// we resolve the path from this module (…/backend/apps/executor/src) up to
+// …/backend/.env rather than relying on cwd. Existing shell vars win (dotenv
+// does not override), so FRONTEND_ORIGIN passed on the command line is kept.
+dotenvConfig({ path: resolve(dirname(fileURLToPath(import.meta.url)), "../../../.env") });
 import { buildLiveServices } from "./services.js";
 import { makeLiveProcessor } from "./liveProcessor.js";
 import { InMemoryMintStore, createSqliteMintStore, type MintStore } from "./orchestrator/store.js";

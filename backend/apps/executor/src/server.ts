@@ -45,6 +45,35 @@ function serializeBigints(value: unknown): unknown {
 export function buildServer(services: ExecutorServices, opts: { frontendOrigin?: string } = {}): FastifyInstance {
   const app = Fastify({ logger: false });
 
+  // CORS (dev). The dApp runs on a different origin (localhost:3210 / :3000)
+  // than this executor (:8787). Without these headers the browser blocks the
+  // response and the frontend reads the rejected fetch as "backend offline".
+  // JSON POSTs (mint/build, mint/submit) send a preflight OPTIONS too, answered
+  // by the wildcard route below. No credentials are used, so we only echo an
+  // allow-listed localhost origin (falls back to the configured frontendOrigin).
+  const allowOrigins = new Set(
+    [
+      opts.frontendOrigin,
+      "http://localhost:3000",
+      "http://localhost:3210",
+      "http://127.0.0.1:3000",
+      "http://127.0.0.1:3210",
+    ].filter((o): o is string => Boolean(o)),
+  );
+  app.addHook("onRequest", async (req, reply) => {
+    const origin = req.headers.origin;
+    if (origin && allowOrigins.has(origin)) {
+      reply.header("Access-Control-Allow-Origin", origin);
+      reply.header("Vary", "Origin");
+      reply.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+      reply.header("Access-Control-Allow-Headers", "Content-Type");
+      reply.header("Access-Control-Max-Age", "86400");
+    }
+  });
+  // Preflight for every route (a JSON request body triggers it). onRequest above
+  // has already stamped the CORS headers on this reply.
+  app.options("/*", async (_req, reply) => reply.code(204).send());
+
   app.get("/health", async () => ({ ok: true }));
 
   app.get<{ Params: { xrplAddress: string } }>("/account/:xrplAddress", async (req, reply) => {
@@ -114,6 +143,12 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
         .send({ error: "packedUserOpHex, xrplTxId, memoUserOpHash are required" });
     }
     const id = `mint:${xrplTxId.toLowerCase()}`;
+    // Was this txId already submitted? Re-submitting the SAME payment (a
+    // double-click, a manual "Track" after an in-wallet sign) must NOT kick off
+    // a second attestation: two requestAttestation txs from the executor wallet
+    // collide on nonce ("already known"), which strands the mint. Only a
+    // genuinely new intake drives the pipeline; a repeat just returns status.
+    const alreadyKnown = Boolean(services.store.getByXrplTxId(xrplTxId));
     const rec = intakeMint(services.store, {
       id,
       xrplTxId,
@@ -124,7 +159,7 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
       return reply.code(422).send({ mintId: rec.id, state: rec.state, error: rec.lastError });
     }
     // Kick off the attestation -> submit pipeline (no-op / gated when unfunded).
-    services.processMint?.(rec.id);
+    if (!alreadyKnown) services.processMint?.(rec.id);
     const gated = services.processMint === undefined;
     return { mintId: rec.id, state: rec.state, ...(gated ? { note: "live submit gated: set EXECUTOR_PRIVATE_KEY + verifier/DA env to process" } : {}) };
   });

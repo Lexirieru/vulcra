@@ -16,7 +16,7 @@ export default function DashboardPage() {
               Open your <em className="font-display italic">first position</em>
             </h1>
             <p className="mt-2 max-w-xl text-sm text-muted">
-              Mint vUSD against FXRP or wFLR at a rate you choose, or put vUSD
+              Borrow vUSD against FXRP or wFLR at a rate you choose, or put vUSD
               to work in the stability pools — live on Flare Coston2.
             </p>
           </div>
@@ -34,7 +34,7 @@ export default function DashboardPage() {
           <HeroCard
             tone="navy"
             title="Borrow"
-            desc="Mint vUSD against your collateral at whatever interest rate you want"
+            desc="Borrow vUSD against your collateral at whatever interest rate you want"
             href="/borrow"
             icon={
               <span className="flex items-center">

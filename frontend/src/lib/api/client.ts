@@ -9,6 +9,7 @@ import type {
   GuardianRuleInput,
   MintBuildRequest,
   MintBuildResponse,
+  MintPlanRaw,
   MintStatusResponse,
   MintSubmitRequest,
   MintSubmitResponse,
@@ -66,11 +67,28 @@ export const api = {
       body: JSON.stringify(input),
     }),
 
-  buildMint: (input: MintBuildRequest) =>
-    request<MintBuildResponse>("/mint/build", {
+  // The backend returns the flat MintPlan (coreVaultXrplAddress / requiredPayment*
+  // / memo / userOpBytes / userOpHash). Adapt it here to the nested shape the UI
+  // renders + submits, so the components never touch the wire format. Xaman
+  // deep-link payloads need the Xumm API server-side, which we don't run, so it
+  // is omitted (the QR + Crossmark in-wallet sign are the sign paths).
+  buildMint: async (input: MintBuildRequest): Promise<MintBuildResponse> => {
+    const plan = await request<MintPlanRaw>("/mint/build", {
       method: "POST",
       body: JSON.stringify(input),
-    }),
+    });
+    return {
+      packedUserOpHex: plan.userOpBytes,
+      memoUserOpHash: plan.userOpHash,
+      payment: {
+        destination: plan.coreVaultXrplAddress,
+        amountDrops: plan.requiredPaymentDrops,
+        memoHex: plan.memo,
+      },
+      requiredPaymentXrp: plan.requiredPaymentXrp,
+      qrData: plan.coreVaultXrplAddress,
+    };
+  },
 
   submitMint: (input: MintSubmitRequest) =>
     request<MintSubmitResponse>("/mint/submit", {

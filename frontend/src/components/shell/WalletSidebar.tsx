@@ -536,12 +536,12 @@ function XrplWalletSection({ onNavigate }: { onNavigate: () => void }) {
           ) : null}
 
           <PillButton
-            href="/borrow/fxrp?mode=xrpl"
+            href="/borrow/xrp"
             size="md"
             onClick={onNavigate}
             className="w-full"
           >
-            Bring XRP → mint vUSD
+            Bring XRP → borrow vUSD
             <ArrowRight className="h-4 w-4" aria-hidden />
           </PillButton>
 
@@ -575,7 +575,7 @@ function XrplWalletSection({ onNavigate }: { onNavigate: () => void }) {
           })}
           <p className="text-xs text-muted/80">
             Browser extensions — no API key. Bring XRP straight from the XRPL and
-            mint vUSD against it.
+            borrow vUSD against it as collateral.
           </p>
           {wallet.error ? (
             <p className="text-xs text-danger" role="alert">

@@ -120,6 +120,16 @@ export function BorrowMarketsCard() {
 
   const rows: Row[] = [
     {
+      // XRPL-native entry — same underlying FXRP market on Flare, framed as XRP.
+      key: "xrp",
+      name: "XRP",
+      symbol: "XRP",
+      sub: "XRP Ledger → Flare",
+      href: "/borrow/xrp",
+      live: true,
+      stats: fxrp,
+    },
+    {
       key: "fxrp",
       name: "FXRP",
       symbol: "FXRP",

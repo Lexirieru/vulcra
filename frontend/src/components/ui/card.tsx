@@ -3,7 +3,6 @@
 // compile and render independently of theme load order.
 import * as React from "react";
 import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
 import { cn } from "./cn";
 
 export const CARD_SHADOW =
@@ -109,14 +108,8 @@ export function HeroCard({
         className,
       )}
     >
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-start">
         {icon ?? <span aria-hidden />}
-        <span
-          aria-hidden
-          className="grid size-11 shrink-0 place-items-center rounded-full bg-white/15 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
-        >
-          <ArrowUpRight className="size-5" />
-        </span>
       </div>
       <div className="space-y-2">
         <span className="block text-2xl font-semibold sm:text-3xl">{title}</span>

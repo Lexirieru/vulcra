@@ -321,7 +321,7 @@ function OpenForm({
         />
       </Field>
       <Field
-        label="Mint vUSD"
+        label="Borrow vUSD"
         htmlFor="open-mint"
         error={error}
         hint={maxMint !== null ? `Max ${formatToken(maxMint, 18, 2)} at MCR` : undefined}

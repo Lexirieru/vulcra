@@ -12,15 +12,15 @@ import type { MintState } from "@/lib/api/types";
 
 const STEPS: { state: MintState; label: string }[] = [
   { state: "INTAKE", label: "Received" },
-  { state: "ATTEST_PENDING", label: "Attesting (FDC)" },
+  { state: "ATTEST_REQUESTED", label: "Attesting (FDC)" },
   { state: "EXECUTING", label: "Executing mint" },
   { state: "EXECUTED", label: "vUSD delivered" },
 ];
 
 const ORDER: MintState[] = [
   "INTAKE",
-  "ATTEST_PENDING",
-  "ATTEST_READY",
+  "ATTEST_REQUESTED",
+  "PROOF_READY",
   "EXECUTING",
   "DELAYED",
   "EXECUTED",
@@ -97,7 +97,10 @@ export function MintStatusTracker({ mintId }: { mintId: string }) {
       <ol className="mt-4 flex flex-col gap-3">
         {STEPS.map((step) => {
           const done = current > rank(step.state);
-          const active = state === step.state || (step.state === "ATTEST_PENDING" && state === "ATTEST_READY");
+          // "Attesting" stays the active step across the whole attest→proof span.
+          const active =
+            state === step.state ||
+            (step.state === "ATTEST_REQUESTED" && state === "PROOF_READY");
           return (
             <li key={step.state} className="flex items-center gap-3">
               <span className="flex h-6 w-6 items-center justify-center">

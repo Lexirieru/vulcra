@@ -7,16 +7,27 @@ import { cn } from "./cn";
 const SURFACE_CHIP = "border-[var(--color-line)] bg-[var(--color-surface)]";
 const XRP = { src: "/brand/logos/xrp.svg", chipClassName: SURFACE_CHIP, glyphScale: 0.56 };
 const FLARE = { src: "/brand/logos/flare.svg", chipClassName: SURFACE_CHIP, glyphScale: 0.58 };
+// Full-color circular token art (Firelight stXRP, Sceptre sFLR) — fills the chip
+// edge-to-edge, clipped to the circle, no surface ring behind it.
+const COLOR = { chipClassName: "overflow-hidden border-transparent bg-transparent", glyphScale: 1 };
+
+// FXRP = XRP-on-Flare: a WHITE ripple glyph on a Flare-pink chip, so it reads as
+// distinct from the plain (dark-on-white) XRP-Ledger mark and signals "on Flare".
+const FXRP = {
+  src: "/brand/logos/xrp-white.svg",
+  chipClassName: "border-transparent bg-[var(--color-brand)]",
+  glyphScale: 0.56,
+};
 
 const LOGO: Record<string, { src: string; chipClassName: string; glyphScale: number }> = {
-  FXRP: XRP,
+  FXRP,
   XRP,
-  STXRP: XRP,
+  STXRP: { src: "/brand/logos/stxrp.png", ...COLOR },
   FLR: FLARE,
   WFLR: FLARE,
   C2FLR: FLARE,
   WC2FLR: FLARE,
-  SFLR: FLARE,
+  SFLR: { src: "/brand/logos/sflr.png", ...COLOR },
   VUSD: {
     src: "/brand/logos/vusd-mark.svg",
     chipClassName: "border-transparent bg-[var(--color-brand)]",

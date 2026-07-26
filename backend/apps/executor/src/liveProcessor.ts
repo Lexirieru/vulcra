@@ -111,10 +111,31 @@ export async function makeLiveProcessor(
 
   const hooks: ProcessorHooks = {
     async attest(mint) {
-      const abiEncodedRequest = await prepareXrpPaymentRequest(fdcConfig, {
-        transactionId: asBytes32(mint.xrplTxId),
-        proofOwner: executorAddress,
-      });
+      // The FDC verifier's XRPL indexer lags a few minutes behind ledger
+      // finalization: right after the payment confirms it answers "INVALID:
+      // TRANSACTION DOES NOT EXIST" even though the tx is validated on-chain.
+      // That is transient — poll prepareRequest with backoff until the verifier
+      // has indexed it (mirrors the DA-layer proof poll below). Any OTHER
+      // verifier rejection fails fast.
+      let abiEncodedRequest: Hex | undefined;
+      let lastPrepErr: unknown;
+      for (let i = 0; i < 40; i++) {
+        try {
+          abiEncodedRequest = await prepareXrpPaymentRequest(fdcConfig, {
+            transactionId: asBytes32(mint.xrplTxId),
+            proofOwner: executorAddress,
+          });
+          break;
+        } catch (err) {
+          if (!/does not exist/i.test((err as Error).message ?? "")) throw err;
+          lastPrepErr = err;
+          console.log(
+            `[fdc] tx not indexed by the verifier yet (try ${i + 1}); retrying in 10s`,
+          );
+          await new Promise((r) => setTimeout(r, 10_000));
+        }
+      }
+      if (!abiEncodedRequest) throw lastPrepErr;
       const { roundId } = await submitAttestation(publicClient, walletSubmitAttestation, fdcConfig, abiEncodedRequest);
       console.log(`[fdc] attestation submitted, votingRound=${roundId}; waiting for finalization`);
       await waitFinalized(publicClient, fdcConfig, roundId);

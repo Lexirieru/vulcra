@@ -30,15 +30,20 @@ export interface MintLimits {
 
 export interface PreflightRequest {
   xrplAddress: string;
-  /** Desired mint amount, FXRP 6-dec base units, as a decimal string. */
-  amount: string;
+  /** XRP collateral to supply, drops (6-dec base units), as a decimal string. */
+  netMintDrops: string;
+  /** vUSD debt to borrow, 18-dec base units, as a decimal string. */
+  mint18: string;
 }
 
 export interface PreflightResponse {
   ok: boolean;
   /** Present when ok=false — a human-readable, user-actionable reason. */
-  blockingReason?: string;
-  limits: MintLimits;
+  blockedReason?: string;
+  requiredPaymentXrp?: string;
+  willDelay?: boolean;
+  warnings?: string[];
+  limits?: MintLimits;
 }
 
 // ── Build intent (POST /mint/build) — ASSUMPTION (A-4) ───────────────────────
@@ -47,9 +52,13 @@ export interface PreflightResponse {
 // unit; this is the shape the client renders (QR + deep link) and later submits.
 export interface MintBuildRequest {
   xrplAddress: string;
-  amount: string;
-  /** Where the minted vUSD should be delivered (defaults to the personal account). */
-  vusdRecipient?: Address;
+  /** XRP collateral to supply, drops (6-dec base units), as a decimal string. */
+  collateral6: string;
+  /** vUSD debt to borrow, 18-dec base units, as a decimal string. */
+  mint18: string;
+  annualInterestRateBps?: string;
+  /** Where the borrowed vUSD is delivered (defaults to the personal account). */
+  vusdDestination?: Address;
 }
 
 export interface XrplPaymentIntent {
@@ -61,13 +70,29 @@ export interface XrplPaymentIntent {
   memoHex: Hex;
 }
 
+// The raw MintPlan the backend returns from /mint/build (flat). The client
+// adapts it to `MintBuildResponse`; components never see this shape.
+export interface MintPlanRaw {
+  coreVaultXrplAddress: string;
+  requiredPaymentDrops: string;
+  requiredPaymentXrp: string;
+  memo: Hex;
+  xrplMemoData: string;
+  userOpHash: Hex;
+  userOpBytes: Hex;
+}
+
 export interface MintBuildResponse {
   /** ABI-encoded PackedUserOperation, echoed back on submit. */
   packedUserOpHex: Hex;
+  /** keccak256(userOp) committed in the memo — required by /mint/submit. */
+  memoUserOpHash: Hex;
   payment: XrplPaymentIntent;
-  /** Deep link that opens the signable request in Xaman. */
-  xamanDeepLink: string;
-  /** Payload to render as a QR (a URI or Xaman request string). */
+  /** Total XRP to send (collateral + fees), human-readable. */
+  requiredPaymentXrp: string;
+  /** Deep link that opens the signable request in Xaman (when available). */
+  xamanDeepLink?: string;
+  /** Payload to render as a QR. */
   qrData: string;
 }
 
@@ -75,17 +100,21 @@ export interface MintBuildResponse {
 export interface MintSubmitRequest {
   packedUserOpHex: Hex;
   xrplTxId: string;
+  /** keccak256(userOp) the memo committed to — the backend requires it. */
+  memoUserOpHash: Hex;
 }
 
 export interface MintSubmitResponse {
   mintId: string;
 }
 
-// Backend state-machine states (see backend plan mint lifecycle).
+// Backend state-machine states — MUST match the executor store (state.ts):
+// INTAKE → ATTEST_REQUESTED → PROOF_READY → EXECUTING → EXECUTED, with DELAYED
+// (rate-limited retry) and REVERTED/REJECTED as off-ramps.
 export type MintState =
   | "INTAKE"
-  | "ATTEST_PENDING"
-  | "ATTEST_READY"
+  | "ATTEST_REQUESTED"
+  | "PROOF_READY"
   | "EXECUTING"
   | "DELAYED"
   | "EXECUTED"
