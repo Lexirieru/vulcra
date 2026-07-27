@@ -602,6 +602,9 @@ export function XrplMintFlow() {
         <Reveal>
           <MintStatusTracker
             mintId={submit.data.mintId}
+            action={
+              build.variables && "action" in build.variables ? build.variables.action : "open"
+            }
             onExecuted={() => {
               void refetchVault();
               xrpBalance.refetch();

@@ -9,14 +9,21 @@ import { CheckCircle2, Clock, Loader2, ShieldAlert } from "lucide-react";
 import { Badge, Card, CardTitle, ErrorState } from "@/components/ui";
 import { cn } from "@/components/ui";
 import { api } from "@/lib/api/client";
-import type { MintState } from "@/lib/api/types";
+import type { ManageAction, MintState } from "@/lib/api/types";
 
-const STEPS: { state: MintState; label: string }[] = [
-  { state: "INTAKE", label: "Received" },
-  { state: "ATTEST_REQUESTED", label: "Attesting (FDC)" },
-  { state: "EXECUTING", label: "Executing mint" },
-  { state: "EXECUTED", label: "vUSD delivered" },
-];
+// The tracker drives the SAME backend state machine for every XRPL 0xFE action,
+// but the labels must match what the user actually did — a repay showing
+// "vUSD delivered" or a rate change showing "Executing mint" reads as broken.
+export type TrackedAction = ManageAction | "open";
+const ACTION_META: Record<TrackedAction, { title: string; executing: string; done: string }> = {
+  open: { title: "Mint status", executing: "Executing mint", done: "vUSD delivered" },
+  mintMore: { title: "Borrow status", executing: "Executing borrow", done: "vUSD delivered" },
+  addCollateral: { title: "Supply status", executing: "Minting FXRP collateral", done: "Collateral added" },
+  withdrawCollateral: { title: "Withdraw status", executing: "Executing withdrawal", done: "Collateral returned" },
+  repay: { title: "Repay status", executing: "Executing repayment", done: "Debt repaid" },
+  adjustRate: { title: "Rate update", executing: "Applying new rate", done: "Rate updated" },
+  close: { title: "Close status", executing: "Closing the vault", done: "Vault closed" },
+};
 
 const ORDER: MintState[] = [
   "INTAKE",
@@ -36,13 +43,23 @@ const TERMINAL: MintState[] = ["EXECUTED", "REVERTED", "REJECTED"];
 
 export function MintStatusTracker({
   mintId,
+  action = "open",
   onExecuted,
 }: {
   mintId: string;
+  /** Which XRPL action is being tracked — drives the labels. */
+  action?: TrackedAction;
   /** Fired exactly once when the mint reaches EXECUTED — lets the parent refetch
       the vault / balances immediately instead of waiting on their poll. */
   onExecuted?: () => void;
 }) {
+  const meta = ACTION_META[action] ?? ACTION_META.open;
+  const steps: { state: MintState; label: string }[] = [
+    { state: "INTAKE", label: "Received" },
+    { state: "ATTEST_REQUESTED", label: "Attesting (FDC)" },
+    { state: "EXECUTING", label: meta.executing },
+    { state: "EXECUTED", label: meta.done },
+  ];
   const { data, isError, refetch } = useQuery({
     queryKey: ["mint-status", mintId],
     queryFn: () => api.getMintStatus(mintId),
@@ -80,7 +97,7 @@ export function MintStatusTracker({
   return (
     <Card>
       <div className="flex items-center justify-between">
-        <CardTitle>Mint status</CardTitle>
+        <CardTitle>{meta.title}</CardTitle>
         <Badge tone={state === "EXECUTED" ? "green" : state === "REVERTED" ? "danger" : "brand"}>
           {data?.stage ?? "tracking…"}
         </Badge>
@@ -107,14 +124,14 @@ export function MintStatusTracker({
         <div className="mt-4 flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 p-3 text-sm text-danger">
           <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
           <div>
-            No FXRP was minted and your XRP remains recoverable at the Core Vault.
-            Recovery is handled by the executor (0xE0/0xE1).
+            The action reverted on Flare, so your vault is unchanged. No FXRP was minted
+            and any XRP you sent stays recoverable at the Core Vault (executor 0xE0/0xE1).
           </div>
         </div>
       )}
 
       <ol className="mt-4 flex flex-col gap-3">
-        {STEPS.map((step) => {
+        {steps.map((step) => {
           const done = current > rank(step.state);
           // "Attesting" stays the active step across the whole attest→proof span.
           const active =
