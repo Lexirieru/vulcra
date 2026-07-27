@@ -39,15 +39,19 @@ import {
   PillButton,
   Skeleton,
   TokenIcon,
+  cn,
 } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
+import { PositionCard } from "@/components/vault/PositionCard";
+import { PriceSimulator } from "@/components/vault/PriceSimulator";
 import { api } from "@/lib/api/client";
 import type { MintBuildRequest, MintBuildResponse, ManageBuildRequest, ManageAction } from "@/lib/api/types";
 import { usePersonalAccount, isValidRAddress } from "@/hooks/usePersonalAccount";
 import { useXrplWalletContext } from "@/context/xrpl";
 import { useWalletUi } from "@/context/wallet-ui";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
+import { useVaultRate } from "@/hooks/useInterest";
 import { useVault, useVaultParams, type VaultParams, type VaultState } from "@/hooks/useVault";
 import { useXrpBalance } from "@/hooks/useXrpBalance";
 import {
@@ -134,6 +138,12 @@ export function XrplMintFlow() {
   // Does this XRPL wallet's PersonalAccount already hold an FXRP vault? If so the
   // page becomes a MANAGE view (repay / close) — you can't open a second vault.
   const { vault, hasVault, refetch: refetchVault } = useVault(
+    account.data?.personalAccount,
+    FXRP_VAULT_MANAGER,
+  );
+  // Current interest rate on the XRPL vault — feeds the position card + rate tab,
+  // exactly like the EVM branch page.
+  const { rateBps: currentRateBps } = useVaultRate(
     account.data?.personalAccount,
     FXRP_VAULT_MANAGER,
   );
@@ -273,21 +283,52 @@ export function XrplMintFlow() {
         )}
       </Reveal>
 
-      {/* MANAGE — the PersonalAccount already has an FXRP vault: repay / close
-          from the XRP Ledger (0xFE net-0, fees-only payment). No second vault. */}
+      {/* MANAGE — the PersonalAccount already has an FXRP vault. Same shape as the
+          EVM branch page: a position card + a tabbed Actions panel + the price
+          simulator. Every action is ONE XRPL 0xFE payment instead of an EVM tx. */}
       {account.data && hasVault && vault && (
-        <Reveal>
-          <XrplManagePanel
-            vault={vault}
-            price18={price18}
-            params={params}
-            onBuild={(req) => build.mutate(req)}
-            busy={busy}
-            pendingAction={pendingAction}
-            spendableDrops={xrpBalance.data?.spendableDrops}
-            xrplAddress={rAddress.trim()}
-          />
-        </Reveal>
+        <>
+          <Reveal>
+            <PositionCard
+              vault={vault}
+              price18={price18}
+              params={params}
+              collDec={COLL_DEC}
+              collateralSymbol="FXRP"
+              feedLabel={BRANCHES.fxrp.feedLabel}
+              rateBps={currentRateBps}
+            />
+          </Reveal>
+          <div className="grid items-start gap-6 xl:grid-cols-2">
+            <Reveal delay={0.05}>
+              <XrplVaultActions
+                vault={vault}
+                price18={price18}
+                params={params}
+                onBuild={(req) => build.mutate(req)}
+                busy={busy}
+                pendingAction={pendingAction}
+                spendableDrops={xrpBalance.data?.spendableDrops}
+                currentRateBps={currentRateBps}
+                xrplAddress={rAddress.trim()}
+              />
+            </Reveal>
+            <Reveal delay={0.1}>
+              {price18 ? (
+                <PriceSimulator
+                  vault={vault}
+                  livePrice18={price18}
+                  params={params}
+                  collDec={COLL_DEC}
+                />
+              ) : (
+                <Card className="flex items-center justify-center text-center text-sm text-muted">
+                  Loading live price…
+                </Card>
+              )}
+            </Reveal>
+          </div>
+        </>
       )}
 
       {/* Composer — Collateral (XRP) → Loan (vUSD) → Interest rate, identical in
@@ -574,10 +615,22 @@ export function XrplMintFlow() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Manage an existing vault — repay / close from the XRP Ledger (0xFE net-0)
+// Manage an existing vault — SAME shape as the EVM branch page: a tabbed Actions
+// panel (Deposit / Withdraw / Borrow / Repay / Interest / Close). Every action is
+// ONE XRPL 0xFE payment (net-0 for everything except supplying collateral).
 // ─────────────────────────────────────────────────────────────────────────────
 
-function XrplManagePanel({
+type XrplTab = "deposit" | "withdraw" | "borrow" | "repay" | "rate" | "close";
+const XRPL_TABS: { id: XrplTab; label: string }[] = [
+  { id: "deposit", label: "Deposit" },
+  { id: "withdraw", label: "Withdraw" },
+  { id: "borrow", label: "Borrow" },
+  { id: "repay", label: "Repay" },
+  { id: "rate", label: "Interest" },
+  { id: "close", label: "Close" },
+];
+
+function XrplVaultActions({
   vault,
   price18,
   params,
@@ -585,6 +638,7 @@ function XrplManagePanel({
   busy,
   pendingAction,
   spendableDrops,
+  currentRateBps,
   xrplAddress,
 }: {
   vault: VaultState;
@@ -592,177 +646,406 @@ function XrplManagePanel({
   params: VaultParams;
   onBuild: (req: ManageBuildRequest) => void;
   busy: boolean;
-  /** The action whose payment is currently building — only its button spins. */
   pendingAction?: ManageAction;
-  /** Spendable XRP (drops) in the connected wallet — caps the supply input. */
   spendableDrops?: bigint;
+  currentRateBps?: bigint;
   xrplAddress: string;
 }) {
-  const [repay, setRepay] = useState("");
-  const [borrow, setBorrow] = useState("");
-  const [supply, setSupply] = useState("");
-  const repay18 = parseAmount(repay, 18);
-  const borrow18 = parseAmount(borrow, 18);
-  const supply6 = parseAmount(supply, 6);
-  const supplyExceedsBalance =
-    supply6 !== null && spendableDrops !== undefined && supply6 > spendableDrops;
-  const supplyValid = supply6 !== null && supply6 > 0n && !supplyExceedsBalance;
-  const crBps = price18 ? computeCrBps(vault.collateral, COLL_DEC, vault.debt18, price18) : null;
-  const band = healthBand(crBps, params.mcrBps);
-  const remaining = repay18 !== null ? vault.debt18 - repay18 : vault.debt18;
-  const belowMin = repay18 !== null && remaining > 0n && remaining < params.minDebt18;
-  const repayValid =
-    repay18 !== null &&
-    repay18 > 0n &&
-    repay18 <= vault.debt18 &&
-    (remaining === 0n || remaining >= params.minDebt18);
-
-  // Borrow-more headroom: max total debt at MCR minus the current debt.
-  const maxMint = price18
-    ? maxMintableVusd18(vault.collateral, COLL_DEC, price18, params.mcrBps)
-    : undefined;
-  const maxMore = maxMint !== undefined && maxMint > vault.debt18 ? maxMint - vault.debt18 : 0n;
-  const overMore = borrow18 !== null && maxMint !== undefined && borrow18 > maxMore;
-  const borrowValid = borrow18 !== null && borrow18 > 0n && !overMore;
-
+  const [tab, setTab] = useState<XrplTab>("deposit");
   return (
-    <Card className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <CardTitle>Your XRP vault</CardTitle>
-        <Badge tone={band === "danger" ? "danger" : band === "warning" ? "warning" : "green"}>
-          {crBps === null ? "—" : `${formatBps(crBps)} CR`}
-        </Badge>
-      </div>
-
-      <div className="space-y-1.5 border-t border-line pt-3">
-        <InfoRow left="Collateral" right={`${formatToken(vault.collateral, COLL_DEC, 2)} FXRP`} />
-        <InfoRow left="Debt" right={`${formatToken(vault.debt18, 18, 2)} vUSD`} />
-        <InfoRow left="Min debt" right={`${formatToken(params.minDebt18, 18, 0)} vUSD`} />
-      </div>
-
-      {/* Supply MORE collateral (send XRP → mint FXRP → addCollateral) */}
-      <div className="space-y-2 border-t border-line pt-3">
-        <Field
-          label="Supply collateral (XRP)"
-          htmlFor="xrpl-supply"
-          hint="Sent from your XRP Ledger wallet · becomes FXRP collateral on Flare"
-        >
-          <Input
-            id="xrpl-supply"
-            inputMode="decimal"
-            placeholder="0.0"
-            value={supply}
-            onChange={(e) => setSupply(e.target.value)}
-          />
-        </Field>
-        {spendableDrops !== undefined && (
-          <div className="flex items-center justify-between text-xs">
-            <span className={supplyExceedsBalance ? "text-danger" : "text-muted/70"}>
-              {supplyExceedsBalance
-                ? `Insufficient balance — you have ${formatToken(spendableDrops, 6, 2)} XRP spendable.`
-                : `Balance ${formatToken(spendableDrops, 6, 2)} XRP`}
-            </span>
-            <button
-              type="button"
-              onClick={() => setSupply(formatToken(spendableDrops, 6, 2).replace(/,/g, ""))}
-              className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
-            >
-              Max
-            </button>
-          </div>
-        )}
-        <PillButton
-          size="md"
-          className="w-full"
-          disabled={!supplyValid || busy}
-          onClick={() => onBuild({ xrplAddress, action: "addCollateral", collateral6: supply6!.toString() })}
-        >
-          {pendingAction === "addCollateral" ? "Generating…" : "Supply collateral"}
-        </PillButton>
-      </div>
-
-      {/* Borrow MORE against the existing collateral (mintMore) */}
-      <div className="space-y-2 border-t border-line pt-3">
-        <Field
-          label="Borrow more (vUSD)"
-          htmlFor="xrpl-mintmore"
-          hint={
-            maxMint !== undefined
-              ? `Max +${formatToken(maxMore, 18, 2)} vUSD at the current price`
-              : "Borrow more against your collateral"
-          }
-        >
-          <Input
-            id="xrpl-mintmore"
-            inputMode="decimal"
-            placeholder="0.0"
-            value={borrow}
-            onChange={(e) => setBorrow(e.target.value)}
-          />
-        </Field>
-        {overMore && (
-          <p className="text-xs text-danger">
-            Exceeds the max borrow for this collateral — add collateral or borrow less.
-          </p>
-        )}
-        <PillButton
-          size="md"
-          className="w-full"
-          disabled={!borrowValid || busy}
-          onClick={() => onBuild({ xrplAddress, action: "mintMore", amount18: borrow18!.toString() })}
-        >
-          {pendingAction === "mintMore" ? "Generating…" : "Borrow more"}
-        </PillButton>
-      </div>
-
-      {/* Repay / close */}
-      <div className="space-y-2 border-t border-line pt-3">
-        <Field
-          label="Repay (vUSD)"
-          htmlFor="xrpl-repay"
-          hint="Burned from your Flare personal account · one XRPL payment (fees only)"
-        >
-          <Input
-            id="xrpl-repay"
-            inputMode="decimal"
-            placeholder="0.0"
-            value={repay}
-            onChange={(e) => setRepay(e.target.value)}
-          />
-        </Field>
-        {belowMin && (
-          <p className="text-xs text-danger">
-            That would leave the debt below the {formatToken(params.minDebt18, 18, 0)} vUSD
-            minimum — repay less, or close the vault.
-          </p>
-        )}
-        <div className="flex flex-wrap gap-2">
-          <PillButton
-            size="md"
-            className="flex-1"
-            disabled={!repayValid || busy}
-            onClick={() => onBuild({ xrplAddress, action: "repay", amount18: repay18!.toString() })}
+    <Card>
+      <CardTitle>Actions</CardTitle>
+      <div
+        className="mt-4 flex overflow-x-auto rounded-full border border-line bg-surface-2 p-1"
+        role="tablist"
+        aria-label="Vault action"
+      >
+        {XRPL_TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => setTab(t.id)}
+            className={cn(
+              "min-h-10 flex-1 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+              tab === t.id ? "bg-navy text-white" : "text-muted hover:text-ink",
+            )}
           >
-            {pendingAction === "repay" ? "Generating…" : "Repay"}
-          </PillButton>
-          <PillButton
-            size="md"
-            variant="ghost"
-            className="flex-1"
-            disabled={busy}
-            onClick={() => onBuild({ xrplAddress, action: "close" })}
-          >
-            {pendingAction === "close" ? "Generating…" : "Close vault"}
-          </PillButton>
-        </div>
+            {t.label}
+          </button>
+        ))}
       </div>
-      <p className="text-xs text-muted/80">
-        Borrow-more, repay and close each ride ONE XRPL payment (fees only — no FXRP minted).
-        Closing repays the full debt and returns your FXRP collateral to the personal account.
+
+      <div className="mt-4">
+        {tab === "deposit" && (
+          <XrplCollateralForm
+            mode="add"
+            vault={vault}
+            onBuild={onBuild}
+            busy={busy}
+            pendingAction={pendingAction}
+            spendableDrops={spendableDrops}
+            xrplAddress={xrplAddress}
+          />
+        )}
+        {tab === "withdraw" && (
+          <XrplCollateralForm
+            mode="withdraw"
+            vault={vault}
+            onBuild={onBuild}
+            busy={busy}
+            pendingAction={pendingAction}
+            xrplAddress={xrplAddress}
+          />
+        )}
+        {tab === "borrow" && (
+          <XrplDebtForm
+            mode="borrow"
+            vault={vault}
+            price18={price18}
+            params={params}
+            onBuild={onBuild}
+            busy={busy}
+            pendingAction={pendingAction}
+            xrplAddress={xrplAddress}
+          />
+        )}
+        {tab === "repay" && (
+          <XrplDebtForm
+            mode="repay"
+            vault={vault}
+            price18={price18}
+            params={params}
+            onBuild={onBuild}
+            busy={busy}
+            pendingAction={pendingAction}
+            xrplAddress={xrplAddress}
+          />
+        )}
+        {tab === "rate" && (
+          <XrplRateForm
+            vault={vault}
+            currentRateBps={currentRateBps}
+            onBuild={onBuild}
+            busy={busy}
+            pendingAction={pendingAction}
+            xrplAddress={xrplAddress}
+          />
+        )}
+        {tab === "close" && (
+          <XrplCloseForm
+            vault={vault}
+            onBuild={onBuild}
+            busy={busy}
+            pendingAction={pendingAction}
+            xrplAddress={xrplAddress}
+          />
+        )}
+      </div>
+
+      <p className="mt-4 text-xs text-muted/80">
+        Every action rides ONE XRPL payment (fees only — no FXRP minted, except when
+        you supply collateral). No Flare wallet or FLR gas.
       </p>
     </Card>
   );
 }
+
+// Compact interest slider — the manage/rate twin of the composer's slider.
+function XrplInterestSlider({
+  rateBps,
+  onChange,
+  debt18,
+}: {
+  rateBps: number;
+  onChange: (bps: number) => void;
+  debt18?: bigint;
+}) {
+  const annual = debt18 ? annualInterest18(debt18, rateBps) : undefined;
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-baseline justify-between">
+        <label htmlFor="xrpl-rate" className="text-sm font-medium text-ink">
+          Interest rate
+        </label>
+        <span className="text-sm font-semibold tabular-nums text-brand">
+          {formatBps(rateBps)} / year
+        </span>
+      </div>
+      <input
+        id="xrpl-rate"
+        type="range"
+        min={INTEREST.minBps}
+        max={INTEREST.maxBps}
+        step={10}
+        value={rateBps}
+        onChange={(e) => onChange(Number(e.target.value))}
+        aria-valuetext={`${formatBps(rateBps)} per year`}
+        className="w-full accent-[var(--color-brand)]"
+      />
+      <div className="flex justify-between text-xs text-muted/70">
+        <span>{formatBps(INTEREST.minBps)}</span>
+        <span>
+          {annual !== undefined
+            ? `≈ ${formatToken(annual, 18, 2)} vUSD/yr at current debt`
+            : "lower rate = redeemed first"}
+        </span>
+        <span>{formatBps(INTEREST.maxBps)}</span>
+      </div>
+    </div>
+  );
+}
+
+// Deposit (addCollateral, net>0) / Withdraw (withdrawCollateral, net-0).
+function XrplCollateralForm({
+  mode,
+  vault,
+  onBuild,
+  busy,
+  pendingAction,
+  spendableDrops,
+  xrplAddress,
+}: {
+  mode: "add" | "withdraw";
+  vault: VaultState;
+  onBuild: (req: ManageBuildRequest) => void;
+  busy: boolean;
+  pendingAction?: ManageAction;
+  spendableDrops?: bigint;
+  xrplAddress: string;
+}) {
+  const [amount, setAmount] = useState("");
+  const amt6 = parseAmount(amount, COLL_DEC);
+  const isAdd = mode === "add";
+  const busyAction: ManageAction = isAdd ? "addCollateral" : "withdrawCollateral";
+  const insufficient =
+    isAdd && amt6 !== null && spendableDrops !== undefined && amt6 > spendableDrops;
+  const overVault = !isAdd && amt6 !== null && amt6 > vault.collateral;
+  const valid = amt6 !== null && amt6 > 0n && !insufficient && !overVault;
+  const cap = isAdd ? spendableDrops : vault.collateral;
+  const capSymbol = isAdd ? "XRP" : "FXRP";
+  const error = insufficient
+    ? `Insufficient balance — you have ${formatToken(spendableDrops!, COLL_DEC, 2)} XRP spendable.`
+    : overVault
+      ? `You only have ${formatToken(vault.collateral, COLL_DEC, 2)} FXRP in the vault.`
+      : undefined;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Field
+        label={isAdd ? "Supply collateral (XRP)" : "Withdraw collateral (FXRP)"}
+        htmlFor={`xrpl-coll-${mode}`}
+        error={error}
+        hint={
+          isAdd
+            ? "Sent from your XRP Ledger wallet · becomes FXRP collateral on Flare"
+            : "Returned as FXRP to your Flare personal account · one XRPL payment (fees only)"
+        }
+      >
+        <Input
+          id={`xrpl-coll-${mode}`}
+          inputMode="decimal"
+          placeholder="0.0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+      </Field>
+      {cap !== undefined && (
+        <div className="-mt-1 flex items-center justify-between text-xs">
+          <span className="text-muted/70">
+            Balance {formatToken(cap, COLL_DEC, isAdd ? 2 : 4)} {capSymbol}
+          </span>
+          <button
+            type="button"
+            onClick={() => setAmount(formatToken(cap, COLL_DEC, isAdd ? 2 : 6).replace(/,/g, ""))}
+            className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
+          >
+            Max
+          </button>
+        </div>
+      )}
+      <Button
+        disabled={!valid || busy}
+        onClick={() => amt6 && onBuild({ xrplAddress, action: busyAction, collateral6: amt6.toString() })}
+      >
+        {pendingAction === busyAction
+          ? "Generating…"
+          : isAdd
+            ? "Supply collateral"
+            : "Withdraw collateral"}
+      </Button>
+    </div>
+  );
+}
+
+// Borrow more (mintMore) / Repay — both net-0 fees-only payments.
+function XrplDebtForm({
+  mode,
+  vault,
+  price18,
+  params,
+  onBuild,
+  busy,
+  pendingAction,
+  xrplAddress,
+}: {
+  mode: "borrow" | "repay";
+  vault: VaultState;
+  price18?: bigint;
+  params: VaultParams;
+  onBuild: (req: ManageBuildRequest) => void;
+  busy: boolean;
+  pendingAction?: ManageAction;
+  xrplAddress: string;
+}) {
+  const [amount, setAmount] = useState("");
+  const amt18 = parseAmount(amount, 18);
+  const isBorrow = mode === "borrow";
+  const busyAction: ManageAction = isBorrow ? "mintMore" : "repay";
+
+  const maxMint = price18
+    ? maxMintableVusd18(vault.collateral, COLL_DEC, price18, params.mcrBps)
+    : undefined;
+  const maxMore = maxMint !== undefined && maxMint > vault.debt18 ? maxMint - vault.debt18 : 0n;
+  const overMore = isBorrow && amt18 !== null && maxMint !== undefined && amt18 > maxMore;
+
+  const remaining = amt18 !== null ? vault.debt18 - amt18 : vault.debt18;
+  const overRepay = !isBorrow && amt18 !== null && amt18 > vault.debt18;
+  const belowMin = !isBorrow && amt18 !== null && remaining > 0n && remaining < params.minDebt18;
+
+  const valid = isBorrow
+    ? amt18 !== null && amt18 > 0n && !overMore
+    : amt18 !== null &&
+      amt18 > 0n &&
+      amt18 <= vault.debt18 &&
+      (remaining === 0n || remaining >= params.minDebt18);
+
+  const error = isBorrow
+    ? overMore
+      ? `Exceeds the max borrow for this collateral (${formatToken(maxMore, 18, 2)} vUSD).`
+      : undefined
+    : overRepay
+      ? `You can't repay more than the ${formatToken(vault.debt18, 18, 2)} vUSD debt.`
+      : belowMin
+        ? `That leaves the debt below the ${formatToken(params.minDebt18, 18, 0)} vUSD minimum — repay less, or close the vault.`
+        : undefined;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <Field
+        label={isBorrow ? "Borrow more vUSD" : "Repay vUSD"}
+        htmlFor={`xrpl-debt-${mode}`}
+        error={error}
+        hint={
+          isBorrow
+            ? maxMint !== undefined
+              ? `Max +${formatToken(maxMore, 18, 2)} vUSD at the current price`
+              : "Borrow more against your collateral"
+            : `Outstanding debt ${formatToken(vault.debt18, 18, 2)} vUSD`
+        }
+      >
+        <Input
+          id={`xrpl-debt-${mode}`}
+          inputMode="decimal"
+          placeholder="0.0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+      </Field>
+      {!isBorrow && (
+        <div className="-mt-1 flex items-center justify-end text-xs">
+          <button
+            type="button"
+            onClick={() => setAmount(formatToken(vault.debt18, 18, 2).replace(/,/g, ""))}
+            className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
+          >
+            Repay full debt
+          </button>
+        </div>
+      )}
+      <Button
+        disabled={!valid || busy}
+        onClick={() => amt18 && onBuild({ xrplAddress, action: busyAction, amount18: amt18.toString() })}
+      >
+        {pendingAction === busyAction ? "Generating…" : isBorrow ? "Borrow" : "Repay"}
+      </Button>
+    </div>
+  );
+}
+
+// Adjust interest rate (adjustRate, net-0).
+function XrplRateForm({
+  vault,
+  currentRateBps,
+  onBuild,
+  busy,
+  pendingAction,
+  xrplAddress,
+}: {
+  vault: VaultState;
+  currentRateBps?: bigint;
+  onBuild: (req: ManageBuildRequest) => void;
+  busy: boolean;
+  pendingAction?: ManageAction;
+  xrplAddress: string;
+}) {
+  const initial = currentRateBps !== undefined ? Number(currentRateBps) : INTEREST.defaultBps;
+  const [rateBps, setRateBps] = useState(initial);
+  const clamped = Math.min(Math.max(rateBps, INTEREST.minBps), INTEREST.maxBps);
+  const changed = currentRateBps === undefined || BigInt(clamped) !== currentRateBps;
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted">
+        Your current rate is{" "}
+        <span className="font-medium text-ink">
+          {currentRateBps !== undefined ? `${formatBps(Number(currentRateBps))} / year` : "—"}
+        </span>
+        . A lower rate is cheaper to carry but is redeemed first.
+      </p>
+      <XrplInterestSlider rateBps={clamped} onChange={setRateBps} debt18={vault.debt18} />
+      <Button
+        disabled={busy || !changed}
+        onClick={() => onBuild({ xrplAddress, action: "adjustRate", newRateBps: String(clamped) })}
+      >
+        {pendingAction === "adjustRate" ? "Generating…" : "Update interest rate"}
+      </Button>
+    </div>
+  );
+}
+
+// Close the vault (repay full debt + return collateral, net-0).
+function XrplCloseForm({
+  vault,
+  onBuild,
+  busy,
+  pendingAction,
+  xrplAddress,
+}: {
+  vault: VaultState;
+  onBuild: (req: ManageBuildRequest) => void;
+  busy: boolean;
+  pendingAction?: ManageAction;
+  xrplAddress: string;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted">
+        Closing repays the full debt ({formatToken(vault.debt18, 18, 2)} vUSD) and returns
+        all collateral to your personal account. One XRPL payment (fees only) — you must
+        hold enough vUSD to cover the debt.
+      </p>
+      <Button
+        variant="secondary"
+        disabled={busy}
+        onClick={() => onBuild({ xrplAddress, action: "close" })}
+      >
+        {pendingAction === "close" ? "Generating…" : "Close vault"}
+      </Button>
+    </div>
+  );
+}
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Wallet header — connected strip vs compact connect prompt

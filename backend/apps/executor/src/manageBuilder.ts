@@ -11,6 +11,7 @@ import {
   buildAdjustRateCalls,
   buildMintMoreCalls,
   buildAddCollateralCalls,
+  buildWithdrawCollateralCalls,
   buildManageUserOp,
   getPersonalAccount,
   getNonce,
@@ -42,7 +43,13 @@ const vaultManagerReadAbi = [
   },
 ] as const;
 
-export type ManageAction = "repay" | "close" | "adjustRate" | "mintMore" | "addCollateral";
+export type ManageAction =
+  | "repay"
+  | "close"
+  | "adjustRate"
+  | "mintMore"
+  | "addCollateral"
+  | "withdrawCollateral";
 
 export interface ManagePlan {
   action: ManageAction;
@@ -112,6 +119,10 @@ export async function buildManagePlan(
     const fxrp = await resolveFxrpToken(client);
     calls = buildAddCollateralCalls({ fxrp, vaultManager, amount6: input.collateral6 });
     netMintDrops = input.collateral6;
+  } else if (input.action === "withdrawCollateral") {
+    // Pull FXRP back out of the vault — memo-only (net mint 0), no FXRP minted.
+    if (input.collateral6 === undefined) throw new Error("collateral6 is required for withdrawCollateral.");
+    calls = buildWithdrawCollateralCalls({ vaultManager, amount6: input.collateral6 });
   } else if (input.action === "close") {
     // Close approves + burns the FULL debt, so read it live right before building.
     const [, debt18] = (await client.readContract({

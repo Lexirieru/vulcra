@@ -11,6 +11,7 @@ const ZERO = "0x0000000000000000000000000000000000000000" as const;
 /** Minimal VaultManager write ABI for the XRPL-native manage instructions. */
 const vaultManagerWriteAbi = [
   { type: "function", name: "addCollateral", stateMutability: "nonpayable", inputs: [{ name: "amount6", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
+  { type: "function", name: "withdrawCollateral", stateMutability: "nonpayable", inputs: [{ name: "amount6", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
   { type: "function", name: "mintMore", stateMutability: "nonpayable", inputs: [{ name: "amount18", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
   { type: "function", name: "repay", stateMutability: "nonpayable", inputs: [{ name: "amount18", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
   { type: "function", name: "closeVault", stateMutability: "nonpayable", inputs: [], outputs: [] },
@@ -192,6 +193,27 @@ export function buildAddCollateralCalls(args: {
       target: args.vaultManager,
       value: 0n,
       data: encodeFunctionData({ abi: vaultManagerWriteAbi, functionName: "addCollateral", args: [args.amount6, args.prevHint ?? ZERO, args.nextHint ?? ZERO] }),
+    },
+  ];
+}
+
+/**
+ * withdrawCollateral(amount6): pull FXRP collateral back OUT of the vault to the
+ * PersonalAccount. Net mint = 0 (memo-only) — no FXRP is minted, the XRPL payment
+ * only covers the fees. Reverts on-chain (CRTooLow) if it would drop the vault
+ * under the MCR — size it off the live max-withdrawable.
+ */
+export function buildWithdrawCollateralCalls(args: {
+  vaultManager: Address;
+  amount6: bigint;
+  prevHint?: Address;
+  nextHint?: Address;
+}): Call[] {
+  return [
+    {
+      target: args.vaultManager,
+      value: 0n,
+      data: encodeFunctionData({ abi: vaultManagerWriteAbi, functionName: "withdrawCollateral", args: [args.amount6, args.prevHint ?? ZERO, args.nextHint ?? ZERO] }),
     },
   ];
 }
