@@ -6,6 +6,16 @@ import {
 } from "viem";
 import { erc20Abi, vulcraZapAbi } from "@vulcra/interfaces";
 
+const ZERO = "0x0000000000000000000000000000000000000000" as const;
+
+/** Minimal VaultManager write ABI for the XRPL-native manage instructions. */
+const vaultManagerWriteAbi = [
+  { type: "function", name: "addCollateral", stateMutability: "nonpayable", inputs: [{ name: "amount6", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
+  { type: "function", name: "repay", stateMutability: "nonpayable", inputs: [{ name: "amount18", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
+  { type: "function", name: "closeVault", stateMutability: "nonpayable", inputs: [], outputs: [] },
+  { type: "function", name: "adjustInterestRate", stateMutability: "nonpayable", inputs: [{ name: "newAnnualInterestRateBps", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
+] as const satisfies Abi;
+
 /** EIP-4337 Call — one contract call executed by the PersonalAccount. */
 export interface Call {
   target: Address;
@@ -81,6 +91,76 @@ export function buildZapMintCalls(args: {
     }),
   };
   return [approve, open];
+}
+
+/**
+ * MANAGE call batches — the non-minting side of the XRPL-native CDP lifecycle.
+ * These ride the SAME 0xFE custom-instruction path as the mint, but with net
+ * mint = 0 (a "memo-only" transaction: pay the fees, run the calls, mint no
+ * FXRP). The vault is owned by the PersonalAccount, so these run from its
+ * context — exactly like the mint's openVault.
+ */
+
+/** repay(amount18): pull vUSD from the PersonalAccount and burn debt. */
+export function buildRepayCalls(args: {
+  vusd: Address;
+  vaultManager: Address;
+  amount18: bigint;
+  prevHint?: Address;
+  nextHint?: Address;
+}): Call[] {
+  return [
+    {
+      target: args.vusd,
+      value: 0n,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [args.vaultManager, args.amount18] }),
+    },
+    {
+      target: args.vaultManager,
+      value: 0n,
+      data: encodeFunctionData({ abi: vaultManagerWriteAbi, functionName: "repay", args: [args.amount18, args.prevHint ?? ZERO, args.nextHint ?? ZERO] }),
+    },
+  ];
+}
+
+/**
+ * closeVault(): repay the whole debt and return the collateral to the
+ * PersonalAccount. `debt18` is the full outstanding debt to approve (the
+ * VaultManager pulls exactly the debt), read live before building.
+ */
+export function buildCloseCalls(args: {
+  vusd: Address;
+  vaultManager: Address;
+  debt18: bigint;
+}): Call[] {
+  return [
+    {
+      target: args.vusd,
+      value: 0n,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [args.vaultManager, args.debt18] }),
+    },
+    {
+      target: args.vaultManager,
+      value: 0n,
+      data: encodeFunctionData({ abi: vaultManagerWriteAbi, functionName: "closeVault", args: [] }),
+    },
+  ];
+}
+
+/** adjustInterestRate(newRateBps): change the vault's rate (no value moved). */
+export function buildAdjustRateCalls(args: {
+  vaultManager: Address;
+  newAnnualInterestRateBps: bigint;
+  prevHint?: Address;
+  nextHint?: Address;
+}): Call[] {
+  return [
+    {
+      target: args.vaultManager,
+      value: 0n,
+      data: encodeFunctionData({ abi: vaultManagerWriteAbi, functionName: "adjustInterestRate", args: [args.newAnnualInterestRateBps, args.prevHint ?? ZERO, args.nextHint ?? ZERO] }),
+    },
+  ];
 }
 
 /** `abi.encodeCall(IPersonalAccount.executeUserOp, (calls))` — the userOp callData. */

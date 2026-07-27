@@ -27,6 +27,33 @@ export interface BuiltMint {
  * submitting). Pure given (sender, nonce, addresses): no chain access here, so
  * the hash is fully unit-testable and identical on both sides.
  */
+/**
+ * Generic 0xFE user-op builder for a ready-made Call[] batch (the MANAGE side:
+ * repay / close / add-collateral / adjust-rate). Identical wrapping to the mint
+ * — same executeUserOp callData, same PackedUserOperation, same 42-byte memo —
+ * so the executor path (attest -> executeDirectMintingWithData) is unchanged.
+ * The caller supplies the calls; net mint is decided by the XRPL payment amount
+ * (0 for a memo-only manage transaction).
+ */
+export function buildManageUserOp(args: {
+  sender: Address; // PersonalAccount
+  nonce: bigint;
+  calls: Call[];
+  walletId?: number;
+  executorFeeUBA: bigint;
+}): BuiltMint {
+  const callData = encodeExecuteUserOp(args.calls);
+  const userOp = buildPackedUserOp({ sender: args.sender, nonce: args.nonce, callData });
+  const userOpBytes = encodePackedUserOp(userOp);
+  const hash = userOpHash(userOp);
+  const memo = encodeMintMemo({
+    walletId: args.walletId ?? 0,
+    executorFeeUBA: args.executorFeeUBA,
+    userOpHash: hash,
+  });
+  return { calls: args.calls, userOp, userOpBytes, userOpHash: hash, memo, xrplMemoData: toXrplMemoData(memo) };
+}
+
 export function buildMintUserOp(args: {
   sender: Address; // PersonalAccount
   nonce: bigint; // getNonce(personalAccount)

@@ -5,7 +5,7 @@ import {
   type PublicClient,
   type WalletClient,
 } from "viem";
-import { assetManagerAbi, resolveContract } from "@vulcra/chain-client";
+import { resolveContract } from "@vulcra/chain-client";
 import { makeMintProcessor, type ProcessorHooks } from "./processor.js";
 import {
   prepareXrpPaymentRequest,
@@ -58,8 +58,9 @@ export async function makeLiveProcessor(
   if (!account) throw new Error("wallet client has no account (EXECUTOR_PRIVATE_KEY missing)");
   const executorAddress = account.address as Address;
 
-  const [assetManager, fdcFeeConfig, fdcConfig] = await Promise.all([
+  const [assetManager, masterAccountController, fdcFeeConfig, fdcConfig] = await Promise.all([
     resolveContract(publicClient, "AssetManagerFXRP"),
+    resolveContract(publicClient, "MasterAccountController"),
     resolveContract(publicClient, "FdcRequestFeeConfigurations"),
     resolveFdcConfig(publicClient, (n) => resolveContract(publicClient, n), {
       verifierUrl: env.verifierUrl!,
@@ -69,6 +70,20 @@ export async function makeLiveProcessor(
       votingEpochDurationSeconds: env.fdcVotingEpochDurationSeconds,
     }),
   ]);
+
+  // isTransactionIdUsed lives on the MasterAccountController (the smart-account
+  // registry), NOT the FAssets AssetManager. Calling it on the AssetManager
+  // reverts with FunctionNotFound (0x5416eb98) and masks the real revert during
+  // recovery. Minimal ABI so we don't depend on the full MAC interface here.
+  const macTxUsedAbi = [
+    {
+      type: "function",
+      name: "isTransactionIdUsed",
+      stateMutability: "view",
+      inputs: [{ name: "_transactionId", type: "bytes32" }],
+      outputs: [{ name: "", type: "bool" }],
+    },
+  ] as const;
 
   const walletSubmitAttestation = async (data: Hex): Promise<{ blockTimestamp: bigint }> => {
     // FdcHub charges a per-request fee; the amount is configured on the
@@ -190,8 +205,8 @@ export async function makeLiveProcessor(
 
     async isTxIdUsed(xrplTxId) {
       return (await publicClient.readContract({
-        address: assetManager,
-        abi: assetManagerAbi,
+        address: masterAccountController,
+        abi: macTxUsedAbi,
         functionName: "isTransactionIdUsed",
         args: [asBytes32(xrplTxId)],
       })) as boolean;
