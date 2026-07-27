@@ -11,6 +11,7 @@ const ZERO = "0x0000000000000000000000000000000000000000" as const;
 /** Minimal VaultManager write ABI for the XRPL-native manage instructions. */
 const vaultManagerWriteAbi = [
   { type: "function", name: "addCollateral", stateMutability: "nonpayable", inputs: [{ name: "amount6", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
+  { type: "function", name: "mintMore", stateMutability: "nonpayable", inputs: [{ name: "amount18", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
   { type: "function", name: "repay", stateMutability: "nonpayable", inputs: [{ name: "amount18", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
   { type: "function", name: "closeVault", stateMutability: "nonpayable", inputs: [], outputs: [] },
   { type: "function", name: "adjustInterestRate", stateMutability: "nonpayable", inputs: [{ name: "newAnnualInterestRateBps", type: "uint256" }, { name: "prevHint", type: "address" }, { name: "nextHint", type: "address" }], outputs: [] },
@@ -124,6 +125,27 @@ export function buildRepayCalls(args: {
 }
 
 /**
+ * mintMore(amount18): borrow MORE vUSD against the existing collateral (no new
+ * XRP needed). The freshly-minted vUSD lands on the PersonalAccount. Reverts
+ * on-chain (CRTooLow) if it would push the vault under the MCR — size it off the
+ * live max-borrow.
+ */
+export function buildMintMoreCalls(args: {
+  vaultManager: Address;
+  amount18: bigint;
+  prevHint?: Address;
+  nextHint?: Address;
+}): Call[] {
+  return [
+    {
+      target: args.vaultManager,
+      value: 0n,
+      data: encodeFunctionData({ abi: vaultManagerWriteAbi, functionName: "mintMore", args: [args.amount18, args.prevHint ?? ZERO, args.nextHint ?? ZERO] }),
+    },
+  ];
+}
+
+/**
  * closeVault(): repay the whole debt and return the collateral to the
  * PersonalAccount. `debt18` is the full outstanding debt to approve (the
  * VaultManager pulls exactly the debt), read live before building.
@@ -143,6 +165,33 @@ export function buildCloseCalls(args: {
       target: args.vaultManager,
       value: 0n,
       data: encodeFunctionData({ abi: vaultManagerWriteAbi, functionName: "closeVault", args: [] }),
+    },
+  ];
+}
+
+/**
+ * addCollateral(amount6): supply MORE FXRP to the existing vault. The FXRP is
+ * freshly minted from the XRP the user sends (net mint > 0), so this rides the
+ * mint-style payment (collateral + fees), then the PersonalAccount approves the
+ * VaultManager and adds it. Raises CR / borrow headroom.
+ */
+export function buildAddCollateralCalls(args: {
+  fxrp: Address;
+  vaultManager: Address;
+  amount6: bigint;
+  prevHint?: Address;
+  nextHint?: Address;
+}): Call[] {
+  return [
+    {
+      target: args.fxrp,
+      value: 0n,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [args.vaultManager, args.amount6] }),
+    },
+    {
+      target: args.vaultManager,
+      value: 0n,
+      data: encodeFunctionData({ abi: vaultManagerWriteAbi, functionName: "addCollateral", args: [args.amount6, args.prevHint ?? ZERO, args.nextHint ?? ZERO] }),
     },
   ];
 }

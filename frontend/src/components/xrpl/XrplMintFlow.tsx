@@ -545,7 +545,12 @@ function XrplManagePanel({
   xrplAddress: string;
 }) {
   const [repay, setRepay] = useState("");
+  const [borrow, setBorrow] = useState("");
+  const [supply, setSupply] = useState("");
   const repay18 = parseAmount(repay, 18);
+  const borrow18 = parseAmount(borrow, 18);
+  const supply6 = parseAmount(supply, 6);
+  const supplyValid = supply6 !== null && supply6 > 0n;
   const crBps = price18 ? computeCrBps(vault.collateral, COLL_DEC, vault.debt18, price18) : null;
   const band = healthBand(crBps, params.mcrBps);
   const remaining = repay18 !== null ? vault.debt18 - repay18 : vault.debt18;
@@ -555,6 +560,14 @@ function XrplManagePanel({
     repay18 > 0n &&
     repay18 <= vault.debt18 &&
     (remaining === 0n || remaining >= params.minDebt18);
+
+  // Borrow-more headroom: max total debt at MCR minus the current debt.
+  const maxMint = price18
+    ? maxMintableVusd18(vault.collateral, COLL_DEC, price18, params.mcrBps)
+    : undefined;
+  const maxMore = maxMint !== undefined && maxMint > vault.debt18 ? maxMint - vault.debt18 : 0n;
+  const overMore = borrow18 !== null && maxMint !== undefined && borrow18 > maxMore;
+  const borrowValid = borrow18 !== null && borrow18 > 0n && !overMore;
 
   return (
     <Card className="flex flex-col gap-4">
@@ -571,48 +584,109 @@ function XrplManagePanel({
         <InfoRow left="Min debt" right={`${formatToken(params.minDebt18, 18, 0)} vUSD`} />
       </div>
 
-      <Field
-        label="Repay (vUSD)"
-        htmlFor="xrpl-repay"
-        hint="Burned from your Flare personal account · one XRPL payment (fees only)"
-      >
-        <Input
-          id="xrpl-repay"
-          inputMode="decimal"
-          placeholder="0.0"
-          value={repay}
-          onChange={(e) => setRepay(e.target.value)}
-        />
-      </Field>
-      {belowMin && (
-        <p className="text-xs text-danger">
-          That would leave the debt below the {formatToken(params.minDebt18, 18, 0)} vUSD
-          minimum — repay less, or close the vault.
-        </p>
-      )}
-
-      <div className="flex flex-wrap gap-2">
+      {/* Supply MORE collateral (send XRP → mint FXRP → addCollateral) */}
+      <div className="space-y-2 border-t border-line pt-3">
+        <Field
+          label="Supply collateral (XRP)"
+          htmlFor="xrpl-supply"
+          hint="Sent from your XRP Ledger wallet · becomes FXRP collateral on Flare"
+        >
+          <Input
+            id="xrpl-supply"
+            inputMode="decimal"
+            placeholder="0.0"
+            value={supply}
+            onChange={(e) => setSupply(e.target.value)}
+          />
+        </Field>
         <PillButton
           size="md"
-          className="flex-1"
-          disabled={!repayValid || building}
-          onClick={() => onBuild({ xrplAddress, action: "repay", amount18: repay18!.toString() })}
+          className="w-full"
+          disabled={!supplyValid || building}
+          onClick={() => onBuild({ xrplAddress, action: "addCollateral", collateral6: supply6!.toString() })}
         >
-          {building ? "Generating…" : "Repay"}
-        </PillButton>
-        <PillButton
-          size="md"
-          variant="ghost"
-          className="flex-1"
-          disabled={building}
-          onClick={() => onBuild({ xrplAddress, action: "close" })}
-        >
-          Close vault
+          {building ? "Generating…" : "Supply collateral"}
         </PillButton>
       </div>
+
+      {/* Borrow MORE against the existing collateral (mintMore) */}
+      <div className="space-y-2 border-t border-line pt-3">
+        <Field
+          label="Borrow more (vUSD)"
+          htmlFor="xrpl-mintmore"
+          hint={
+            maxMint !== undefined
+              ? `Max +${formatToken(maxMore, 18, 2)} vUSD at the current price`
+              : "Borrow more against your collateral"
+          }
+        >
+          <Input
+            id="xrpl-mintmore"
+            inputMode="decimal"
+            placeholder="0.0"
+            value={borrow}
+            onChange={(e) => setBorrow(e.target.value)}
+          />
+        </Field>
+        {overMore && (
+          <p className="text-xs text-danger">
+            Exceeds the max borrow for this collateral — add collateral or borrow less.
+          </p>
+        )}
+        <PillButton
+          size="md"
+          className="w-full"
+          disabled={!borrowValid || building}
+          onClick={() => onBuild({ xrplAddress, action: "mintMore", amount18: borrow18!.toString() })}
+        >
+          {building ? "Generating…" : "Borrow more"}
+        </PillButton>
+      </div>
+
+      {/* Repay / close */}
+      <div className="space-y-2 border-t border-line pt-3">
+        <Field
+          label="Repay (vUSD)"
+          htmlFor="xrpl-repay"
+          hint="Burned from your Flare personal account · one XRPL payment (fees only)"
+        >
+          <Input
+            id="xrpl-repay"
+            inputMode="decimal"
+            placeholder="0.0"
+            value={repay}
+            onChange={(e) => setRepay(e.target.value)}
+          />
+        </Field>
+        {belowMin && (
+          <p className="text-xs text-danger">
+            That would leave the debt below the {formatToken(params.minDebt18, 18, 0)} vUSD
+            minimum — repay less, or close the vault.
+          </p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <PillButton
+            size="md"
+            className="flex-1"
+            disabled={!repayValid || building}
+            onClick={() => onBuild({ xrplAddress, action: "repay", amount18: repay18!.toString() })}
+          >
+            {building ? "Generating…" : "Repay"}
+          </PillButton>
+          <PillButton
+            size="md"
+            variant="ghost"
+            className="flex-1"
+            disabled={building}
+            onClick={() => onBuild({ xrplAddress, action: "close" })}
+          >
+            Close vault
+          </PillButton>
+        </div>
+      </div>
       <p className="text-xs text-muted/80">
-        Repay and close ride ONE XRPL payment (fees only — no FXRP minted). Closing repays the
-        full debt and returns your FXRP collateral to the personal account.
+        Borrow-more, repay and close each ride ONE XRPL payment (fees only — no FXRP minted).
+        Closing repays the full debt and returns your FXRP collateral to the personal account.
       </p>
     </Card>
   );

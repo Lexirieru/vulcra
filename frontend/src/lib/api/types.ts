@@ -86,12 +86,14 @@ export interface MintPlanRaw {
 // repay / close / adjust-rate ride the SAME 0xFE path as the mint with net mint
 // 0 (fees-only payment). The response is the SAME MintBuildResponse shape, so
 // the sign → submit → track flow is identical.
-export type ManageAction = "repay" | "close" | "adjustRate";
+export type ManageAction = "repay" | "close" | "adjustRate" | "mintMore" | "addCollateral";
 export interface ManageBuildRequest {
   xrplAddress: string;
   action: ManageAction;
-  /** vUSD (18-dec) to repay, decimal string — required for `repay`. */
+  /** vUSD (18-dec) to repay / borrow-more, decimal string — for `repay`/`mintMore`. */
   amount18?: string;
+  /** XRP/FXRP (6-dec drops) to supply, decimal string — for `addCollateral`. */
+  collateral6?: string;
   /** new annual interest rate (bps), decimal string — required for `adjustRate`. */
   newRateBps?: string;
 }

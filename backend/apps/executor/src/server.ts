@@ -37,6 +37,7 @@ export interface ExecutorServices {
     xrplAddress: string;
     action: ManageAction;
     amount18?: bigint;
+    collateral6?: bigint;
     newRateBps?: bigint;
   }): Promise<ManagePlan>;
   /**
@@ -148,14 +149,27 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
   // adjust-rate) via the 0xFE net-0 path. The returned plan is signed + tracked
   // through the SAME /mint/submit + /mint/status endpoints as the mint.
   app.post<{
-    Body: { xrplAddress?: string; action?: ManageAction; amount18?: string; newRateBps?: string };
+    Body: {
+      xrplAddress?: string;
+      action?: ManageAction;
+      amount18?: string;
+      collateral6?: string;
+      newRateBps?: string;
+    };
   }>("/manage/build", async (req, reply) => {
-    const { xrplAddress, action, amount18, newRateBps } = req.body ?? {};
-    if (!xrplAddress || !action || !["repay", "close", "adjustRate"].includes(action)) {
-      return reply.code(400).send({ error: "xrplAddress and action (repay|close|adjustRate) are required" });
+    const { xrplAddress, action, amount18, collateral6, newRateBps } = req.body ?? {};
+    if (
+      !xrplAddress ||
+      !action ||
+      !["repay", "close", "adjustRate", "mintMore", "addCollateral"].includes(action)
+    ) {
+      return reply.code(400).send({ error: "xrplAddress and action (repay|mintMore|addCollateral|close|adjustRate) are required" });
     }
-    if (action === "repay" && amount18 === undefined) {
-      return reply.code(400).send({ error: "amount18 is required for repay" });
+    if ((action === "repay" || action === "mintMore") && amount18 === undefined) {
+      return reply.code(400).send({ error: `amount18 is required for ${action}` });
+    }
+    if (action === "addCollateral" && collateral6 === undefined) {
+      return reply.code(400).send({ error: "collateral6 is required for addCollateral" });
     }
     if (action === "adjustRate" && newRateBps === undefined) {
       return reply.code(400).send({ error: "newRateBps is required for adjustRate" });
@@ -165,6 +179,7 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
         xrplAddress,
         action,
         amount18: amount18 !== undefined ? BigInt(amount18) : undefined,
+        collateral6: collateral6 !== undefined ? BigInt(collateral6) : undefined,
         newRateBps: newRateBps !== undefined ? BigInt(newRateBps) : undefined,
       });
       return serializeBigints(plan);

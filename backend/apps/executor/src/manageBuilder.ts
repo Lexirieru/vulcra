@@ -3,14 +3,18 @@ import {
   assetManagerAbi,
   resolveAssetManagerFXRP,
   resolveMasterAccountController,
+  resolveFxrpToken,
 } from "@vulcra/chain-client";
 import {
   buildRepayCalls,
   buildCloseCalls,
   buildAdjustRateCalls,
+  buildMintMoreCalls,
+  buildAddCollateralCalls,
   buildManageUserOp,
   getPersonalAccount,
   getNonce,
+  computeRequiredXrpDrops,
   dropsToXrpString,
 } from "@vulcra/userop";
 import type { ExecutorEnv } from "./env.js";
@@ -38,7 +42,7 @@ const vaultManagerReadAbi = [
   },
 ] as const;
 
-export type ManageAction = "repay" | "close" | "adjustRate";
+export type ManageAction = "repay" | "close" | "adjustRate" | "mintMore" | "addCollateral";
 
 export interface ManagePlan {
   action: ManageAction;
@@ -64,8 +68,10 @@ export async function buildManagePlan(
   input: {
     xrplAddress: string;
     action: ManageAction;
-    /** vUSD (18-dec) to repay — required for `repay`. */
+    /** vUSD (18-dec) to repay / borrow-more — required for `repay`/`mintMore`. */
     amount18?: bigint;
+    /** XRP/FXRP (6-dec drops) to supply — required for `addCollateral` (net mint > 0). */
+    collateral6?: bigint;
     /** New annual interest rate (bps) — required for `adjustRate`. */
     newRateBps?: bigint;
   },
@@ -84,16 +90,28 @@ export async function buildManagePlan(
   const personalAccount = await getPersonalAccount(client as never, mac, input.xrplAddress);
   const nonce = await getNonce(client as never, mac, personalAccount);
 
-  const [coreVaultXrplAddress, minFeeUBA, executorFeeUBA] = await Promise.all([
+  const [coreVaultXrplAddress, minFeeUBA, executorFeeUBA, mintFeeBips] = await Promise.all([
     client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "directMintingPaymentAddress", args: [] }) as Promise<string>,
     client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingMinimumFeeUBA", args: [] }) as Promise<bigint>,
     client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingExecutorFeeUBA", args: [] }) as Promise<bigint>,
+    client.readContract({ address: assetManager, abi: assetManagerAbi, functionName: "getDirectMintingFeeBIPS", args: [] }) as Promise<bigint>,
   ]);
 
   let calls;
+  // Net mint drops for the XRPL payment: 0 for the memo-only actions, the
+  // supplied collateral for add-collateral (which mints that FXRP).
+  let netMintDrops = 0n;
   if (input.action === "repay") {
     if (input.amount18 === undefined) throw new Error("amount18 is required for repay.");
     calls = buildRepayCalls({ vusd, vaultManager, amount18: input.amount18 });
+  } else if (input.action === "mintMore") {
+    if (input.amount18 === undefined) throw new Error("amount18 is required for mintMore.");
+    calls = buildMintMoreCalls({ vaultManager, amount18: input.amount18 });
+  } else if (input.action === "addCollateral") {
+    if (input.collateral6 === undefined) throw new Error("collateral6 is required for addCollateral.");
+    const fxrp = await resolveFxrpToken(client);
+    calls = buildAddCollateralCalls({ fxrp, vaultManager, amount6: input.collateral6 });
+    netMintDrops = input.collateral6;
   } else if (input.action === "close") {
     // Close approves + burns the FULL debt, so read it live right before building.
     const [, debt18] = (await client.readContract({
@@ -109,8 +127,15 @@ export async function buildManagePlan(
   }
 
   const built = buildManageUserOp({ sender: personalAccount, nonce, calls, executorFeeUBA });
-  // Net mint = 0: the memo-only payment covers just the direct-minting fees.
-  const requiredPaymentDrops = minFeeUBA + executorFeeUBA;
+  // Memo-only actions pay just the fees; add-collateral mints FXRP, so it pays
+  // the collateral + the direct-minting fee + the executor fee (mint pricing).
+  const { totalDrops } = computeRequiredXrpDrops({
+    netMintDrops,
+    mintFeeBips,
+    minFeeUBA,
+    executorFeeUBA,
+  });
+  const requiredPaymentDrops = totalDrops;
 
   return {
     action: input.action,
