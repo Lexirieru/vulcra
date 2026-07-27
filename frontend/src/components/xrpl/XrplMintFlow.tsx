@@ -1013,6 +1013,10 @@ function PaymentPanel({
                 Approve the Payment to finish — the 0xFE memo is already set, don&apos;t add a
                 destination tag. Vulcra tracks it automatically once you sign.
               </p>
+              <p className="mt-1 text-[11px] leading-tight text-muted/80">
+                Can&apos;t reach the Approve button? Crossmark&apos;s popup doesn&apos;t always
+                scroll — two-finger scroll inside it or drag it taller, or pay via QR below.
+              </p>
             </div>
           </div>
         )}
