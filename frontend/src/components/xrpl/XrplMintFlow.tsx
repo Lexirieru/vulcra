@@ -133,7 +133,10 @@ export function XrplMintFlow() {
   const { params } = useVaultParams(FXRP_VAULT_MANAGER);
   // Does this XRPL wallet's PersonalAccount already hold an FXRP vault? If so the
   // page becomes a MANAGE view (repay / close) — you can't open a second vault.
-  const { vault, hasVault } = useVault(account.data?.personalAccount, FXRP_VAULT_MANAGER);
+  const { vault, hasVault, refetch: refetchVault } = useVault(
+    account.data?.personalAccount,
+    FXRP_VAULT_MANAGER,
+  );
   const derived = useMemo(() => {
     const fee = mint18 !== null ? (mint18 * params.mintFeeBps) / 10_000n : 0n;
     const debt = mint18 !== null ? mint18 + fee : 0n;
@@ -240,7 +243,14 @@ export function XrplMintFlow() {
       : undefined;
   const busy = build.isPending || wallet.signing || submit.isPending;
 
-  const canGenerate = inputsReady && !overMax && preflight.data?.ok === true;
+  // Insufficient-balance guard: you can't supply more XRP than your XRP Ledger
+  // wallet can actually spend (balance minus the base+owner reserve).
+  const spendableDrops = xrpBalance.data?.spendableDrops;
+  const composerExceedsBalance =
+    collateral6 !== null && spendableDrops !== undefined && collateral6 > spendableDrops;
+
+  const canGenerate =
+    inputsReady && !overMax && !composerExceedsBalance && preflight.data?.ok === true;
 
   return (
     <div className="flex flex-col gap-6">
@@ -274,6 +284,7 @@ export function XrplMintFlow() {
             onBuild={(req) => build.mutate(req)}
             busy={busy}
             pendingAction={pendingAction}
+            spendableDrops={xrpBalance.data?.spendableDrops}
             xrplAddress={rAddress.trim()}
           />
         </Reveal>
@@ -318,6 +329,12 @@ export function XrplMintFlow() {
                   </button>
                 )}
               </div>
+              {composerExceedsBalance && (
+                <p className="mt-2 text-xs text-danger">
+                  Insufficient balance — you have{" "}
+                  {formatToken(spendableDrops!, 6, 2)} XRP spendable.
+                </p>
+              )}
 
               <div className="mt-4 space-y-1.5 border-t border-line pt-3">
                 <InfoRow
@@ -538,10 +555,18 @@ export function XrplMintFlow() {
         </Reveal>
       )}
 
-      {/* Step 3 — tracking */}
+      {/* Step 3 — tracking. On EXECUTED, refetch the vault + balances at once so
+          the position updates the instant the mint lands (not on the next poll). */}
       {submit.data && (
         <Reveal>
-          <MintStatusTracker mintId={submit.data.mintId} />
+          <MintStatusTracker
+            mintId={submit.data.mintId}
+            onExecuted={() => {
+              void refetchVault();
+              xrpBalance.refetch();
+              void account.refetch();
+            }}
+          />
         </Reveal>
       )}
     </div>
@@ -559,6 +584,7 @@ function XrplManagePanel({
   onBuild,
   busy,
   pendingAction,
+  spendableDrops,
   xrplAddress,
 }: {
   vault: VaultState;
@@ -568,6 +594,8 @@ function XrplManagePanel({
   busy: boolean;
   /** The action whose payment is currently building — only its button spins. */
   pendingAction?: ManageAction;
+  /** Spendable XRP (drops) in the connected wallet — caps the supply input. */
+  spendableDrops?: bigint;
   xrplAddress: string;
 }) {
   const [repay, setRepay] = useState("");
@@ -576,7 +604,9 @@ function XrplManagePanel({
   const repay18 = parseAmount(repay, 18);
   const borrow18 = parseAmount(borrow, 18);
   const supply6 = parseAmount(supply, 6);
-  const supplyValid = supply6 !== null && supply6 > 0n;
+  const supplyExceedsBalance =
+    supply6 !== null && spendableDrops !== undefined && supply6 > spendableDrops;
+  const supplyValid = supply6 !== null && supply6 > 0n && !supplyExceedsBalance;
   const crBps = price18 ? computeCrBps(vault.collateral, COLL_DEC, vault.debt18, price18) : null;
   const band = healthBand(crBps, params.mcrBps);
   const remaining = repay18 !== null ? vault.debt18 - repay18 : vault.debt18;
@@ -625,6 +655,22 @@ function XrplManagePanel({
             onChange={(e) => setSupply(e.target.value)}
           />
         </Field>
+        {spendableDrops !== undefined && (
+          <div className="flex items-center justify-between text-xs">
+            <span className={supplyExceedsBalance ? "text-danger" : "text-muted/70"}>
+              {supplyExceedsBalance
+                ? `Insufficient balance — you have ${formatToken(spendableDrops, 6, 2)} XRP spendable.`
+                : `Balance ${formatToken(spendableDrops, 6, 2)} XRP`}
+            </span>
+            <button
+              type="button"
+              onClick={() => setSupply(formatToken(spendableDrops, 6, 2).replace(/,/g, ""))}
+              className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
+            >
+              Max
+            </button>
+          </div>
+        )}
         <PillButton
           size="md"
           className="w-full"

@@ -10,6 +10,7 @@ import { zeroAddress, type Address } from "viem";
 import { Button, Card, CardTitle, Field, Input, cn } from "@/components/ui";
 import { TxStatus } from "./TxStatus";
 import { useVaultAction, useTokenApproval, useWrapNative } from "@/hooks/useVaultAction";
+import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { useInterestConfig, useVaultRate } from "@/hooks/useInterest";
 import type { InterestConfig } from "@/hooks/useInterest";
 import type { VaultParams, VaultState } from "@/hooks/useVault";
@@ -104,6 +105,10 @@ export function VaultActions({
     branch.interest,
   );
   const { rateBps: currentRate } = useVaultRate(owner, branch.vaultManager || undefined);
+  // Live wallet balances to cap deposit (collateral) and repay (vUSD) inputs.
+  const balances = useWalletBalances(owner);
+  const collBalance = balances.tokens.find((t) => t.symbol === branch.collateralSymbol)?.value;
+  const vusdBalance = balances.tokens.find((t) => t.symbol === "vUSD")?.value;
 
   return (
     <Card>
@@ -123,6 +128,7 @@ export function VaultActions({
             collateralToken={collateralToken}
             owner={owner}
             interest={interest}
+            collBalance={collBalance}
             blocked={blocked}
           />
         </div>
@@ -159,6 +165,7 @@ export function VaultActions({
                 collateralToken={collateralToken}
                 vaultManager={branch.vaultManager || undefined}
                 owner={owner}
+                collBalance={collBalance}
                 blocked={blocked}
               />
             )}
@@ -175,7 +182,13 @@ export function VaultActions({
               <DebtForm mode="borrow" action={action} blocked={blocked} />
             )}
             {tab === "repay" && (
-              <DebtForm mode="repay" action={action} vault={vault} blocked={blocked} />
+              <DebtForm
+                mode="repay"
+                action={action}
+                vault={vault}
+                vusdBalance={vusdBalance}
+                blocked={blocked}
+              />
             )}
             {tab === "rate" && (
               <RateForm
@@ -256,6 +269,7 @@ function OpenForm({
   collateralToken,
   owner,
   interest,
+  collBalance,
   blocked,
 }: {
   price18?: bigint;
@@ -265,6 +279,7 @@ function OpenForm({
   collateralToken?: Address;
   owner?: Address;
   interest: InterestConfig;
+  collBalance?: bigint;
   blocked: boolean;
 }) {
   const collDec = branch.collateralDecimals;
@@ -279,6 +294,11 @@ function OpenForm({
     collateralAmt !== null && price18
       ? maxMintableVusd18(collateralAmt, collDec, price18, params.mcrBps)
       : null;
+  const insufficientCollateral =
+    collateralAmt !== null && collBalance !== undefined && collateralAmt > collBalance;
+  const collError = insufficientCollateral
+    ? `Insufficient ${branch.collateralSymbol} — you have ${formatToken(collBalance!, collDec, 4)}.`
+    : undefined;
 
   let error: string | undefined;
   if (mint18 !== null && mint18 < params.minDebt18 && mint18 > 0n)
@@ -287,7 +307,12 @@ function OpenForm({
     error = `Exceeds max mint (${formatToken(maxMint, 18, 2)} vUSD at MCR).`;
 
   const valid =
-    collateralAmt !== null && collateralAmt > 0n && mint18 !== null && mint18 > 0n && !error;
+    collateralAmt !== null &&
+    collateralAmt > 0n &&
+    mint18 !== null &&
+    mint18 > 0n &&
+    !error &&
+    !insufficientCollateral;
 
   const approval = useTokenApproval(collateralToken, branch.vaultManager || undefined, owner);
   useEffect(() => {
@@ -296,6 +321,7 @@ function OpenForm({
   const needsApproval =
     collateralAmt !== null &&
     collateralAmt > 0n &&
+    !insufficientCollateral &&
     (approval.allowance === undefined || approval.allowance < collateralAmt);
 
   return (
@@ -310,7 +336,12 @@ function OpenForm({
       <Field
         label={`Deposit ${branch.collateralSymbol}`}
         htmlFor="open-collateral"
-        hint={`${collDec}-decimal collateral`}
+        error={collError}
+        hint={
+          collBalance !== undefined
+            ? `Balance ${formatToken(collBalance, collDec, 4)} ${branch.collateralSymbol}`
+            : `${collDec}-decimal collateral`
+        }
       >
         <Input
           id="open-collateral"
@@ -367,6 +398,7 @@ function CollateralForm({
   collateralToken,
   vaultManager,
   owner,
+  collBalance,
   blocked,
 }: {
   mode: "add" | "withdraw";
@@ -376,11 +408,15 @@ function CollateralForm({
   collateralToken?: Address;
   vaultManager?: Address;
   owner?: Address;
+  collBalance?: bigint;
   blocked: boolean;
 }) {
   const [amount, setAmount] = useState("");
   const amt = parseAmount(amount, collDec);
-  const valid = amt !== null && amt > 0n;
+  // Only "add" spends wallet balance; "withdraw" is bounded by vault collateral.
+  const insufficient =
+    mode === "add" && amt !== null && collBalance !== undefined && amt > collBalance;
+  const valid = amt !== null && amt > 0n && !insufficient;
 
   const approval = useTokenApproval(
     mode === "add" ? collateralToken : undefined,
@@ -394,6 +430,7 @@ function CollateralForm({
     mode === "add" &&
     amt !== null &&
     amt > 0n &&
+    !insufficient &&
     (approval.allowance === undefined || approval.allowance < amt);
 
   return (
@@ -408,6 +445,12 @@ function CollateralForm({
       <Field
         label={`${mode === "add" ? "Add" : "Withdraw"} ${symbol}`}
         htmlFor={`col-${mode}`}
+        error={insufficient ? `Insufficient ${symbol} — you have ${formatToken(collBalance!, collDec, 4)}.` : undefined}
+        hint={
+          mode === "add" && collBalance !== undefined
+            ? `Balance ${formatToken(collBalance, collDec, 4)} ${symbol}`
+            : undefined
+        }
       >
         <Input
           id={`col-${mode}`}
@@ -440,16 +483,21 @@ function DebtForm({
   mode,
   action,
   vault,
+  vusdBalance,
   blocked,
 }: {
   mode: "borrow" | "repay";
   action: Action;
   vault?: VaultState;
+  vusdBalance?: bigint;
   blocked: boolean;
 }) {
   const [amount, setAmount] = useState("");
   const amt = parseAmount(amount, 18);
-  const valid = amt !== null && amt > 0n;
+  // Repay pulls vUSD from the wallet — can't repay more than you hold.
+  const insufficient =
+    mode === "repay" && amt !== null && vusdBalance !== undefined && amt > vusdBalance;
+  const valid = amt !== null && amt > 0n && !insufficient;
 
   return (
     <form
@@ -463,6 +511,11 @@ function DebtForm({
       <Field
         label={mode === "borrow" ? "Borrow more vUSD" : "Repay vUSD"}
         htmlFor={`debt-${mode}`}
+        error={
+          insufficient
+            ? `Insufficient vUSD — you have ${formatToken(vusdBalance!, 18, 2)}.`
+            : undefined
+        }
         hint={
           mode === "repay" && vault
             ? `Outstanding debt ${formatToken(vault.debt18, 18, 2)} vUSD`

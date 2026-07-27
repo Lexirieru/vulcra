@@ -3,6 +3,7 @@
 // End-to-end mint tracking (U10 / AE1). Polls backend status and renders the
 // state machine. A rate-limit DELAY is a first-class status with a countdown —
 // never presented as a failure. REVERTED explains XRP is safe at the Core Vault.
+import { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { CheckCircle2, Clock, Loader2, ShieldAlert } from "lucide-react";
 import { Badge, Card, CardTitle, ErrorState } from "@/components/ui";
@@ -33,7 +34,15 @@ function rank(state: MintState): number {
 
 const TERMINAL: MintState[] = ["EXECUTED", "REVERTED", "REJECTED"];
 
-export function MintStatusTracker({ mintId }: { mintId: string }) {
+export function MintStatusTracker({
+  mintId,
+  onExecuted,
+}: {
+  mintId: string;
+  /** Fired exactly once when the mint reaches EXECUTED — lets the parent refetch
+      the vault / balances immediately instead of waiting on their poll. */
+  onExecuted?: () => void;
+}) {
   const { data, isError, refetch } = useQuery({
     queryKey: ["mint-status", mintId],
     queryFn: () => api.getMintStatus(mintId),
@@ -42,6 +51,17 @@ export function MintStatusTracker({ mintId }: { mintId: string }) {
       return s && TERMINAL.includes(s) ? false : 3000;
     },
   });
+
+  const state = data?.state ?? "INTAKE";
+  // Nudge the parent to refresh on-chain reads the moment execution lands, so the
+  // vault/collateral update feels realtime rather than lagging the 12s poll.
+  const firedRef = useRef(false);
+  useEffect(() => {
+    if (state === "EXECUTED" && !firedRef.current) {
+      firedRef.current = true;
+      onExecuted?.();
+    }
+  }, [state, onExecuted]);
 
   if (isError) {
     return (
@@ -55,7 +75,6 @@ export function MintStatusTracker({ mintId }: { mintId: string }) {
     );
   }
 
-  const state = data?.state ?? "INTAKE";
   const current = rank(state);
 
   return (

@@ -29,6 +29,7 @@ import {
 } from "@/lib/gsap";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { useCollateralToken, useVaultParams } from "@/hooks/useVault";
+import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { useTokenApproval, useVaultAction, useWrapNative } from "@/hooks/useVaultAction";
 import { useInterestConfig } from "@/hooks/useInterest";
 import {
@@ -210,6 +211,9 @@ export function BorrowComposer({
   const action = useVaultAction(vaultManager);
   const approval = useTokenApproval(collateralToken, vaultManager, owner);
   const wrap = useWrapNative(branch.wrapNative ? collateralToken : undefined);
+  // Live wallet balance of the chosen collateral, to cap the deposit input.
+  const balances = useWalletBalances(owner);
+  const collBalance = balances.tokens.find((t) => t.symbol === branch.collateralSymbol)?.value;
 
   const [collateral, setCollateral] = useState("");
   const [mint, setMint] = useState("");
@@ -280,17 +284,22 @@ export function BorrowComposer({
   else if (derived.maxMint !== undefined && mint18 !== null && mint18 > derived.maxMint)
     mintError = `Exceeds the max mint at MCR (${formatToken(derived.maxMint, 18, 2)} vUSD).`;
 
+  const insufficientCollateral =
+    collateralAmt !== null && collBalance !== undefined && collateralAmt > collBalance;
+
   const valid =
     Boolean(owner) &&
     collateralAmt !== null &&
     collateralAmt > 0n &&
     mint18 !== null &&
     mint18 > 0n &&
-    !mintError;
+    !mintError &&
+    !insufficientCollateral;
 
   const needsApproval =
     collateralAmt !== null &&
     collateralAmt > 0n &&
+    !insufficientCollateral &&
     (approval.allowance === undefined || approval.allowance < collateralAmt);
 
   // Redemption-risk read from where the chosen rate sits in [min, max].
@@ -334,9 +343,29 @@ export function BorrowComposer({
             {branch.collateralSymbol}
           </span>
         </div>
-        <div className="mt-1 text-sm tabular-nums text-muted/70">
-          {derived.collateralUsd !== undefined ? formatUsd(derived.collateralUsd) : "$0.00"}
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <span className="text-sm tabular-nums text-muted/70">
+            {derived.collateralUsd !== undefined ? formatUsd(derived.collateralUsd) : "$0.00"}
+          </span>
+          {collBalance !== undefined && (
+            <button
+              type="button"
+              onClick={() =>
+                setCollateral(formatToken(collBalance, collDec, 6).replace(/,/g, ""))
+              }
+              className="min-h-10 rounded-full px-2 text-xs font-medium text-brand hover:underline"
+            >
+              Balance {formatToken(collBalance, collDec, 4)} {branch.collateralSymbol}
+            </button>
+          )}
         </div>
+        {insufficientCollateral && (
+          <p className="mt-2 text-xs text-danger">
+            Insufficient {branch.collateralSymbol} balance — you have{" "}
+            {formatToken(collBalance!, collDec, 4)}.
+            {branch.wrapNative ? " Wrap more C2FLR first." : ""}
+          </p>
+        )}
 
         <div className="mt-4 space-y-1.5 border-t border-line pt-3">
           <InfoRow
