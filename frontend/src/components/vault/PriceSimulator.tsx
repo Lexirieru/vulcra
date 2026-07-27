@@ -5,8 +5,8 @@
 import { useState } from "react";
 import { Badge, Button, Card, CardTitle } from "@/components/ui";
 import type { VaultParams, VaultState } from "@/hooks/useVault";
-import { computeCrBps, healthBand } from "@/lib/vault-math";
-import { formatCr, formatPrice } from "@/lib/format";
+import { collateralValueUsd18, computeCrBps, healthBand, liquidationPrice18 } from "@/lib/vault-math";
+import { formatCr, formatPrice, formatUsd } from "@/lib/format";
 
 export function PriceSimulator({
   vault,
@@ -25,9 +25,11 @@ export function PriceSimulator({
   const crBps = computeCrBps(vault.collateral, collDec, vault.debt18, simPrice18);
   const band = healthBand(crBps, params.mcrBps);
   const liquidatable = crBps !== null && crBps < params.mcrBps;
+  const simCollateralUsd = collateralValueUsd18(vault.collateral, collDec, simPrice18);
+  const liqPrice = liquidationPrice18(vault.collateral, collDec, vault.debt18, params.mcrBps);
 
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <div className="flex items-center justify-between">
         <CardTitle>What-if simulator</CardTitle>
         <Badge tone="neutral">simulation only</Badge>
@@ -53,7 +55,7 @@ export function PriceSimulator({
       </div>
 
       <label htmlFor="sim-price" className="sr-only">
-        Hypothetical XRP price, percent of live
+        Hypothetical price, percent of live
       </label>
       <input
         id="sim-price"
@@ -72,22 +74,36 @@ export function PriceSimulator({
         <span>+100%</span>
       </div>
 
-      <p className="mt-3 text-sm">
-        {liquidatable ? (
-          <span className="text-danger">
-            At this price your vault would be liquidatable (CR below MCR{" "}
-            {formatCr(params.mcrBps)}).
-          </span>
-        ) : (
-          <span className="text-muted">Vault stays above the liquidation threshold.</span>
-        )}
-      </p>
+      <div className="mt-4 grid grid-cols-2 gap-3 border-t border-line pt-3">
+        <div>
+          <div className="text-xs text-muted">Collateral value</div>
+          <div className="tabular-nums text-ink">{formatUsd(simCollateralUsd)}</div>
+        </div>
+        <div>
+          <div className="text-xs text-muted">Liquidation price</div>
+          <div className="tabular-nums text-ink">{formatPrice(liqPrice ?? undefined)}</div>
+        </div>
+      </div>
 
-      {pct !== 100 && (
-        <Button variant="ghost" size="sm" className="mt-2" onClick={() => setPct(100)}>
-          Reset to live
-        </Button>
-      )}
+      {/* mt-auto pins the verdict + reset to the bottom so the card fills its
+          grid cell evenly next to the taller Actions panel. */}
+      <div className="mt-auto pt-4">
+        <p className="text-sm">
+          {liquidatable ? (
+            <span className="text-danger">
+              At this price your vault would be liquidatable (CR below MCR{" "}
+              {formatCr(params.mcrBps)}).
+            </span>
+          ) : (
+            <span className="text-muted">Vault stays above the liquidation threshold.</span>
+          )}
+        </p>
+        {pct !== 100 && (
+          <Button variant="ghost" size="sm" className="mt-2" onClick={() => setPct(100)}>
+            Reset to live
+          </Button>
+        )}
+      </div>
     </Card>
   );
 }

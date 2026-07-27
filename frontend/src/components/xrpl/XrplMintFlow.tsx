@@ -299,8 +299,8 @@ export function XrplMintFlow() {
               rateBps={currentRateBps}
             />
           </Reveal>
-          <div className="grid items-start gap-6 xl:grid-cols-2">
-            <Reveal delay={0.05}>
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Reveal delay={0.05} className="h-full">
               <XrplVaultActions
                 vault={vault}
                 price18={price18}
@@ -313,7 +313,7 @@ export function XrplMintFlow() {
                 xrplAddress={rAddress.trim()}
               />
             </Reveal>
-            <Reveal delay={0.1}>
+            <Reveal delay={0.1} className="h-full">
               {price18 ? (
                 <PriceSimulator
                   vault={vault}
@@ -322,7 +322,7 @@ export function XrplMintFlow() {
                   collDec={COLL_DEC}
                 />
               ) : (
-                <Card className="flex items-center justify-center text-center text-sm text-muted">
+                <Card className="flex h-full items-center justify-center text-center text-sm text-muted">
                   Loading live price…
                 </Card>
               )}
@@ -653,7 +653,7 @@ function XrplVaultActions({
 }) {
   const [tab, setTab] = useState<XrplTab>("deposit");
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <CardTitle>Actions</CardTitle>
       <div
         className="mt-4 flex overflow-x-auto rounded-full border border-line bg-surface-2 p-1"
@@ -743,7 +743,7 @@ function XrplVaultActions({
         )}
       </div>
 
-      <p className="mt-4 text-xs text-muted/80">
+      <p className="mt-auto pt-4 text-xs text-muted/80">
         Every action rides ONE XRPL payment (fees only — no FXRP minted, except when
         you supply collateral). No Flare wallet or FLR gas.
       </p>

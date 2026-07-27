@@ -165,7 +165,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
                 />
               </Reveal>
               <div className="grid gap-6 xl:grid-cols-2">
-                <Reveal delay={0.05}>
+                <Reveal delay={0.05} className="h-full">
                   <VaultActions
                     vault={vault}
                     price18={price18}
@@ -176,7 +176,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
                     disabled={notConfigured}
                   />
                 </Reveal>
-                <Reveal delay={0.1}>
+                <Reveal delay={0.1} className="h-full">
                   {price18 ? (
                     <PriceSimulator
                       vault={vault}
@@ -185,7 +185,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
                       collDec={branch.collateralDecimals}
                     />
                   ) : (
-                    <Card className="flex items-center justify-center text-center text-sm text-muted">
+                    <Card className="flex h-full items-center justify-center text-center text-sm text-muted">
                       Loading live price…
                     </Card>
                   )}

@@ -111,7 +111,7 @@ export function VaultActions({
   const vusdBalance = balances.tokens.find((t) => t.symbol === "vUSD")?.value;
 
   return (
-    <Card>
+    <Card className="flex h-full flex-col">
       <CardTitle>Actions</CardTitle>
 
       {branch.wrapNative && (
