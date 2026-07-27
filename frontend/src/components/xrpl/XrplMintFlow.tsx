@@ -42,12 +42,12 @@ import {
 import { Reveal } from "@/components/motion";
 import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
 import { api } from "@/lib/api/client";
-import type { MintBuildResponse } from "@/lib/api/types";
+import type { MintBuildRequest, MintBuildResponse, ManageBuildRequest } from "@/lib/api/types";
 import { usePersonalAccount, isValidRAddress } from "@/hooks/usePersonalAccount";
 import { useXrplWalletContext } from "@/context/xrpl";
 import { useWalletUi } from "@/context/wallet-ui";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
-import { useVaultParams } from "@/hooks/useVault";
+import { useVault, useVaultParams, type VaultParams, type VaultState } from "@/hooks/useVault";
 import { useXrpBalance } from "@/hooks/useXrpBalance";
 import {
   annualInterest18,
@@ -130,6 +130,9 @@ export function XrplMintFlow() {
   // Flare-wallet composer shows (collateral USD, max borrow, CR, liq price).
   const { price18, isStale } = useFtsoPrice(BRANCHES.fxrp.feedId);
   const { params } = useVaultParams(FXRP_VAULT_MANAGER);
+  // Does this XRPL wallet's PersonalAccount already hold an FXRP vault? If so the
+  // page becomes a MANAGE view (repay / close) — you can't open a second vault.
+  const { vault, hasVault } = useVault(account.data?.personalAccount, FXRP_VAULT_MANAGER);
   const derived = useMemo(() => {
     const fee = mint18 !== null ? (mint18 * params.mintFeeBps) / 10_000n : 0n;
     const debt = mint18 !== null ? mint18 + fee : 0n;
@@ -183,15 +186,19 @@ export function XrplMintFlow() {
     retry: 0,
   });
 
-  const build = useMutation<MintBuildResponse>({
-    mutationFn: () =>
-      api.buildMint({
-        xrplAddress: rAddress.trim(),
-        collateral6: collateral6!.toString(),
-        mint18: mint18!.toString(),
-        annualInterestRateBps: String(clampedRate),
-      }),
+  // ONE build mutation for both sides: a mint request (open) or a manage request
+  // (repay/close). Both return the identical MintBuildResponse, so the sign →
+  // submit → track flow below is shared verbatim.
+  const build = useMutation<MintBuildResponse, Error, MintBuildRequest | ManageBuildRequest>({
+    mutationFn: (req) => ("action" in req ? api.buildManage(req) : api.buildMint(req)),
   });
+  const generateMint = () =>
+    build.mutate({
+      xrplAddress: rAddress.trim(),
+      collateral6: collateral6!.toString(),
+      mint18: mint18!.toString(),
+      annualInterestRateBps: String(clampedRate),
+    });
 
   const [xrplTxId, setXrplTxId] = useState("");
   const submit = useMutation({
@@ -241,10 +248,25 @@ export function XrplMintFlow() {
         )}
       </Reveal>
 
+      {/* MANAGE — the PersonalAccount already has an FXRP vault: repay / close
+          from the XRP Ledger (0xFE net-0, fees-only payment). No second vault. */}
+      {account.data && hasVault && vault && (
+        <Reveal>
+          <XrplManagePanel
+            vault={vault}
+            price18={price18}
+            params={params}
+            onBuild={(req) => build.mutate(req)}
+            building={build.isPending}
+            xrplAddress={rAddress.trim()}
+          />
+        </Reveal>
+      )}
+
       {/* Composer — Collateral (XRP) → Loan (vUSD) → Interest rate, identical in
           shape to the Flare-wallet borrow composer. The action is ONE XRPL
-          payment instead of an EVM tx. */}
-      {account.data && (
+          payment instead of an EVM tx. Shown only when there is no vault yet. */}
+      {account.data && !hasVault && (
         <>
           {/* Card 1 — Collateral (XRP) */}
           <Reveal>
@@ -460,7 +482,7 @@ export function XrplMintFlow() {
               <PillButton
                 size="lg"
                 disabled={!canGenerate || build.isPending}
-                onClick={() => build.mutate()}
+                onClick={generateMint}
               >
                 {build.isPending ? "Generating payment…" : "Generate payment"}
               </PillButton>
@@ -500,6 +522,99 @@ export function XrplMintFlow() {
         </Reveal>
       )}
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Manage an existing vault — repay / close from the XRP Ledger (0xFE net-0)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function XrplManagePanel({
+  vault,
+  price18,
+  params,
+  onBuild,
+  building,
+  xrplAddress,
+}: {
+  vault: VaultState;
+  price18?: bigint;
+  params: VaultParams;
+  onBuild: (req: ManageBuildRequest) => void;
+  building: boolean;
+  xrplAddress: string;
+}) {
+  const [repay, setRepay] = useState("");
+  const repay18 = parseAmount(repay, 18);
+  const crBps = price18 ? computeCrBps(vault.collateral, COLL_DEC, vault.debt18, price18) : null;
+  const band = healthBand(crBps, params.mcrBps);
+  const remaining = repay18 !== null ? vault.debt18 - repay18 : vault.debt18;
+  const belowMin = repay18 !== null && remaining > 0n && remaining < params.minDebt18;
+  const repayValid =
+    repay18 !== null &&
+    repay18 > 0n &&
+    repay18 <= vault.debt18 &&
+    (remaining === 0n || remaining >= params.minDebt18);
+
+  return (
+    <Card className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <CardTitle>Your XRP vault</CardTitle>
+        <Badge tone={band === "danger" ? "danger" : band === "warning" ? "warning" : "green"}>
+          {crBps === null ? "—" : `${formatBps(crBps)} CR`}
+        </Badge>
+      </div>
+
+      <div className="space-y-1.5 border-t border-line pt-3">
+        <InfoRow left="Collateral" right={`${formatToken(vault.collateral, COLL_DEC, 2)} FXRP`} />
+        <InfoRow left="Debt" right={`${formatToken(vault.debt18, 18, 2)} vUSD`} />
+        <InfoRow left="Min debt" right={`${formatToken(params.minDebt18, 18, 0)} vUSD`} />
+      </div>
+
+      <Field
+        label="Repay (vUSD)"
+        htmlFor="xrpl-repay"
+        hint="Burned from your Flare personal account · one XRPL payment (fees only)"
+      >
+        <Input
+          id="xrpl-repay"
+          inputMode="decimal"
+          placeholder="0.0"
+          value={repay}
+          onChange={(e) => setRepay(e.target.value)}
+        />
+      </Field>
+      {belowMin && (
+        <p className="text-xs text-danger">
+          That would leave the debt below the {formatToken(params.minDebt18, 18, 0)} vUSD
+          minimum — repay less, or close the vault.
+        </p>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <PillButton
+          size="md"
+          className="flex-1"
+          disabled={!repayValid || building}
+          onClick={() => onBuild({ xrplAddress, action: "repay", amount18: repay18!.toString() })}
+        >
+          {building ? "Generating…" : "Repay"}
+        </PillButton>
+        <PillButton
+          size="md"
+          variant="ghost"
+          className="flex-1"
+          disabled={building}
+          onClick={() => onBuild({ xrplAddress, action: "close" })}
+        >
+          Close vault
+        </PillButton>
+      </div>
+      <p className="text-xs text-muted/80">
+        Repay and close ride ONE XRPL payment (fees only — no FXRP minted). Closing repays the
+        full debt and returns your FXRP collateral to the personal account.
+      </p>
+    </Card>
   );
 }
 

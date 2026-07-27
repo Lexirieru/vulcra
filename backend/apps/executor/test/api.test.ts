@@ -48,6 +48,24 @@ function makeServices(): ExecutorServices {
         noDestinationTag: true,
       };
     },
+    async buildManage(input) {
+      return {
+        action: input.action,
+        xrplAddress: input.xrplAddress,
+        personalAccount: ("0x" + "11".repeat(20)) as Address,
+        nonce: "5",
+        vaultManager: ("0x" + "22".repeat(20)) as Address,
+        coreVaultXrplAddress: "rDhpmiPq4BVBDWMVdSrmkgt8thKyRzGV1p",
+        requiredPaymentDrops: "200000",
+        requiredPaymentXrp: "0.2",
+        executorFeeUBA: "100000",
+        memo: "0xfe00" as `0x${string}`,
+        xrplMemoData: "FE00",
+        userOpHash: goodHash,
+        userOpBytes,
+        noDestinationTag: true,
+      };
+    },
   };
 }
 

@@ -7,6 +7,7 @@ import type {
   AtRiskVault,
   GuardianRule,
   GuardianRuleInput,
+  ManageBuildRequest,
   MintBuildRequest,
   MintBuildResponse,
   MintPlanRaw,
@@ -57,6 +58,21 @@ function safeJson(text: string): unknown {
   }
 }
 
+/** Adapt the backend's flat MintPlan/ManagePlan to the nested UI shape. */
+function planToBuildResponse(plan: MintPlanRaw): MintBuildResponse {
+  return {
+    packedUserOpHex: plan.userOpBytes,
+    memoUserOpHash: plan.userOpHash,
+    payment: {
+      destination: plan.coreVaultXrplAddress,
+      amountDrops: plan.requiredPaymentDrops,
+      memoHex: plan.memo,
+    },
+    requiredPaymentXrp: plan.requiredPaymentXrp,
+    qrData: plan.coreVaultXrplAddress,
+  };
+}
+
 export const api = {
   getAccount: (xrplAddress: string) =>
     request<AccountResponse>(`/account/${encodeURIComponent(xrplAddress)}`),
@@ -72,23 +88,17 @@ export const api = {
   // renders + submits, so the components never touch the wire format. Xaman
   // deep-link payloads need the Xumm API server-side, which we don't run, so it
   // is omitted (the QR + Crossmark in-wallet sign are the sign paths).
-  buildMint: async (input: MintBuildRequest): Promise<MintBuildResponse> => {
-    const plan = await request<MintPlanRaw>("/mint/build", {
-      method: "POST",
-      body: JSON.stringify(input),
-    });
-    return {
-      packedUserOpHex: plan.userOpBytes,
-      memoUserOpHash: plan.userOpHash,
-      payment: {
-        destination: plan.coreVaultXrplAddress,
-        amountDrops: plan.requiredPaymentDrops,
-        memoHex: plan.memo,
-      },
-      requiredPaymentXrp: plan.requiredPaymentXrp,
-      qrData: plan.coreVaultXrplAddress,
-    };
-  },
+  buildMint: async (input: MintBuildRequest): Promise<MintBuildResponse> =>
+    planToBuildResponse(
+      await request<MintPlanRaw>("/mint/build", { method: "POST", body: JSON.stringify(input) }),
+    ),
+
+  // Manage an existing vault (repay / close / adjust). Same flat MintPlan shape,
+  // same adapter, so the sign → submit → track flow is byte-identical to the mint.
+  buildManage: async (input: ManageBuildRequest): Promise<MintBuildResponse> =>
+    planToBuildResponse(
+      await request<MintPlanRaw>("/manage/build", { method: "POST", body: JSON.stringify(input) }),
+    ),
 
   submitMint: (input: MintSubmitRequest) =>
     request<MintSubmitResponse>("/mint/submit", {

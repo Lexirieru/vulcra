@@ -8,6 +8,7 @@ import { vaultManagerAbi } from "@vulcra/interfaces";
 import { getPersonalAccount, getNonce } from "@vulcra/userop";
 import { preflightMint } from "./preflight/preflight.js";
 import { buildMintPlan } from "./mintBuilder.js";
+import { buildManagePlan } from "./manageBuilder.js";
 import type { ExecutorServices } from "./server.js";
 import type { ExecutorEnv } from "./env.js";
 import type { MintStore } from "./orchestrator/store.js";
@@ -108,6 +109,10 @@ export async function buildLiveServices(
 
     buildMint(input) {
       return buildMintPlan(client, env, input);
+    },
+
+    buildManage(input) {
+      return buildManagePlan(client, env, input);
     },
   };
 }

@@ -82,6 +82,20 @@ export interface MintPlanRaw {
   userOpBytes: Hex;
 }
 
+// ── Manage an existing vault (POST /manage/build) ────────────────────────────
+// repay / close / adjust-rate ride the SAME 0xFE path as the mint with net mint
+// 0 (fees-only payment). The response is the SAME MintBuildResponse shape, so
+// the sign → submit → track flow is identical.
+export type ManageAction = "repay" | "close" | "adjustRate";
+export interface ManageBuildRequest {
+  xrplAddress: string;
+  action: ManageAction;
+  /** vUSD (18-dec) to repay, decimal string — required for `repay`. */
+  amount18?: string;
+  /** new annual interest rate (bps), decimal string — required for `adjustRate`. */
+  newRateBps?: string;
+}
+
 export interface MintBuildResponse {
   /** ABI-encoded PackedUserOperation, echoed back on submit. */
   packedUserOpHex: Hex;

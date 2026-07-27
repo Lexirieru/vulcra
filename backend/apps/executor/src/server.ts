@@ -4,6 +4,7 @@ import type { MintStore } from "./orchestrator/store.js";
 import { intakeMint } from "./orchestrator/orchestrator.js";
 import type { PreflightParams, PreflightResult } from "./preflight/preflight.js";
 import type { MintPlan } from "./mintBuilder.js";
+import type { ManagePlan, ManageAction } from "./manageBuilder.js";
 
 /**
  * Executor HTTP API (R11, R13). Chain-dependent work is injected as services so
@@ -28,6 +29,16 @@ export interface ExecutorServices {
     annualInterestRateBps?: bigint;
     vusdDestination?: Address;
   }): Promise<MintPlan>;
+  /**
+   * Build the XRPL payment that MANAGES an existing vault (repay / close /
+   * adjust-rate) via the 0xFE path with net mint 0. Never mocked.
+   */
+  buildManage(input: {
+    xrplAddress: string;
+    action: ManageAction;
+    amount18?: bigint;
+    newRateBps?: bigint;
+  }): Promise<ManagePlan>;
   /**
    * Drive a submitted mint through attestation -> executeDirectMintingWithData
    * (fire-and-forget). Absent/no-op when live execution is gated (no funded key);
@@ -126,6 +137,35 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
         mint18: BigInt(mint18),
         annualInterestRateBps: annualInterestRateBps !== undefined ? BigInt(annualInterestRateBps) : undefined,
         vusdDestination,
+      });
+      return serializeBigints(plan);
+    } catch (err) {
+      return reply.code(503).send({ error: (err as Error).message });
+    }
+  });
+
+  // Build the ONE XRPL payment that MANAGES an existing vault (repay / close /
+  // adjust-rate) via the 0xFE net-0 path. The returned plan is signed + tracked
+  // through the SAME /mint/submit + /mint/status endpoints as the mint.
+  app.post<{
+    Body: { xrplAddress?: string; action?: ManageAction; amount18?: string; newRateBps?: string };
+  }>("/manage/build", async (req, reply) => {
+    const { xrplAddress, action, amount18, newRateBps } = req.body ?? {};
+    if (!xrplAddress || !action || !["repay", "close", "adjustRate"].includes(action)) {
+      return reply.code(400).send({ error: "xrplAddress and action (repay|close|adjustRate) are required" });
+    }
+    if (action === "repay" && amount18 === undefined) {
+      return reply.code(400).send({ error: "amount18 is required for repay" });
+    }
+    if (action === "adjustRate" && newRateBps === undefined) {
+      return reply.code(400).send({ error: "newRateBps is required for adjustRate" });
+    }
+    try {
+      const plan = await services.buildManage({
+        xrplAddress,
+        action,
+        amount18: amount18 !== undefined ? BigInt(amount18) : undefined,
+        newRateBps: newRateBps !== undefined ? BigInt(newRateBps) : undefined,
       });
       return serializeBigints(plan);
     } catch (err) {
