@@ -23,6 +23,7 @@ import {
   ExternalLink,
   Gauge,
   Info,
+  Loader2,
   PenLine,
   ShieldAlert,
   Wallet,
@@ -42,7 +43,7 @@ import {
 import { Reveal } from "@/components/motion";
 import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
 import { api } from "@/lib/api/client";
-import type { MintBuildRequest, MintBuildResponse, ManageBuildRequest } from "@/lib/api/types";
+import type { MintBuildRequest, MintBuildResponse, ManageBuildRequest, ManageAction } from "@/lib/api/types";
 import { usePersonalAccount, isValidRAddress } from "@/hooks/usePersonalAccount";
 import { useXrplWalletContext } from "@/context/xrpl";
 import { useWalletUi } from "@/context/wallet-ui";
@@ -186,11 +187,41 @@ export function XrplMintFlow() {
     retry: 0,
   });
 
+  const [xrplTxId, setXrplTxId] = useState("");
+  const submit = useMutation({
+    mutationFn: ({ txId, built }: { txId: string; built: MintBuildResponse }) =>
+      api.submitMint({
+        packedUserOpHex: built.packedUserOpHex,
+        memoUserOpHash: built.memoUserOpHash,
+        xrplTxId: txId.trim(),
+      }),
+  });
+
+  // Sign the backend-built Payment in the connected XRPL wallet, then submit the
+  // resulting tx hash for tracking. Takes the built plan explicitly so it can run
+  // straight from build.onSuccess (auto-sign) without waiting on a state flush.
+  async function signAndTrack(built: MintBuildResponse) {
+    const hash = await wallet.signPayment({
+      destination: built.payment.destination,
+      amountDrops: built.payment.amountDrops,
+      memoHex: built.payment.memoHex,
+    });
+    if (hash) {
+      setXrplTxId(hash);
+      submit.mutate({ txId: hash, built });
+    }
+  }
+
   // ONE build mutation for both sides: a mint request (open) or a manage request
-  // (repay/close). Both return the identical MintBuildResponse, so the sign →
-  // submit → track flow below is shared verbatim.
+  // (supply / borrow-more / repay / close). Both return the identical
+  // MintBuildResponse. With a wallet connected the sign fires the instant the
+  // payment is built, so clicking an action opens Crossmark directly — there is
+  // no separate "sign the payment" step to hunt for.
   const build = useMutation<MintBuildResponse, Error, MintBuildRequest | ManageBuildRequest>({
     mutationFn: (req) => ("action" in req ? api.buildManage(req) : api.buildMint(req)),
+    onSuccess: (data) => {
+      if (wallet.address) void signAndTrack(data);
+    },
   });
   const generateMint = () =>
     build.mutate({
@@ -200,30 +231,14 @@ export function XrplMintFlow() {
       annualInterestRateBps: String(clampedRate),
     });
 
-  const [xrplTxId, setXrplTxId] = useState("");
-  const submit = useMutation({
-    mutationFn: (txId: string) =>
-      api.submitMint({
-        packedUserOpHex: build.data!.packedUserOpHex,
-        memoUserOpHash: build.data!.memoUserOpHash,
-        xrplTxId: txId.trim(),
-      }),
-  });
-
-  // Sign the backend-built Payment in the connected XRPL wallet, then submit the
-  // resulting tx hash for tracking (replaces the manual paste for wallet users).
-  async function signAndTrack() {
-    if (!build.data) return;
-    const hash = await wallet.signPayment({
-      destination: build.data.payment.destination,
-      amountDrops: build.data.payment.amountDrops,
-      memoHex: build.data.payment.memoHex,
-    });
-    if (hash) {
-      setXrplTxId(hash);
-      submit.mutate(hash);
-    }
-  }
+  // Only the action currently being built shows "Generating…" — derive it from
+  // the in-flight mutation variables so the sibling buttons stay idle. `busy`
+  // disables every action button while a build → sign → submit is in flight.
+  const pendingAction: ManageAction | undefined =
+    build.isPending && build.variables && "action" in build.variables
+      ? (build.variables as ManageBuildRequest).action
+      : undefined;
+  const busy = build.isPending || wallet.signing || submit.isPending;
 
   const canGenerate = inputsReady && !overMax && preflight.data?.ok === true;
 
@@ -257,7 +272,8 @@ export function XrplMintFlow() {
             price18={price18}
             params={params}
             onBuild={(req) => build.mutate(req)}
-            building={build.isPending}
+            busy={busy}
+            pendingAction={pendingAction}
             xrplAddress={rAddress.trim()}
           />
         </Reveal>
@@ -481,10 +497,14 @@ export function XrplMintFlow() {
 
               <PillButton
                 size="lg"
-                disabled={!canGenerate || build.isPending}
+                disabled={!canGenerate || busy}
                 onClick={generateMint}
               >
-                {build.isPending ? "Generating payment…" : "Generate payment"}
+                {build.isPending
+                  ? "Generating payment…"
+                  : wallet.signing
+                    ? `Confirm in ${wallet.providerId ? XRPL_PROVIDERS[wallet.providerId].name : "wallet"}…`
+                    : "Generate payment"}
               </PillButton>
               {build.isError && (
                 <p className="text-sm text-danger">
@@ -496,19 +516,22 @@ export function XrplMintFlow() {
         </>
       )}
 
-      {/* Step 2 — payment: sign in wallet, or QR/Xaman fallback */}
-      {build.data && (
+      {/* Step 2 — payment. With a wallet connected the sign fires automatically
+          on build (seamless: click an action → Crossmark opens), so this only
+          surfaces once there's something to DO — retry a rejected sign, or pay
+          manually from a pasted r-address. It hides the moment tracking begins. */}
+      {build.data && !submit.data && (
         <Reveal>
           <PaymentPanel
             intent={build.data}
             xrplTxId={xrplTxId}
             onXrplTxId={setXrplTxId}
-            onSubmit={() => submit.mutate(xrplTxId.trim())}
+            onSubmit={() => submit.mutate({ txId: xrplTxId.trim(), built: build.data! })}
             submitting={submit.isPending}
             submitError={submit.isError}
             walletConnected={Boolean(wallet.address)}
             walletName={wallet.providerId ? XRPL_PROVIDERS[wallet.providerId].name : undefined}
-            onWalletSign={signAndTrack}
+            onWalletSign={() => build.data && signAndTrack(build.data)}
             signing={wallet.signing}
             walletError={wallet.error}
           />
@@ -534,14 +557,17 @@ function XrplManagePanel({
   price18,
   params,
   onBuild,
-  building,
+  busy,
+  pendingAction,
   xrplAddress,
 }: {
   vault: VaultState;
   price18?: bigint;
   params: VaultParams;
   onBuild: (req: ManageBuildRequest) => void;
-  building: boolean;
+  busy: boolean;
+  /** The action whose payment is currently building — only its button spins. */
+  pendingAction?: ManageAction;
   xrplAddress: string;
 }) {
   const [repay, setRepay] = useState("");
@@ -602,10 +628,10 @@ function XrplManagePanel({
         <PillButton
           size="md"
           className="w-full"
-          disabled={!supplyValid || building}
+          disabled={!supplyValid || busy}
           onClick={() => onBuild({ xrplAddress, action: "addCollateral", collateral6: supply6!.toString() })}
         >
-          {building ? "Generating…" : "Supply collateral"}
+          {pendingAction === "addCollateral" ? "Generating…" : "Supply collateral"}
         </PillButton>
       </div>
 
@@ -636,10 +662,10 @@ function XrplManagePanel({
         <PillButton
           size="md"
           className="w-full"
-          disabled={!borrowValid || building}
+          disabled={!borrowValid || busy}
           onClick={() => onBuild({ xrplAddress, action: "mintMore", amount18: borrow18!.toString() })}
         >
-          {building ? "Generating…" : "Borrow more"}
+          {pendingAction === "mintMore" ? "Generating…" : "Borrow more"}
         </PillButton>
       </div>
 
@@ -668,19 +694,19 @@ function XrplManagePanel({
           <PillButton
             size="md"
             className="flex-1"
-            disabled={!repayValid || building}
+            disabled={!repayValid || busy}
             onClick={() => onBuild({ xrplAddress, action: "repay", amount18: repay18!.toString() })}
           >
-            {building ? "Generating…" : "Repay"}
+            {pendingAction === "repay" ? "Generating…" : "Repay"}
           </PillButton>
           <PillButton
             size="md"
             variant="ghost"
             className="flex-1"
-            disabled={building}
+            disabled={busy}
             onClick={() => onBuild({ xrplAddress, action: "close" })}
           >
-            Close vault
+            {pendingAction === "close" ? "Generating…" : "Close vault"}
           </PillButton>
         </div>
       </div>
@@ -955,30 +981,43 @@ function PaymentPanel({
     </div>
   );
 
-  return (
-    <Card>
-      <CardTitle>Sign the payment</CardTitle>
-      <p className="mt-2 text-sm text-muted">
-        The 0xFE memo is built by the backend and sent to your wallet verbatim.
-        Never add a destination tag.
-      </p>
+  // Connected wallet → the sign already fired automatically the instant the
+  // payment was built (the parent calls signAndTrack in build.onSuccess). This is
+  // a slim STATUS strip, not an extra step: it shows "confirm in your wallet"
+  // while the popup is open, and only turns into a real button if the user
+  // rejected it and needs to try again. The QR/manual path stays behind a
+  // disclosure for anyone who'd rather pay from a different XRPL wallet.
+  if (walletConnected) {
+    return (
+      <Card className="flex flex-col gap-3">
+        {walletError ? (
+          <div className="flex flex-col gap-2 rounded-xl border border-danger/30 bg-danger/5 p-4">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="h-4 w-4 text-danger" aria-hidden />
+              <span className="text-sm font-medium text-ink">Signing didn&apos;t go through</span>
+            </div>
+            <p className="text-xs text-danger">{walletError}</p>
+            <Button onClick={onWalletSign} disabled={signing || submitting} className="mt-1">
+              <PenLine className="h-4 w-4" aria-hidden />
+              {signing ? "Confirm in wallet…" : `Sign again in ${walletName ?? "wallet"}`}
+            </Button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 rounded-xl border border-brand/20 bg-brand/5 p-4">
+            <Loader2 className="h-5 w-5 shrink-0 text-brand motion-safe:animate-spin" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">
+                Confirm in {walletName ?? "your wallet"}
+              </p>
+              <p className="text-xs text-muted">
+                Approve the Payment to finish — the 0xFE memo is already set, don&apos;t add a
+                destination tag. Vulcra tracks it automatically once you sign.
+              </p>
+            </div>
+          </div>
+        )}
 
-      {walletConnected && (
-        <div className="mt-4 flex flex-col gap-2 rounded-xl border border-brand/20 bg-brand/5 p-4">
-          <Button onClick={onWalletSign} disabled={signing || submitting}>
-            <PenLine className="h-4 w-4" aria-hidden />
-            {signing ? "Confirm in wallet…" : `Sign in ${walletName ?? "wallet"}`}
-          </Button>
-          <p className="text-xs text-muted">
-            {walletName} signs and submits the Payment, then Vulcra tracks the mint
-            automatically — no copy/paste.
-          </p>
-          {walletError && <p className="text-xs text-danger">{walletError}</p>}
-        </div>
-      )}
-
-      {walletConnected ? (
-        <div className="mt-4">
+        <div>
           <button
             type="button"
             aria-expanded={showManual}
@@ -989,18 +1028,26 @@ function PaymentPanel({
               className={`h-4 w-4 transition-transform ${showManual ? "rotate-180" : ""}`}
               aria-hidden
             />
-            Pay manually instead (QR / Xaman)
+            Pay from a different XRPL wallet (QR / Xaman)
           </button>
           {showManual && manual}
         </div>
-      ) : (
-        <>
-          <p className="mt-4 text-xs font-medium uppercase tracking-wide text-muted/80">
-            Pay from any XRPL wallet
-          </p>
-          {manual}
-        </>
-      )}
+      </Card>
+    );
+  }
+
+  // No wallet (pasted r-address) → the manual QR / paste path outright.
+  return (
+    <Card>
+      <CardTitle>Sign the payment</CardTitle>
+      <p className="mt-2 text-sm text-muted">
+        The 0xFE memo is built by the backend and sent to your wallet verbatim.
+        Never add a destination tag.
+      </p>
+      <p className="mt-4 text-xs font-medium uppercase tracking-wide text-muted/80">
+        Pay from any XRPL wallet
+      </p>
+      {manual}
     </Card>
   );
 }
