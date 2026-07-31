@@ -5,6 +5,8 @@
 // preview via shared vault-math; the on-chain redeem() goes through the shared tx
 // lifecycle. Real ABI: redeem(vusdAmount18, maxIterations).
 import { useState } from "react";
+import { useAccount } from "wagmi";
+import { useAppKit } from "@reown/appkit/react";
 import { ArrowDown } from "lucide-react";
 import { Badge, Button, Card, CardTitle, Field, Input, Stat } from "@/components/ui";
 import { Reveal } from "@/components/motion";
@@ -14,6 +16,7 @@ import { LivePrice } from "@/components/vault/LivePrice";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { branchVaultManager } from "@/hooks/useVault";
 import { useVaultAction } from "@/hooks/useVaultAction";
+import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { useBranch } from "@/context/branch";
 import { collateralForVusd } from "@/lib/vault-math";
 import { formatToken, parseAmount } from "@/lib/format";
@@ -22,16 +25,22 @@ const MAX_ITERATIONS = 25n; // bounded walk down the sorted list
 
 export default function RedeemPage() {
   const { branch } = useBranch();
+  const { address: owner } = useAccount();
+  const { open } = useAppKit();
   const { price18 } = useFtsoPrice(branch.feedId);
   const { address: vaultManager, configured } = branchVaultManager(branch);
   const action = useVaultAction(vaultManager);
+  const balances = useWalletBalances(owner);
+  const vusdBalance = balances.tokens.find((t) => t.symbol === "vUSD")?.value;
   const [amount, setAmount] = useState("");
 
   const vusd18 = parseAmount(amount, 18);
   const collDec = branch.collateralDecimals;
   const collOut =
     vusd18 !== null && price18 ? collateralForVusd(vusd18, price18, collDec) : null;
-  const valid = vusd18 !== null && vusd18 > 0n;
+  // You can only redeem vUSD you actually hold — it's burned from your wallet.
+  const insufficient = vusd18 !== null && vusdBalance !== undefined && vusd18 > vusdBalance;
+  const valid = vusd18 !== null && vusd18 > 0n && !insufficient;
   const blocked = !configured;
 
   return (
@@ -75,7 +84,16 @@ export default function RedeemPage() {
                 action.execute("redeem", [vusd18, MAX_ITERATIONS]);
               }}
             >
-              <Field label="Redeem vUSD" htmlFor="redeem-amount" hint="Burned at $1 each">
+              <Field
+                label="Redeem vUSD"
+                htmlFor="redeem-amount"
+                error={
+                  insufficient
+                    ? `Insufficient vUSD — you have ${formatToken(vusdBalance!, 18, 2)}.`
+                    : undefined
+                }
+                hint="Burned at $1 each"
+              >
                 <Input
                   id="redeem-amount"
                   inputMode="decimal"
@@ -84,6 +102,18 @@ export default function RedeemPage() {
                   onChange={(e) => setAmount(e.target.value)}
                 />
               </Field>
+              {owner && vusdBalance !== undefined && (
+                <div className="-mt-2 flex items-center justify-between text-xs">
+                  <span className="text-muted/70">Balance {formatToken(vusdBalance, 18, 2)} vUSD</span>
+                  <button
+                    type="button"
+                    onClick={() => setAmount(formatToken(vusdBalance, 18, 2).replace(/,/g, ""))}
+                    className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
+                  >
+                    Max
+                  </button>
+                </div>
+              )}
 
               <div className="flex justify-center text-muted">
                 <ArrowDown className="h-4 w-4" aria-hidden />
@@ -98,9 +128,15 @@ export default function RedeemPage() {
                 />
               </div>
 
-              <Button type="submit" disabled={!valid || blocked || action.isBusy}>
-                {action.isBusy ? "Redeeming…" : "Redeem"}
-              </Button>
+              {!owner ? (
+                <Button type="button" onClick={() => open()}>
+                  Connect wallet to redeem
+                </Button>
+              ) : (
+                <Button type="submit" disabled={!valid || blocked || action.isBusy}>
+                  {action.isBusy ? "Redeeming…" : "Redeem"}
+                </Button>
+              )}
             </form>
 
             <TxStatus phase={action.phase} hash={action.hash} error={action.error} />
