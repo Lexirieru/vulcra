@@ -109,12 +109,21 @@ export const api = {
   getMintStatus: (mintId: string) =>
     request<MintStatusResponse>(`/mint/status/${encodeURIComponent(mintId)}`),
 
-  listAtRiskVaults: (belowCrBps?: number, branch?: string) => {
+  listAtRiskVaults: async (belowCrBps?: number, branch?: string) => {
     const params = new URLSearchParams();
     if (belowCrBps) params.set("belowCr", String(belowCrBps));
     if (branch) params.set("branch", branch);
     const qs = params.toString();
-    return request<AtRiskVault[]>(`/vaults/at-risk${qs ? `?${qs}` : ""}`);
+    try {
+      return await request<AtRiskVault[]>(`/vaults/at-risk${qs ? `?${qs}` : ""}`);
+    } catch (err) {
+      // The at-risk discovery endpoint (indexer, R19) is optional. When it isn't
+      // served (404), degrade to "none at risk" — a healthy book genuinely has
+      // no liquidatable vaults — instead of a hard error. Real failures (network,
+      // 5xx) still surface as the error state.
+      if (err instanceof ApiError && err.status === 404) return [] as AtRiskVault[];
+      throw err;
+    }
   },
 
   listGuardianRules: (owner: string) =>
