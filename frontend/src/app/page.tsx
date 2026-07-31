@@ -55,11 +55,13 @@ export default function DashboardPage() {
         </Reveal>
       </div>
 
-      <Reveal delay={0.15}>
+      {/* min-w-0 lets the card's table scroll inside its own overflow-x-auto
+          instead of stretching this flex column past the viewport on mobile. */}
+      <Reveal delay={0.15} className="min-w-0">
         <BorrowMarketsCard />
       </Reveal>
 
-      <Reveal delay={0.2}>
+      <Reveal delay={0.2} className="min-w-0">
         <EarnPoolsCard />
       </Reveal>
     </div>

@@ -102,7 +102,9 @@ export function StatsBar() {
           icon={<TokenIcon symbol="vUSD" size={18} alt="" />}
           value={formatToken(vusdSupply.data, 18, 0)}
         />
-        <div className="ml-auto flex items-center gap-5 sm:gap-7">
+        {/* Prices push right on desktop; hidden on mobile so the fixed bar can't
+            overflow the viewport (they're also shown on each page's price card). */}
+        <div className="ml-auto hidden items-center gap-5 sm:flex sm:gap-7">
           <StatItem
             label={fxrp.feedLabel}
             icon={<TokenIcon symbol="FXRP" size={18} alt="" />}

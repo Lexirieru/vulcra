@@ -38,7 +38,7 @@ export default async function RootLayout({
       lang="en"
       className={`${epilogue.variable} ${dmSans.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-full flex flex-col overflow-x-clip">
         <ContextProvider cookies={cookies}>
           <BranchProvider>
             <AppShell>{children}</AppShell>
