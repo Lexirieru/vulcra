@@ -241,7 +241,7 @@ export default function BorrowPage() {
           Rates and limits are read live from each branch&apos;s VaultManager;
           &ldquo;—&rdquo; means the value hasn&apos;t loaded or the branch isn&apos;t
           configured. Manage an existing vault from its{" "}
-          <Link href="/borrow/fxrp" className="text-brand hover:underline">
+          <Link href="/borrow/fxrp" className="text-brand underline underline-offset-2">
             collateral page
           </Link>
           .

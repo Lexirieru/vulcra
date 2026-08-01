@@ -11,7 +11,7 @@
   --color-ink: #1a1a1a; /* primary text */
   --color-muted: #6b6560;
   --color-line: #e4ddd4; /* borders */
-  --color-brand: #e62058; /* Flare/Vulcra pink — primary CTA */
+  --color-brand: #d91a51; /* Flare/Vulcra pink — primary CTA (AA: white text ≥4.5:1) */
   --color-brand-ink: #ffffff; /* text on brand */
   --color-blue: #4b69f0; /* Enosys-like accent card / "Earn" */
   --color-navy: #10142b; /* dark hero card ("Borrow") */
