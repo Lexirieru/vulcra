@@ -111,7 +111,12 @@ export default function Footer() {
                         Flare Coston2<br />
                         chain 114 · testnet
                     </address>
-                    <a href="#" className="footer-map-link">
+                    <a
+                        href="https://coston2-explorer.flare.network"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="footer-map-link"
+                    >
                         <span>View explorer</span>
                         <svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 169 10" fill="none" className="draw-btn__svg">
                             <path d="M1 6.5661C56.3941 3.06082 112.187 1.20095 168 0.999878" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.25"></path>

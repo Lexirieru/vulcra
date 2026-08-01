@@ -1,14 +1,7 @@
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-    webpack: (config) => {
-        config.resolve.alias['@'] = path.resolve(__dirname);
-        return config;
-    },
-};
+// Next 16 defaults to Turbopack, which resolves the `@/*` alias from jsconfig.json
+// natively — so no custom webpack alias is needed. A `webpack` config here would
+// conflict with Turbopack and break `next dev` / `next build`.
+const nextConfig = {};
 
 export default nextConfig;
