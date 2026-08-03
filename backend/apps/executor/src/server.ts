@@ -161,11 +161,11 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
     if (
       !xrplAddress ||
       !action ||
-      !["repay", "close", "adjustRate", "mintMore", "addCollateral", "withdrawCollateral"].includes(action)
+      !["repay", "close", "adjustRate", "mintMore", "addCollateral", "withdrawCollateral", "spDeposit"].includes(action)
     ) {
-      return reply.code(400).send({ error: "xrplAddress and action (repay|mintMore|addCollateral|withdrawCollateral|close|adjustRate) are required" });
+      return reply.code(400).send({ error: "xrplAddress and action (repay|mintMore|addCollateral|withdrawCollateral|spDeposit|close|adjustRate) are required" });
     }
-    if ((action === "repay" || action === "mintMore") && amount18 === undefined) {
+    if ((action === "repay" || action === "mintMore" || action === "spDeposit") && amount18 === undefined) {
       return reply.code(400).send({ error: `amount18 is required for ${action}` });
     }
     if ((action === "addCollateral" || action === "withdrawCollateral") && collateral6 === undefined) {

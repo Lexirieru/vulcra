@@ -53,6 +53,7 @@ import { useWalletUi } from "@/context/wallet-ui";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { useVaultRate } from "@/hooks/useInterest";
 import { useVault, useVaultParams, type VaultParams, type VaultState } from "@/hooks/useVault";
+import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { useXrpBalance } from "@/hooks/useXrpBalance";
 import {
   annualInterest18,
@@ -147,6 +148,10 @@ export function XrplMintFlow() {
     account.data?.personalAccount,
     FXRP_VAULT_MANAGER,
   );
+  // vUSD the borrow delivered to the PersonalAccount — this is what the "Earn"
+  // card lets you deposit into the stability pool from your XRP wallet (spDeposit).
+  const paBalances = useWalletBalances(account.data?.personalAccount);
+  const paVusd18 = paBalances.tokens.find((t) => t.symbol === "vUSD")?.value;
   const derived = useMemo(() => {
     const fee = mint18 !== null ? (mint18 * params.mintFeeBps) / 10_000n : 0n;
     const debt = mint18 !== null ? mint18 + fee : 0n;
@@ -328,6 +333,19 @@ export function XrplMintFlow() {
               )}
             </Reveal>
           </div>
+
+          {/* Borrow -> earn, seamless: the vUSD your borrow delivered to the
+              PersonalAccount goes straight into the stability pool from your XRP
+              wallet, in ONE signed payment (no EVM wallet). */}
+          <Reveal delay={0.15}>
+            <XrplEarnCard
+              vusdBalance18={paVusd18}
+              onBuild={(req) => build.mutate(req)}
+              busy={busy}
+              pendingAction={pendingAction}
+              xrplAddress={rAddress.trim()}
+            />
+          </Reveal>
         </>
       )}
 
@@ -1046,6 +1064,90 @@ function XrplCloseForm({
         {pendingAction === "close" ? "Generating…" : "Close vault"}
       </Button>
     </div>
+  );
+}
+
+// Borrow -> earn in one payment: deposit the vUSD your borrow delivered to the
+// PersonalAccount straight into the FXRP stability pool (spDeposit), signed once
+// in Crossmark. No EVM wallet, no moving funds around.
+function XrplEarnCard({
+  vusdBalance18,
+  onBuild,
+  busy,
+  pendingAction,
+  xrplAddress,
+}: {
+  vusdBalance18?: bigint;
+  onBuild: (req: ManageBuildRequest) => void;
+  busy: boolean;
+  pendingAction?: ManageAction;
+  xrplAddress: string;
+}) {
+  const [amount, setAmount] = useState("");
+  const amt18 = parseAmount(amount, 18);
+  const hasVusd = vusdBalance18 !== undefined && vusdBalance18 > 0n;
+  const insufficient = amt18 !== null && vusdBalance18 !== undefined && amt18 > vusdBalance18;
+  const valid = amt18 !== null && amt18 > 0n && !insufficient && hasVusd;
+
+  return (
+    <Card className="flex flex-col gap-3 border-brand/20 bg-brand/[0.03]">
+      <div className="flex items-center justify-between gap-3">
+        <CardTitle>Put your vUSD to work</CardTitle>
+        <Badge tone="brand">FXRP pool · earn</Badge>
+      </div>
+      <p className="text-sm text-muted">
+        The vUSD your borrow delivered to your Flare personal account can go straight
+        into the FXRP stability pool — <span className="text-ink">one XRPL payment</span>,
+        no EVM wallet. It earns a share of the branch&apos;s loan fees.
+      </p>
+
+      <Field
+        label="Deposit vUSD to Earn"
+        htmlFor="xrpl-earn"
+        error={
+          insufficient
+            ? `You only have ${formatToken(vusdBalance18!, 18, 2)} vUSD on your personal account.`
+            : undefined
+        }
+        hint="Burned from your Flare personal account into the pool · one XRPL payment (fees only)"
+      >
+        <Input
+          id="xrpl-earn"
+          inputMode="decimal"
+          placeholder="0.0"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+      </Field>
+      {vusdBalance18 !== undefined && (
+        <div className="-mt-1 flex items-center justify-between text-xs">
+          <span className={hasVusd ? "text-muted/70" : "text-muted/70"}>
+            Available {formatToken(vusdBalance18, 18, 2)} vUSD
+          </span>
+          {hasVusd && (
+            <button
+              type="button"
+              onClick={() => setAmount(formatToken(vusdBalance18, 18, 2).replace(/,/g, ""))}
+              className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
+            >
+              Max
+            </button>
+          )}
+        </div>
+      )}
+      <PillButton
+        size="md"
+        className="w-full"
+        disabled={!valid || busy}
+        onClick={() => onBuild({ xrplAddress, action: "spDeposit", amount18: amt18!.toString() })}
+      >
+        {pendingAction === "spDeposit"
+          ? "Generating…"
+          : hasVusd
+            ? "Deposit to Earn"
+            : "Borrow vUSD first to earn"}
+      </PillButton>
+    </Card>
   );
 }
 

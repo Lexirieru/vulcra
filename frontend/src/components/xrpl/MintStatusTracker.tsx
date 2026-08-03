@@ -23,6 +23,7 @@ const ACTION_META: Record<TrackedAction, { title: string; executing: string; don
   repay: { title: "Repay status", executing: "Executing repayment", done: "Debt repaid" },
   adjustRate: { title: "Rate update", executing: "Applying new rate", done: "Rate updated" },
   close: { title: "Close status", executing: "Closing the vault", done: "Vault closed" },
+  spDeposit: { title: "Earn deposit", executing: "Depositing to the pool", done: "Earning in the pool" },
 };
 
 const ORDER: MintState[] = [

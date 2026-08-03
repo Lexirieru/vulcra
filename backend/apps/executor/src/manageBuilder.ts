@@ -12,6 +12,7 @@ import {
   buildMintMoreCalls,
   buildAddCollateralCalls,
   buildWithdrawCollateralCalls,
+  buildStabilityDepositCalls,
   buildManageUserOp,
   getPersonalAccount,
   getNonce,
@@ -41,6 +42,15 @@ const vaultManagerReadAbi = [
       { name: "active", type: "bool" },
     ],
   },
+  {
+    // The branch routes accrued interest to its StabilityPool, so interestReceiver
+    // IS the pool address — resolve it on-chain (no extra config).
+    type: "function",
+    name: "interestReceiver",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "address" }],
+  },
 ] as const;
 
 export type ManageAction =
@@ -49,7 +59,8 @@ export type ManageAction =
   | "adjustRate"
   | "mintMore"
   | "addCollateral"
-  | "withdrawCollateral";
+  | "withdrawCollateral"
+  | "spDeposit";
 
 export interface ManagePlan {
   action: ManageAction;
@@ -123,6 +134,18 @@ export async function buildManagePlan(
     // Pull FXRP back out of the vault — memo-only (net mint 0), no FXRP minted.
     if (input.collateral6 === undefined) throw new Error("collateral6 is required for withdrawCollateral.");
     calls = buildWithdrawCollateralCalls({ vaultManager, amount6: input.collateral6 });
+  } else if (input.action === "spDeposit") {
+    // Deposit vUSD held on the PersonalAccount into the branch's StabilityPool to
+    // earn — "borrow -> earn" in one XRPL payment. The pool is the vault's
+    // interestReceiver (resolved on-chain). Net mint 0 (memo-only).
+    if (input.amount18 === undefined) throw new Error("amount18 is required for spDeposit.");
+    const pool = (await client.readContract({
+      address: vaultManager,
+      abi: vaultManagerReadAbi,
+      functionName: "interestReceiver",
+      args: [],
+    })) as Address;
+    calls = buildStabilityDepositCalls({ vusd, pool, amount18: input.amount18 });
   } else if (input.action === "close") {
     // Close approves + burns the FULL debt, so read it live right before building.
     const [, debt18] = (await client.readContract({

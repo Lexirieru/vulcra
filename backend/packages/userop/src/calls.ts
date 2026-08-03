@@ -218,6 +218,36 @@ export function buildWithdrawCollateralCalls(args: {
   ];
 }
 
+/** Minimal StabilityPool write ABI. */
+const stabilityPoolWriteAbi = [
+  { type: "function", name: "provideToSP", stateMutability: "nonpayable", inputs: [{ name: "amount18", type: "uint256" }], outputs: [] },
+] as const satisfies Abi;
+
+/**
+ * provideToSP(amount18): deposit vUSD from the PersonalAccount into the branch's
+ * StabilityPool to EARN. Net mint = 0 (memo-only): the vUSD already lives on the
+ * PersonalAccount (e.g. it was just borrowed), so this only approves + provides it
+ * to the pool — "borrow → earn" in one XRPL payment, no EVM wallet needed.
+ */
+export function buildStabilityDepositCalls(args: {
+  vusd: Address;
+  pool: Address;
+  amount18: bigint;
+}): Call[] {
+  return [
+    {
+      target: args.vusd,
+      value: 0n,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [args.pool, args.amount18] }),
+    },
+    {
+      target: args.pool,
+      value: 0n,
+      data: encodeFunctionData({ abi: stabilityPoolWriteAbi, functionName: "provideToSP", args: [args.amount18] }),
+    },
+  ];
+}
+
 /** adjustInterestRate(newRateBps): change the vault's rate (no value moved). */
 export function buildAdjustRateCalls(args: {
   vaultManager: Address;

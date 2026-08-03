@@ -92,11 +92,12 @@ export type ManageAction =
   | "adjustRate"
   | "mintMore"
   | "addCollateral"
-  | "withdrawCollateral";
+  | "withdrawCollateral"
+  | "spDeposit";
 export interface ManageBuildRequest {
   xrplAddress: string;
   action: ManageAction;
-  /** vUSD (18-dec) to repay / borrow-more, decimal string — for `repay`/`mintMore`. */
+  /** vUSD (18-dec) to repay / borrow-more / deposit-to-pool, decimal — `repay`/`mintMore`/`spDeposit`. */
   amount18?: string;
   /** FXRP (6-dec) to supply/withdraw, decimal string — for `addCollateral`/`withdrawCollateral`. */
   collateral6?: string;
