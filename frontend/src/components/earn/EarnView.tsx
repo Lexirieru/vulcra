@@ -10,6 +10,7 @@ import { BRANCHES, BRANCH_ORDER, type BranchKey } from "@/config/branches";
 import { useBranch } from "@/context/branch";
 import { DepositPanel } from "./DepositPanel";
 import { StabilityPoolCard } from "./StabilityPoolCard";
+import { XrplEarnDeposit } from "@/components/xrpl/XrplEarnDeposit";
 
 const HOW_IT_WORKS = [
   {
@@ -102,6 +103,11 @@ export function EarnView() {
           ))}
         </div>
       </section>
+
+      {/* XRPL-native deposit: the vUSD a borrow delivered to your Flare personal
+          account, deposited into the pool from your XRP wallet (shows only when an
+          XRP wallet is connected). */}
+      <XrplEarnDeposit />
 
       <div ref={depositRef} className="grid gap-4 scroll-mt-24 lg:grid-cols-2">
         <DepositPanel branch={BRANCHES[activeKey]} inputRef={amountInputRef} />
