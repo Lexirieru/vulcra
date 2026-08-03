@@ -12,6 +12,8 @@ import { BRANCH_ORDER, BRANCHES, type CollateralBranch } from "@/config/branches
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { useVaultParams, type VaultParams } from "@/hooks/useVault";
 import { useInterestConfig } from "@/hooks/useInterest";
+import { useXrplWalletContext } from "@/context/xrpl";
+import { XRPL_PROVIDERS } from "@/lib/xrpl/wallets";
 import { formatBps, formatPrice, formatToken } from "@/lib/format";
 
 const SOON = [
@@ -73,7 +75,7 @@ function LiveCard({
   ctaHref: string;
 }) {
   return (
-    <Card className="flex flex-col gap-4">
+    <Card className="flex h-full flex-col gap-4">
       <div className="flex items-center gap-3">
         <TokenIcon symbol={symbol} size={40} alt="" />
         <span>
@@ -168,7 +170,7 @@ function XrpLedgerCard() {
 
 function SoonCard({ symbol, label, sub, note }: (typeof SOON)[number]) {
   return (
-    <Card className="flex flex-col gap-4">
+    <Card className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
         <span className="flex items-center gap-3">
           <TokenIcon symbol={symbol} size={40} alt="" />
@@ -185,6 +187,11 @@ function SoonCard({ symbol, label, sub, note }: (typeof SOON)[number]) {
 }
 
 export default function BorrowPage() {
+  const wallet = useXrplWalletContext();
+  const xrpConnected = Boolean(wallet.address);
+  const providerName = wallet.providerId
+    ? XRPL_PROVIDERS[wallet.providerId].name
+    : "your XRP wallet";
   return (
     <div className="flex flex-col gap-8">
       <Reveal>
@@ -215,18 +222,19 @@ export default function BorrowPage() {
                 Have XRP? Borrow vUSD straight from your XRP wallet
               </div>
               <p className="mt-0.5 max-w-xl text-sm text-white/75">
-                Connect an XRPL wallet (Crossmark / GemWallet) and borrow vUSD against
-                your XRP in a single XRP Ledger payment — no EVM wallet or FLR needed.
+                {xrpConnected
+                  ? `${providerName} is connected — borrow vUSD against your XRP in a single XRP Ledger payment, no EVM wallet or FLR needed.`
+                  : "Connect an XRPL wallet (Crossmark / GemWallet) and borrow vUSD against your XRP in a single XRP Ledger payment — no EVM wallet or FLR needed."}
               </p>
             </div>
           </div>
           <span className="inline-flex shrink-0 items-center gap-2 self-start rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-navy sm:self-auto">
-            Connect XRP wallet
+            {xrpConnected ? "Borrow with XRP →" : "Connect XRP wallet"}
           </span>
         </Link>
       </Reveal>
 
-      <Stagger className="grid gap-4 sm:grid-cols-2" startDelay={0.05}>
+      <Stagger className="grid items-stretch gap-4 sm:grid-cols-2" startDelay={0.05} itemClassName="h-full">
         <XrpLedgerCard key="xrp" />
         {BRANCH_ORDER.map((k) => (
           <BranchCard key={k} branch={BRANCHES[k]} />

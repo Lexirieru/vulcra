@@ -103,7 +103,7 @@ export function EarnView() {
         </div>
       </section>
 
-      <div ref={depositRef} className="grid items-start gap-4 scroll-mt-24 lg:grid-cols-2">
+      <div ref={depositRef} className="grid gap-4 scroll-mt-24 lg:grid-cols-2">
         <DepositPanel branch={BRANCHES[activeKey]} inputRef={amountInputRef} />
         <SectionCard
           title="How it works"
