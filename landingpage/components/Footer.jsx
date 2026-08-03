@@ -127,8 +127,15 @@ export default function Footer() {
                 {/* Contact */}
                 <div className="footer-column">
                     <span className="footer-badge">contact</span>
-                    <a href="mailto:gm@vulcra.xyz" className="footer-email">gm@vulcra.xyz</a>
-                    <a href="#" className="footer-whatsapp">ping us on Telegram*</a>
+                    <a href="mailto:axelmatsama@gmail.com" className="footer-email">axelmatsama@gmail.com</a>
+                    <a
+                        href="https://t.me/lexilexy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="footer-whatsapp"
+                    >
+                        ping us on Telegram*
+                    </a>
                     <p className="footer-note">*we live on-chain. DMs open in the hackathon Telegram.</p>
                     <div className="footer-socials" id="footer-socials">
                         {SOCIAL_ICONS.map(({ href, label, svg }) => (
