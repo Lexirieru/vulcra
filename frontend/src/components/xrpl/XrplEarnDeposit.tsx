@@ -9,7 +9,6 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2, PenLine } from "lucide-react";
 import { Badge, Button, Card, CardTitle, Field, Input, PillButton } from "@/components/ui";
-import { Reveal } from "@/components/motion";
 import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
 import { api } from "@/lib/api/client";
 import type { MintBuildResponse } from "@/lib/api/types";
@@ -75,8 +74,7 @@ export function XrplEarnDeposit() {
   if (!wallet.address) return null;
 
   return (
-    <Reveal>
-      <Card className="flex flex-col gap-3 border-brand/20 bg-brand/[0.03]">
+    <Card className="flex h-full flex-col gap-3 border-brand/20 bg-brand/[0.03]">
         <div className="flex items-center justify-between gap-3">
           <CardTitle>Deposit from your XRP wallet</CardTitle>
           <Badge tone="brand">FXRP pool</Badge>
@@ -164,6 +162,5 @@ export function XrplEarnDeposit() {
           <p className="text-xs text-muted/70">Signed {xrplTxId.slice(0, 12)}… — submitting…</p>
         )}
       </Card>
-    </Reveal>
   );
 }

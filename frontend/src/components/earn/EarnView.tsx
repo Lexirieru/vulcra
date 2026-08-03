@@ -8,6 +8,7 @@ import { useRef, useState } from "react";
 import { SectionCard, Sticker, TokenIcon } from "@/components/ui";
 import { BRANCHES, BRANCH_ORDER, type BranchKey } from "@/config/branches";
 import { useBranch } from "@/context/branch";
+import { useXrplWalletContext } from "@/context/xrpl";
 import { DepositPanel } from "./DepositPanel";
 import { StabilityPoolCard } from "./StabilityPoolCard";
 import { XrplEarnDeposit } from "@/components/xrpl/XrplEarnDeposit";
@@ -33,6 +34,8 @@ const HOW_IT_WORKS = [
 
 export function EarnView() {
   const { branchKey } = useBranch();
+  const xrplWallet = useXrplWalletContext();
+  const xrpConnected = Boolean(xrplWallet.address);
   // Local pool selection; follows the app-wide branch until the user picks one.
   const [pickedKey, setPickedKey] = useState<BranchKey | null>(null);
   const activeKey = pickedKey ?? branchKey;
@@ -104,13 +107,14 @@ export function EarnView() {
         </div>
       </section>
 
-      {/* XRPL-native deposit: the vUSD a borrow delivered to your Flare personal
-          account, deposited into the pool from your XRP wallet (shows only when an
-          XRP wallet is connected). */}
-      <XrplEarnDeposit />
-
       <div ref={depositRef} className="grid gap-4 scroll-mt-24 lg:grid-cols-2">
-        <DepositPanel branch={BRANCHES[activeKey]} inputRef={amountInputRef} />
+        {/* One deposit panel, wallet-aware: an XRP wallet deposits its
+            PersonalAccount vUSD via a single XRPL payment; otherwise the EVM panel. */}
+        {xrpConnected ? (
+          <XrplEarnDeposit />
+        ) : (
+          <DepositPanel branch={BRANCHES[activeKey]} inputRef={amountInputRef} />
+        )}
         <SectionCard
           title="How it works"
           subtitle="Rewards come from real borrowing activity"
