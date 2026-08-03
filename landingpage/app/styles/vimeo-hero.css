@@ -9,6 +9,13 @@
     overflow: hidden;
     background-color: var(--color-black-soft);
     border-radius: 24px;
+    /* The video child is position:absolute + transform. `overflow:hidden` +
+       border-radius does NOT reliably clip a transformed descendant once scroll
+       promotes a compositing layer (webkit/chromium) — the corners go sharp after
+       scrolling. clip-path clips regardless of the child's transform, so the round
+       stays. isolate keeps it on its own stacking context. */
+    clip-path: inset(0 round 24px);
+    isolation: isolate;
     cursor: url("/assets/Cursor SVG/cursor-pointer.svg") 2 0, pointer;
 }
 
