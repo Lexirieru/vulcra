@@ -5,6 +5,11 @@ import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 import { SOCIAL_ICONS, WIGGLE_CONFIG } from '@/lib/data';
 
+// Social icons stay hidden until there are real profiles to link to. Flip to true
+// (and set real hrefs in SOCIAL_ICONS / lib/data.js) to show them again — the SVG
+// assets are preserved there regardless.
+const SHOW_SOCIALS = false;
+
 function initWiggle(element, intensity) {
     const target = element.querySelector('[data-wiggle-target]') || element;
     gsap.set(target, { transformOrigin: 'center center' });
@@ -137,19 +142,24 @@ export default function Footer() {
                         ping us on Telegram*
                     </a>
                     <p className="footer-note">*we live on-chain. DMs open in the hackathon Telegram.</p>
-                    <div className="footer-socials" id="footer-socials">
-                        {SOCIAL_ICONS.map(({ href, label, svg }) => (
-                            <a
-                                key={label}
-                                href={href}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="single-social w-inline-block"
-                                aria-label={label}
-                                dangerouslySetInnerHTML={{ __html: svg }}
-                            />
-                        ))}
-                    </div>
+                    {/* Social icons hidden until real profiles exist. The SVG
+                        assets are kept in SOCIAL_ICONS (lib/data.js) — set real
+                        hrefs there and re-enable this block to bring them back. */}
+                    {SHOW_SOCIALS && (
+                        <div className="footer-socials" id="footer-socials">
+                            {SOCIAL_ICONS.map(({ href, label, svg }) => (
+                                <a
+                                    key={label}
+                                    href={href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="single-social w-inline-block"
+                                    aria-label={label}
+                                    dangerouslySetInnerHTML={{ __html: svg }}
+                                />
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
 
