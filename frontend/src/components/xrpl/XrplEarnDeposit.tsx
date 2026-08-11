@@ -5,10 +5,14 @@
 // This deposits that vUSD into the FXRP stability pool from the XRP wallet in ONE
 // signed payment (spDeposit: approve + provideToSP, net-0 0xFE). Auto-signs on
 // build, like the borrow flow — one button, no EVM wallet.
+//
+// Uses the same SectionCard shell as the EVM DepositPanel so the two deposit
+// surfaces read identically (title / subtitle / icon), just wired to the XRPL
+// signing path instead of wagmi writes.
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Loader2, PenLine } from "lucide-react";
-import { Badge, Button, Card, CardTitle, Field, Input, PillButton } from "@/components/ui";
+import { Button, Field, Input, PillButton, SectionCard, TokenIcon } from "@/components/ui";
 import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
 import { api } from "@/lib/api/client";
 import type { MintBuildResponse } from "@/lib/api/types";
@@ -74,19 +78,20 @@ export function XrplEarnDeposit() {
   if (!wallet.address) return null;
 
   return (
-    <Card className="flex h-full flex-col gap-3 border-brand/20 bg-brand/[0.03]">
-        <div className="flex items-center justify-between gap-3">
-          <CardTitle>Deposit from your XRP wallet</CardTitle>
-          <Badge tone="brand">FXRP pool</Badge>
-        </div>
+    <SectionCard
+      title="Deposit vUSD"
+      subtitle="FXRP Stability Pool"
+      icon={<TokenIcon symbol="vUSD" size={36} alt="" />}
+    >
+      <div className="flex flex-col gap-4">
         <p className="text-sm text-muted">
           The vUSD your borrow delivered to your Flare personal account goes straight
-          into the FXRP stability pool — <span className="text-ink">one XRPL payment</span>,
-          no EVM wallet.
+          into the pool — <span className="text-ink">one XRPL payment</span>, no EVM
+          wallet.
         </p>
 
         <Field
-          label="Deposit vUSD to Earn"
+          label="Amount"
           htmlFor="earn-xrpl-amount"
           error={
             insufficient
@@ -95,19 +100,29 @@ export function XrplEarnDeposit() {
           }
           hint="Burned from your Flare personal account into the pool · one XRPL payment (fees only)"
         >
-          <Input
-            id="earn-xrpl-amount"
-            inputMode="decimal"
-            placeholder="0.0"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-          />
+          <div className="relative">
+            <Input
+              id="earn-xrpl-amount"
+              inputMode="decimal"
+              autoComplete="off"
+              placeholder="0.00"
+              className="pr-24"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+            <span
+              aria-hidden
+              className="pointer-events-none absolute right-3.5 top-1/2 flex -translate-y-1/2 items-center gap-1.5 text-sm text-muted"
+            >
+              <TokenIcon symbol="vUSD" size={20} alt="" />
+              vUSD
+            </span>
+          </div>
         </Field>
+
         {vusd18 !== undefined && (
           <div className="-mt-1 flex items-center justify-between text-xs">
-            <span className="text-muted/70">
-              Available {formatToken(vusd18, 18, 2)} vUSD
-            </span>
+            <span className="text-muted">Available {formatToken(vusd18, 18, 2)} vUSD</span>
             {hasVusd && (
               <button
                 type="button"
@@ -119,8 +134,8 @@ export function XrplEarnDeposit() {
             )}
           </div>
         )}
+
         <PillButton
-          size="md"
           className="w-full"
           disabled={!valid || busy}
           onClick={() => build.mutate()}
@@ -161,6 +176,7 @@ export function XrplEarnDeposit() {
         {xrplTxId && !submit.data && (
           <p className="text-xs text-muted/70">Signed {xrplTxId.slice(0, 12)}… — submitting…</p>
         )}
-      </Card>
+      </div>
+    </SectionCard>
   );
 }

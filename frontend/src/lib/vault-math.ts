@@ -78,10 +78,19 @@ export function maxMintableVusd18(
   collDec: number,
   price18: bigint,
   mcrBps: bigint,
+  mintFeeBps: bigint = 0n,
 ): bigint {
   if (mcrBps === 0n) return 0n;
   const value18 = collateralValueUsd18(collateral, collDec, price18);
-  return (value18 * 10_000n) / mcrBps;
+  // `value / mcr` is the largest DEBT allowed at MCR. But the vault charges a
+  // mint fee, so debt = mint * (1e4 + fee) / 1e4 — inverting that gives the
+  // largest MINT that still lands at/under MCR. Without this the returned "Max"
+  // is ~fee too high and opening at Max reverts with CRTooLow.
+  const maxDebt = (value18 * 10_000n) / mcrBps;
+  const maxMint = (maxDebt * 10_000n) / (10_000n + mintFeeBps);
+  // Small haircut so FTSO price drift between preview and the confirmed tx can't
+  // push the vault under MCR — "Max" should always succeed, never revert.
+  return (maxMint * 9_950n) / 10_000n;
 }
 
 /**

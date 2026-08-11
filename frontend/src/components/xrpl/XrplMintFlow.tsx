@@ -161,7 +161,7 @@ export function XrplMintFlow() {
         : undefined;
     const maxMint =
       collateral6 !== null && price18
-        ? maxMintableVusd18(collateral6, COLL_DEC, price18, params.mcrBps)
+        ? maxMintableVusd18(collateral6, COLL_DEC, price18, params.mcrBps, params.mintFeeBps)
         : undefined;
     const crBps =
       collateral6 !== null && mint18 !== null && mint18 > 0n && price18
@@ -925,7 +925,7 @@ function XrplDebtForm({
   const busyAction: ManageAction = isBorrow ? "mintMore" : "repay";
 
   const maxMint = price18
-    ? maxMintableVusd18(vault.collateral, COLL_DEC, price18, params.mcrBps)
+    ? maxMintableVusd18(vault.collateral, COLL_DEC, price18, params.mcrBps, params.mintFeeBps)
     : undefined;
   const maxMore = maxMint !== undefined && maxMint > vault.debt18 ? maxMint - vault.debt18 : 0n;
   const overMore = isBorrow && amt18 !== null && maxMint !== undefined && amt18 > maxMore;
@@ -1090,7 +1090,7 @@ function XrplEarnCard({
   const valid = amt18 !== null && amt18 > 0n && !insufficient && hasVusd;
 
   return (
-    <Card className="flex flex-col gap-3 border-brand/20 bg-brand/[0.03]">
+    <Card className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <CardTitle>Put your vUSD to work</CardTitle>
         <Badge tone="brand">FXRP pool · earn</Badge>

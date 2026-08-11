@@ -27,6 +27,7 @@ import { PositionCard } from "@/components/vault/PositionCard";
 import { PriceSimulator } from "@/components/vault/PriceSimulator";
 import { RedemptionsExplainer } from "@/components/vault/RedemptionsExplainer";
 import { VaultActions } from "@/components/vault/VaultActions";
+import { XrplVaultBanner } from "@/components/vault/XrplVaultBanner";
 import { BRANCHES, isBranchKey, type BranchKey } from "@/config/branches";
 import { useBranch } from "@/context/branch";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
@@ -194,7 +195,14 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
             </>
           ) : (
             <Reveal>
-              <BorrowComposer branch={branch} onSelectBranch={setActiveKey} />
+              <div className="flex flex-col gap-6">
+                {/* If this EVM wallet has no vault but the connected XRP wallet's
+                    PersonalAccount does, surface it here instead of a bare
+                    "open a vault" form — the vault isn't missing, it's on the
+                    XRP path. */}
+                <XrplVaultBanner branch={branch} />
+                <BorrowComposer branch={branch} onSelectBranch={setActiveKey} />
+              </div>
             </Reveal>
           )}
         </div>

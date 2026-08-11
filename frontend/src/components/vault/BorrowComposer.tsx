@@ -7,6 +7,7 @@
 // Wiring is unchanged — it reuses the same hooks and calls
 // openVault(collateral, mint, rateBps, prevHint, nextHint).
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import { zeroAddress } from "viem";
@@ -256,7 +257,7 @@ export function BorrowComposer({
         : undefined;
     const maxMint =
       collateralAmt !== null && price18
-        ? maxMintableVusd18(collateralAmt, collDec, price18, params.mcrBps)
+        ? maxMintableVusd18(collateralAmt, collDec, price18, params.mcrBps, params.mintFeeBps)
         : undefined;
     const crBps =
       collateralAmt !== null && mint18 !== null && mint18 > 0n && price18
@@ -279,8 +280,11 @@ export function BorrowComposer({
   }, [collateralAmt, mint18, price18, collDec, params.mcrBps, params.mintFeeBps, clampedRate]);
 
   let mintError: string | undefined;
-  if (mint18 !== null && mint18 > 0n && mint18 < params.minDebt18)
-    mintError = `Minimum debt is ${formatToken(params.minDebt18, 18, 0)} vUSD.`;
+  // Only enforce the on-chain minimum once the real params() has loaded — the
+  // fallback default (100 vUSD) would otherwise block every small loan for a
+  // second on first paint and read as "min 100" when the true floor is 0.05.
+  if (!params.isDefault && mint18 !== null && mint18 > 0n && mint18 < params.minDebt18)
+    mintError = `Minimum debt is ${formatToken(params.minDebt18, 18, 2)} vUSD.`;
   else if (derived.maxMint !== undefined && mint18 !== null && mint18 > derived.maxMint)
     mintError = `Exceeds the max mint at MCR (${formatToken(derived.maxMint, 18, 2)} vUSD).`;
 
@@ -555,8 +559,36 @@ export function BorrowComposer({
               action.execute("openVault", [collateralAmt, mint18, BigInt(clampedRate), ...HINTS])
             }
           >
-            {action.isBusy ? "Opening vault…" : "Open vault"}
+            {action.isBusy
+              ? "Opening vault…"
+              : collateralAmt === null || collateralAmt === 0n
+                ? "Enter a collateral amount"
+                : insufficientCollateral
+                  ? `Not enough ${branch.collateralSymbol}`
+                  : mint18 === null || mint18 === 0n
+                    ? "Enter a loan amount"
+                    : mintError
+                      ? "Adjust the loan amount"
+                      : "Open vault"}
           </PillButton>
+        )}
+        {/* Why a loan is required: a vault is a debt position, so opening one
+            always borrows some vUSD. Collateral itself earns nothing — yield
+            lives in Earn. After opening, borrow more / add / repay run anytime. */}
+        {owner && !needsApproval && !action.isBusy && (
+          <p className="flex items-start gap-1.5 text-xs text-muted/80">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
+            <span>
+              A vault borrows vUSD against your collateral
+              {!params.isDefault && ` (min ${formatToken(params.minDebt18, 18, 2)} vUSD)`}.
+              You can borrow more, add collateral, or repay anytime after opening.
+              Want yield instead?{" "}
+              <Link href="/earn" className="font-medium text-brand hover:underline">
+                Earn with vUSD
+              </Link>
+              .
+            </span>
+          </p>
         )}
         {approval.error && !action.error && (
           <p className="text-sm text-danger">{approval.error.message.split("\n")[0]}</p>

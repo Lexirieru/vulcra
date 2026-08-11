@@ -292,7 +292,7 @@ function OpenForm({
   const mint18 = parseAmount(mint, 18);
   const maxMint =
     collateralAmt !== null && price18
-      ? maxMintableVusd18(collateralAmt, collDec, price18, params.mcrBps)
+      ? maxMintableVusd18(collateralAmt, collDec, price18, params.mcrBps, params.mintFeeBps)
       : null;
   const insufficientCollateral =
     collateralAmt !== null && collBalance !== undefined && collateralAmt > collBalance;
