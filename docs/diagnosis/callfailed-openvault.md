@@ -286,3 +286,10 @@ The "VaultExists()" root-cause above is **wrong for the real test PA**. Verified
 - `executeUserOp` itself works: the spDeposit E2E (net-0) went through this exact PA. Two live vaults at rate 500 prove the Zap-open path succeeded before.
 
 **Conclusion (fact-grounded):** FDC + FXRP mint + all vault checks + the collateral transfer PASS. The failure is an **EMPTY revert inside `openVaultAndForward` specific to the net-mint>0 path**, occurring after checks+transfer — consistent with the Coston2 FCC/Smart-Account **redeploy** breaking the direct-minting↔executeUserOp integration (empty reverts are characteristic of a call into changed/mismatched code). Definitive next step: `debug_traceCall` of the exact userOp to name the precise opcode/frame, then align the executor's direct-minting components with the redeployed stack (cf. the FCC re-register the admin flagged). No Vulcra contract change is implicated by the evidence so far.
+
+**Note on `debug_traceCall`:** the Coston2 public RPC (`coston2-api.flare.network`)
+returns `-32601 method does not exist` for `debug_traceCall`/`debug_traceTransaction`,
+so a full opcode-level trace of the empty revert is not possible on the public
+endpoint — it would need an archive/debug-enabled Coston2 node. The isolation above
+(inner `CallFailed(1, 0x)` = empty revert at `openVaultAndForward`, after checks +
+transfer pass) is the strongest fact-based diagnosis available without one.
