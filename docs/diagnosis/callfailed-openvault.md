@@ -271,3 +271,18 @@ cast abi-decode "f(bytes)" 0x<full CallFailed returndata>
 
 Selectors verified with `cast sig` against the live contracts. If the decoded inner selector is
 `0x4239717c`, H1 is confirmed and Fix A unblocks immediately; Fix B prevents recurrence.
+
+---
+
+## PM CORRECTION (fact-verified, 12 Aug) — VaultExists is REFUTED
+
+The "VaultExists()" root-cause above is **wrong for the real test PA**. Verified on-chain, not assumed:
+
+- Executor resolves `rHS3D3sFavuMHP8jwK2vauHGuUDAsnmoog` → PA `0x6F6639e41facC53017823eb5dcF9da7e3F95E3d4` (`/account` endpoint), and `getVault(0x6F66).active = false`. So the PA has NO vault → `VaultExists` cannot be the cause.
+- Captured the **real inner revert bytes** (temporary executor log patch, since reverted): outer `CallFailed(bytes)` `0xa5fa8d2b` wraps inner `CallFailed(uint256,bytes)` `0x5c0dee5d` with args **(index = 1, reason = 0x empty)**. So `executeUserOp` reports **Call index 1 (`Zap.openVaultAndForward`) reverted with EMPTY data**.
+- Simulated `VaultManager.openVaultFor` from the Zap (`eth_call`): all checks (VaultExists/ZeroAmount/rate/DebtBelowMin/DebtCeiling/CRTooLow) **PASS** for the test amounts (0.08 FXRP / 0.05 vUSD → CR 161%). Higher mint (0.5 vUSD) correctly returns `CRTooLow` — proving the sim is faithful.
+- `openVaultAndForward` from the PA with allowance=0 returns a **reason'd** `ERC20: insufficient allowance` — so the transfer path gives reasons. In the real flow Call[0] sets the allowance, so the transfer succeeds.
+- `SortedVaults.insert` reverts with `AlreadyInList()`/`ZeroId()` (reason'd), never empty — ruled out.
+- `executeUserOp` itself works: the spDeposit E2E (net-0) went through this exact PA. Two live vaults at rate 500 prove the Zap-open path succeeded before.
+
+**Conclusion (fact-grounded):** FDC + FXRP mint + all vault checks + the collateral transfer PASS. The failure is an **EMPTY revert inside `openVaultAndForward` specific to the net-mint>0 path**, occurring after checks+transfer — consistent with the Coston2 FCC/Smart-Account **redeploy** breaking the direct-minting↔executeUserOp integration (empty reverts are characteristic of a call into changed/mismatched code). Definitive next step: `debug_traceCall` of the exact userOp to name the precise opcode/frame, then align the executor's direct-minting components with the redeployed stack (cf. the FCC re-register the admin flagged). No Vulcra contract change is implicated by the evidence so far.

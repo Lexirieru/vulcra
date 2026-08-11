@@ -61,7 +61,7 @@ test.describe("/earn/[branch] detail", () => {
       // Stat bar labels (values may be "—" without live RPC).
       await expect(page.getByText("Pool TVL")).toBeVisible();
       await expect(page.getByText("APR", { exact: true }).first()).toBeVisible();
-      await expect(page.getByText("Your deposit")).toBeVisible();
+      await expect(page.getByText("Your deposit").first()).toBeVisible();
 
       // "How it works" section.
       await expect(page.getByText("How it works")).toBeVisible();
