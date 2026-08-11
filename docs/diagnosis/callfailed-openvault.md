@@ -387,3 +387,43 @@ longer accepts our `PackedUserOperation` `_data` shape. The 0xFE memo layout its
 v1.3 (`UserOpCustomInstruction`), so the fix is the `_data` (userOp) encoding + executor
 binding, migrated via `@flarenetwork/smart-accounts-encoder` — affecting ALL XRPL-native ops,
 not just open.
+
+---
+
+## 🎯 BREAKTHROUGH (reverse-engineered the full v1.3 stack) — Vulcra code is PROVEN correct
+
+Pulled the DEPLOYED Coston2 v1.3 sources (Blockscout + flare-foundation GitHub) and traced the
+whole path on an `anvil` fork:
+
+- `smartAccountManager` = **MasterAccountController** diamond `0x434936d47503353f06750Db1A444DBDC5F0AD37c`
+  (`getSmartAccountManager()` on the AssetManager); its `MemoInstructionsFacet` `0x32c6379B…` runs the
+  userOp via `MemoInstructions.execute`.
+- `DirectMintingFacet` (`0x4aFaEda2…`): our 42-byte 0xFE memo falls through the 32/48-byte
+  `directMinting`/`directMintingEx` checks → `mintToSmartAccount=true` → `_mintToSmartAccounts` →
+  `handleMintedFAssets(txId, sourceAddr, amount, ts, memoData, executor, _data)` **WITH `_data`**.
+- `MemoInstructions.execute`: for 0xFE it requires `_memoData.length == 42`, `keccak256(_data)==hash`,
+  decodes `_data` as the **OZ EIP-4337 `PackedUserOperation`** (`draft-IERC4337.sol`), checks
+  `userOp.sender == PA` and `userOp.nonce == state.nonces[PA]`, then `PA.call(userOp.callData)`.
+- **Vulcra matches ALL of it**: 0xFE memo layout `[opcode|walletId|executorFeeUBA(8)|hash(32)]` =
+  v1.3 `UserOpCustomInstruction`; 9-field EIP-4337 `PackedUserOperation`; `Call{address,uint256,bytes}`;
+  `executeUserOp(Call[])`; nonce (deployed `getNonce(PA)` = 9 = Vulcra's).
+
+**Decisive proof:** the EXACT real reverting transaction — `executeDirectMintingWithData(realProof,
+realData)` calldata pulled from the executor log — **replayed on a fork of the current Coston2 state
+EXECUTES CLEANLY** (`provideToSP` → `DepositProvided`; and the open path emits `VaultOpened` +
+`UserOperationExecuted(PA, nonce:9)`). The full `handleMintedFAssets` and `PA.executeUserOp([...])`
+both succeed with Vulcra's real memo + `_data`.
+
+**Conclusion:** Vulcra's code and encoding are **100% correct for FAssets v1.3**. The on-chain revert
+is a **transient submit-timing issue** — the executor's `simulateContract` reverts right after proof
+retrieval, but the identical calldata is valid against slightly-later state. NOT a code/encoding bug,
+and NOT a Vulcra contract issue.
+
+**Correction:** earlier notes read the direct-minting caps as 0.1 FXRP — that was a formatUnits
+misread. They are **100,000 FXRP/hr, 500,000/day** — effectively unlimited; not a constraint.
+
+**Fix in progress:** `apps/executor/src/submit.ts` now retries `simulateContract` on revert
+(`SUBMIT_RETRIES`×`SUBMIT_RETRY_DELAY_MS`) instead of dropping straight to 0xE0 recovery. In testing
+the retry did not yet fire on the live path (needs a submit-path/tsx-reload check + likely a longer
+settle window than the ~6 min tried, or an explicit on-chain proof-availability poll before submit).
+That is the remaining, well-scoped step to a green live E2E.

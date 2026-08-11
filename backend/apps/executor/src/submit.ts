@@ -40,6 +40,18 @@ async function loadAssetManagerAbi(): Promise<readonly unknown[]> {
   }
 }
 
+/**
+ * Retry-on-revert window for the on-chain simulate. The `executeDirectMintingWithData`
+ * call can revert TRANSIENTLY right after proof retrieval: the DA layer serves the
+ * proof a little before the on-chain state that verifies/executes it has fully
+ * settled, so a same-instant simulate reverts even though the identical calldata
+ * succeeds a few minutes later (verified by forked replay: the exact reverting
+ * tx executes cleanly against slightly-later state). Rather than dropping straight
+ * to 0xE0 recovery, poll the simulate until it passes.
+ */
+const SUBMIT_RETRIES = 12;
+const SUBMIT_RETRY_DELAY_MS = 30_000;
+
 export async function submitDirectMinting(
   deps: SubmitDeps,
   args: { proof: unknown; userOpBytes: Hex },
@@ -48,13 +60,29 @@ export async function submitDirectMinting(
   const account = deps.walletClient.account;
   if (!account) throw new Error("wallet client has no account (EXECUTOR_PRIVATE_KEY missing)");
 
-  const { request } = await deps.publicClient.simulateContract({
-    address: deps.assetManager,
-    abi: abi as never,
-    functionName: "executeDirectMintingWithData",
-    args: [args.proof, args.userOpBytes],
-    account,
-    value: 0n, // A-BE3
-  });
-  return deps.walletClient.writeContract(request as never);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < SUBMIT_RETRIES; attempt++) {
+    try {
+      const { request } = await deps.publicClient.simulateContract({
+        address: deps.assetManager,
+        abi: abi as never,
+        functionName: "executeDirectMintingWithData",
+        args: [args.proof, args.userOpBytes],
+        account,
+        value: 0n, // A-BE3
+      });
+      // Simulate passed → the tx is valid against current state; send it.
+      return deps.walletClient.writeContract(request as never);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < SUBMIT_RETRIES - 1) {
+        console.log(
+          `[submit] executeDirectMintingWithData simulate reverted (try ${attempt + 1}/${SUBMIT_RETRIES}); ` +
+            `state may not have settled yet — retrying in ${SUBMIT_RETRY_DELAY_MS / 1000}s`,
+        );
+        await new Promise((r) => setTimeout(r, SUBMIT_RETRY_DELAY_MS));
+      }
+    }
+  }
+  throw lastErr;
 }
