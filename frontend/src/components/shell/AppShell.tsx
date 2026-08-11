@@ -2,11 +2,11 @@
 
 // App shell, Enosys structure on the light theme: cursive Vulcra wordmark,
 // centered tab nav (Dashboard · Borrow · Earn · Incentives), a "More"
-// disclosure for the utility routes (Redeem / Guardian / Liquidations / XRPL
-// mint), the dual-wallet entry point + wrong-network guard, and a fixed bottom
-// stats bar. The XRPL entry only exists on branches that support the native
-// mint (FXRP). BranchSwitch appears on the branch-scoped utility routes, which
-// act on the active collateral branch.
+// disclosure for the utility routes (Redeem / Guardian / Liquidations), the
+// dual-wallet entry point + wrong-network guard, and a fixed bottom stats bar.
+// XRPL-native minting is reached through the XRP collateral card on /borrow
+// (→ /borrow/xrp), not a separate nav item. BranchSwitch appears on the
+// branch-scoped utility routes, which act on the active collateral branch.
 //
 // Wallets: one header button opens the right-side WalletSidebar, which holds
 // BOTH the Flare (EVM · Coston2) and XRP Ledger connections — they connect
@@ -21,7 +21,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown } from "lucide-react";
 import { cn, Wordmark } from "@/components/ui";
-import { useBranch } from "@/context/branch";
 import { useWalletUi } from "@/context/wallet-ui";
 import {
   DUR,
@@ -51,7 +50,7 @@ const UTILITIES = [
 ] as const;
 
 /** Routes that operate on the active collateral branch → show BranchSwitch. */
-const BRANCH_SCOPED = ["/redeem", "/guardian", "/liquidations", "/xrpl"] as const;
+const BRANCH_SCOPED = ["/redeem", "/guardian", "/liquidations"] as const;
 
 function isActive(pathname: string, href: string) {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
@@ -59,11 +58,8 @@ function isActive(pathname: string, href: string) {
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { branch } = useBranch();
 
-  const utilityLinks = branch.hasXrplMint
-    ? [...UTILITIES, { href: "/xrpl", label: "XRPL mint" }]
-    : [...UTILITIES];
+  const utilityLinks = UTILITIES;
   const onUtilityRoute = utilityLinks.some((u) => isActive(pathname, u.href));
   const onBranchScopedRoute = BRANCH_SCOPED.some((p) => pathname.startsWith(p));
 

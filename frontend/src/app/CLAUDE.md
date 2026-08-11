@@ -35,15 +35,16 @@ App Router pages for the Vulcra dApp. `layout.tsx` is the only server root; most
 - `/liquidations` — at-risk vaults for the active branch from the backend indexer,
   riskiest first; one-click liquidate re-checks CR on-chain.
 - `/incentives` — static "coming soon" placeholders (no live program yet, no fake APRs).
-- `/xrpl` — standalone XRPL-native mint (same `XrplMintFlow`); shows a "no XRPL rail"
-  notice for non-FXRP branches (`branch.hasXrplMint`).
+- `/borrow/xrp` — the XRPL-native mint (`XrplMintFlow`) with a LivePrice + redemptions
+  sidebar. This is the single XRPL entry point; the old standalone `/xrpl` route was
+  removed and now 301-redirects here (see `next.config.ts`).
 
 ## Conventions & gotchas
 - **`"use client"`** on any page touching wagmi/XRPL/Query; keep `layout`, `/earn`,
   `/incentives` (and dashboard shell) as server components where possible.
 - **Branch context**: `/borrow/[collateral]` seeds `activeKey` from the URL and syncs it
   back into the shared branch context for the utility routes (`/redeem`, `/guardian`,
-  `/liquidations`, `/xrpl`), which act on the active branch.
+  `/liquidations`), which act on the active branch.
 - **Responsive tables**: wrap wide content in `min-w-0` parents + `overflow-x-auto` so
   tables scroll inside their card instead of stretching the page.
 - **Connect gates**: pages offer "Connect wallet" (EVM via `useAppKit().open()`, XRPL via

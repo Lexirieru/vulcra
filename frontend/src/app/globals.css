@@ -46,6 +46,10 @@
 
 html {
   color-scheme: light;
+  /* Belt-and-suspenders with body's overflow-x-clip: a wide table's scrollable
+     overflow region can otherwise leak past the body clip and give the viewport
+     a phantom horizontal scrollbar into empty space at narrow widths. */
+  overflow-x: clip;
 }
 
 body {

@@ -19,6 +19,12 @@ const OPTIONAL_X402 = [
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  // The standalone /xrpl mint page was folded into /borrow/xrp (the richer
+  // XRPL-native borrow entry with LivePrice + redemptions sidebar). Keep old
+  // links working.
+  async redirects() {
+    return [{ source: "/xrpl", destination: "/borrow/xrp", permanent: true }];
+  },
   turbopack: {
     resolveAlias: Object.fromEntries(OPTIONAL_X402.map((m) => [m, STUB])),
   },
