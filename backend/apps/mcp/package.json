@@ -1,0 +1,28 @@
+{
+  "name": "@vulcra/mcp",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-custody MCP (Model Context Protocol) stdio server for the Vulcra XRPL-native CDP. Read tools query Coston2/indexer; intent tools return an UNSIGNED XRPL Payment the user signs in their own wallet. Never holds keys.",
+  "bin": {
+    "vulcra-mcp": "./src/index.ts"
+  },
+  "scripts": {
+    "start": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@vulcra/chain-client": "*",
+    "@vulcra/interfaces": "*",
+    "@vulcra/userop": "*",
+    "viem": "^2.21.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}
