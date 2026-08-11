@@ -324,3 +324,51 @@ means aligning with (or waiting for) that redeployed Flare layer — a Flare-inf
 to raise with the hackathon admins (whose guides are still catching up), NOT a Vulcra
 contract change. The EVM open path and all net-0 XRPL manage ops (repay/close/adjust/
 spDeposit) are unaffected.
+
+---
+
+## ROOT CAUSE FOUND (FAssets v1.3 source) + fix plan
+
+Researched the current Flare docs + the `flare-foundation/fassets` source. The Coston2
+redeploy is **FAssets v1.3**, which restructured direct-minting-with-data.
+
+**What v1.3 changed** (`contracts/assetManager/facets/DirectMintingFacet.sol`):
+- `executeDirectMintingWithData(IXRPPayment.Proof, bytes _data)` still exists, but the
+  with-data (smart-account) path now runs `_mintToSmartAccounts`:
+  - requires a `mintingTagManager` **and** a `smartAccountManager` to be set (new);
+  - **mints the FXRP to the `smartAccountManager`** (a new `IMemoInstructionsFacet`
+    contract), NOT directly to the PersonalAccount;
+  - calls `smartAccountManager.handleMintedFAssets(txId, sourceAddress, amount, ts,
+    memoData, executor, fullData)`, and that contract parses `memoData` + `fullData`
+    to route the FXRP to the PA and execute the committed calls.
+- New gates confirmed in source/tests: `InvalidExecutor` (allowed-executor set in the
+  memo via `PaymentReference.directMintingEx(minter, executor)`), `OnlyProofOwner`
+  (proof-use binding), hourly/daily mint caps (0.1 / 0.5 FXRP on Coston2), and
+  large-mint delays (>0.1 FXRP threshold).
+
+**Why spDeposit works but openVault does not:** net-0 ops (repay/close/adjust/spDeposit)
+go through the MasterAccountController custom-instruction path, which still accepts
+Vulcra's 0xFE memo. net-mint>0 open goes through the NEW DirectMintingFacet →
+`smartAccountManager.handleMintedFAssets` path, whose expected `memoData`/`fullData`
+format Vulcra's pre-v1.3 encoding no longer matches → the committed call reverts with
+empty data. This matches every fact: FDC ok, checks ok, transfer ok, `openVaultAndForward`
+succeeds in isolation (anvil), but the wrapped execution via the v1.3 smartAccountManager
+fails.
+
+**Fix plan (off-chain only — NO Vulcra contract change):**
+1. `backend/packages/userop` + `backend/apps/executor/src/mintBuilder.ts`: re-encode the
+   XRPL memo and the `_data` (fullData) to the v1.3 `IMemoInstructionsFacet` /
+   `PaymentReference.directMinting[Ex]` format the current `smartAccountManager` expects
+   (set minter + allowed executor in the memo; commit the userOp the way v1.3 parses it).
+2. Bind the executor: set the executor address in the memo and as the FDC proof's
+   `proofOwner` (v1.3 `InvalidExecutor` / `OnlyProofOwner`).
+3. Keep mints ≤ 0.1 FXRP/hr on Coston2, or handle the large-mint delay event.
+4. Remaining unknown for an exact byte layout: the deployed `smartAccountManager`
+   (`IMemoInstructionsFacet`) implementation — pull it from the flare-smart-accounts
+   deployment or use `@flarenetwork/smart-accounts-encoder`, then re-run the ≤0.1 FXRP
+   E2E to confirm a real vault opens.
+
+Source refs: flare-foundation/fassets — `DirectMintingFacet.sol`, `IDirectMinting.sol`,
+`mock/SmartAccountManagerMock.sol` (`handleMintedFAssets` signature),
+`test/integration/assetManager/14-DirectMinting.ts`; Flare docs "Direct Mint FXRP" +
+"How FAssets evolves in v1.3".
