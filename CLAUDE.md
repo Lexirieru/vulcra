@@ -34,6 +34,31 @@ So the whole vault lifecycle is one primitive — the frontend's XRPL manage pan
 (Deposit / Withdraw / Borrow / Repay / Interest / Close), each tab a different `Call[]` behind one
 XRPL payment. **No contract changes are needed to manage a vault from the XRP Ledger.**
 
+### ⚠️ CURRENT STATUS (12 Aug 2026) — XRPL-native `_data` path blocked by the FAssets v1.3 redeploy
+
+Verified E2E on Coston2 (see `docs/diagnosis/callfailed-openvault.md` for the full fact chain):
+
+- **FDC works** (attestation submitted → proof retrieved; the old 401 is gone).
+- **Every XRPL-native op that carries a userOp `_data` currently REVERTS** — both `net-mint>0`
+  (open/borrow) **and** `net-mint=0` (repay/close/adjust/spDeposit). Inner revert is
+  `CallFailed(uint256=1, bytes=0x)` = the committed `Call[]` execution returns empty data.
+- **Vulcra's own contracts are PROVEN CORRECT**: an `anvil` fork of live Coston2 opens a vault fine
+  when `Zap.openVaultAndForward(...)` is called directly (transferFrom → vUSD mint → `VaultOpened`,
+  570k gas). The empty revert is **not** in Vulcra code.
+- **Root cause = FAssets v1.3** (the Coston2 redeploy). `executeDirectMintingWithData(proof, _data)`
+  now mints FXRP to a NEW `SmartAccountManager` (`IMemoInstructionsFacet`) and calls
+  `handleMintedFAssets(..., memoData, executor, fullData)`; that v1.3 contract executes the userOp.
+  Our 42-byte 0xFE memo layout matches v1.3 (`UserOpCustomInstruction`: opcode / walletId /
+  executorFeeUBA(8) / hash(32)), so the break is in how the v1.3 SmartAccountManager runs the
+  `_data` (PackedUserOperation) — the whole 0xFE custom-instruction-with-data execution changed.
+- **Fix direction (off-chain only, no Vulcra contract change):** migrate `packages/userop` +
+  `apps/executor` mint/manage flow to the v1.3 `IMemoInstructionsFacet` / `@flarenetwork/smart-accounts-encoder`
+  `_data` + executor-binding format, then re-run a ≤0.1 FXRP E2E (Coston2 direct-minting caps: 0.1
+  FXRP/hr, 0.5/day, large-mint delay >0.1). Needs the deployed `SmartAccountManager` `_data` spec.
+- **Unaffected & demoable now:** the EVM open/manage path, Earn, redemption UI, the Vulcra MCP
+  server (returns unsigned payloads), and all test suites (forge 171 · backend 151 · FE build ·
+  Playwright 23).
+
 ## Live on Coston2 (chain 114 · https://coston2-explorer.flare.network)
 
 Authoritative address list: `smartcontract/deployments/coston2.json`. Key ones:
@@ -42,8 +67,9 @@ Authoritative address list: `smartcontract/deployments/coston2.json`. Key ones:
 - FlareContractRegistry `0xaD67FE66660Fb8dFE9d6b1b4240d8650e30F6019` · AssetManagerFXRP `0xc1Ca88b937d0b528842F95d5731ffB586f4fbDFA`
 - RPC `https://coston2-api.flare.network/ext/C/rpc` · FAssets Core Vault (XRPL) `rDhpmiPq4BVBDWMVdSrmkgt8thKyRzGV1p`
 
-The full XRPL manage lifecycle (supply / borrow / withdraw / adjust-rate / close) is proven end-to-end
-on-chain — see the receipts in the root `README.md`.
+The full XRPL manage lifecycle (supply / borrow / withdraw / adjust-rate / close) was proven end-to-end
+on-chain **before the FAssets v1.3 redeploy** (receipts in the root `README.md`). It is currently
+blocked by that redeploy — see the ⚠️ status box above. The EVM path is unaffected.
 
 ## Run the stack
 

@@ -39,6 +39,22 @@ executor logs `live mint pipeline ENABLED`; without it, mints queue with a clear
 
 **net-mint = 0** = fees-only "memo-only" op (no FXRP minted); **net-mint > 0** mints FXRP. Same path.
 
+### ⚠️ BLOCKED by the FAssets v1.3 Coston2 redeploy (12 Aug 2026)
+
+Step 3 currently REVERTS for **every** userOp op (net-0 AND net-mint>0): inner
+`CallFailed(uint256=1, bytes=0x)` — the committed `Call[]` runs to empty data. FDC itself is fine
+(attest + proof succeed). Verified: an `anvil` fork of live Coston2 opens a vault when
+`Zap.openVaultAndForward` is called directly, so **Vulcra contracts are correct** — the break is in
+v1.3's new `SmartAccountManager` (`IMemoInstructionsFacet.handleMintedFAssets`), which now executes
+the `_data`. Our 0xFE memo layout already matches v1.3 (`UserOpCustomInstruction`); the mismatch is in
+the `_data` (`PackedUserOperation`) execution.
+
+**Where to fix (off-chain, no contract change):** `packages/userop` (memo + `PackedUserOperation` +
+`executeExecuteUserOp` callData) and this executor's `submitDirectMinting` / `mintBuilder` — migrate to
+the v1.3 `IMemoInstructionsFacet` + `@flarenetwork/smart-accounts-encoder` `_data`/executor-binding
+format, then re-run a ≤0.1 FXRP E2E (Coston2 caps: 0.1 FXRP/hr, 0.5/day). Full analysis + source refs:
+root `docs/diagnosis/callfailed-openvault.md`.
+
 ## Gotchas
 
 - A repeated `/mint/submit` for the same txId must NOT re-attest (nonce collision strands the mint) —

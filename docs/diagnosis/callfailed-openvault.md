@@ -372,3 +372,18 @@ Source refs: flare-foundation/fassets — `DirectMintingFacet.sol`, `IDirectMint
 `mock/SmartAccountManagerMock.sol` (`handleMintedFAssets` signature),
 `test/integration/assetManager/14-DirectMinting.ts`; Flare docs "Direct Mint FXRP" +
 "How FAssets evolves in v1.3".
+
+---
+
+## CORRECTION (12 Aug, re-tested post-redeploy) — net-0 ops are ALSO broken
+
+Earlier notes assumed net-0 (spDeposit/repay/close/adjust) still worked. **Re-tested live:
+spDeposit REVERTS too** now (`pool.depositOf(PA)` unchanged; the 0.2 vUSD there is a
+pre-redeploy receipt). So the break is NOT specific to the FXRP-minting step — the **entire
+0xFE userOp `_data` execution path is blocked by v1.3**, for both net-0 and net-mint>0. This
+matches the architecture: v1.3 routes the `_data` through the new `SmartAccountManager`
+(`IMemoInstructionsFacet.handleMintedFAssets`) for the with-data path, and that execution no
+longer accepts our `PackedUserOperation` `_data` shape. The 0xFE memo layout itself matches
+v1.3 (`UserOpCustomInstruction`), so the fix is the `_data` (userOp) encoding + executor
+binding, migrated via `@flarenetwork/smart-accounts-encoder` — affecting ALL XRPL-native ops,
+not just open.
