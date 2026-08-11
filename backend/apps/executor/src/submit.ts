@@ -41,16 +41,18 @@ async function loadAssetManagerAbi(): Promise<readonly unknown[]> {
 }
 
 /**
- * Retry-on-revert window for the on-chain simulate. The `executeDirectMintingWithData`
- * call can revert TRANSIENTLY right after proof retrieval: the DA layer serves the
- * proof a little before the on-chain state that verifies/executes it has fully
- * settled, so a same-instant simulate reverts even though the identical calldata
- * succeeds a few minutes later (verified by forked replay: the exact reverting
- * tx executes cleanly against slightly-later state). Rather than dropping straight
- * to 0xE0 recovery, poll the simulate until it passes.
+ * Retry window for the direct-minting submit. `executeDirectMintingWithData` can
+ * fail TRANSIENTLY right after proof retrieval — and crucially, the eth_call
+ * `simulateContract` frequently PASSES while the tx that follows a block or two
+ * later REVERTS on-chain (verified: the exact reverting calldata replays cleanly
+ * against slightly-later state on a fork). So we must retry on the on-chain
+ * REVERT (the mined receipt), not only on a simulate revert. Each attempt
+ * re-simulates and re-sends; a reverted tx rolls its state back (incl. the FDC
+ * usedTransactionIds flag), so the same proof + userOp is safe to resubmit.
+ * Only after the full window fails do we fall through to 0xE0 recovery.
  */
-const SUBMIT_RETRIES = 12;
-const SUBMIT_RETRY_DELAY_MS = 30_000;
+const SUBMIT_RETRIES = 20;
+const SUBMIT_RETRY_DELAY_MS = 20_000;
 
 export async function submitDirectMinting(
   deps: SubmitDeps,
@@ -71,17 +73,22 @@ export async function submitDirectMinting(
         account,
         value: 0n, // A-BE3
       });
-      // Simulate passed → the tx is valid against current state; send it.
-      return deps.walletClient.writeContract(request as never);
+      const hash = await deps.walletClient.writeContract(request as never);
+      const receipt = await deps.publicClient.waitForTransactionReceipt({ hash });
+      // A successful receipt (incl. a DirectMintingDelayed one — that is not a
+      // revert) is the outcome the caller inspects. A reverted receipt is the
+      // transient race: retry.
+      if (receipt.status === "success") return hash;
+      lastErr = new Error(`executeDirectMintingWithData tx ${hash} reverted on-chain`);
     } catch (err) {
-      lastErr = err;
-      if (attempt < SUBMIT_RETRIES - 1) {
-        console.log(
-          `[submit] executeDirectMintingWithData simulate reverted (try ${attempt + 1}/${SUBMIT_RETRIES}); ` +
-            `state may not have settled yet — retrying in ${SUBMIT_RETRY_DELAY_MS / 1000}s`,
-        );
-        await new Promise((r) => setTimeout(r, SUBMIT_RETRY_DELAY_MS));
-      }
+      lastErr = err; // simulate revert / send error — also transient here
+    }
+    if (attempt < SUBMIT_RETRIES - 1) {
+      console.log(
+        `[submit] executeDirectMintingWithData not yet valid (try ${attempt + 1}/${SUBMIT_RETRIES}); ` +
+          `state likely not settled — retrying in ${SUBMIT_RETRY_DELAY_MS / 1000}s`,
+      );
+      await new Promise((r) => setTimeout(r, SUBMIT_RETRY_DELAY_MS));
     }
   }
   throw lastErr;
