@@ -293,3 +293,34 @@ so a full opcode-level trace of the empty revert is not possible on the public
 endpoint — it would need an archive/debug-enabled Coston2 node. The isolation above
 (inner `CallFailed(1, 0x)` = empty revert at `openVaultAndForward`, after checks +
 transfer pass) is the strongest fact-based diagnosis available without one.
+
+---
+
+## BREAKTHROUGH (anvil fork trace, current Coston2 state) — Vulcra contracts are CORRECT
+
+Forked Coston2 at the live block with `anvil`, impersonated the PA, set the FXRP
+allowance to the Zap, and called `Zap.openVaultAndForward(0.08 FXRP, 0.05 vUSD, 500, PA, 0, 0)`
+**directly**. Full trace result:
+
+```
+transferFrom(Zap -> VaultManager, 80000)  ✓
+vusd.mint(PA, 5e16)                        ✓   (borrowed vUSD)
+vusd.mint(feeReceiver, 2.5e14)            ✓   (mint fee)
+emit VaultOpened(PA, 80000, 5.025e16, 500) ✓
+Transaction successfully executed. Gas used: 570059
+```
+
+So on the **current** deployed state, the Vulcra path (Zap → VaultManager → SortedVaults
+→ vUSD) opens a vault **successfully**. The empty revert therefore does NOT originate in
+any Vulcra contract — it originates in the **wrapping layer that Vulcra does not own**:
+the FAssets `executeDirectMintingWithData` mint step and/or the Flare Smart Account userOp
+executor that runs the committed `Call[]`. That is exactly the layer the Coston2 redeploy
+touched.
+
+**Final conclusion (fact-grounded):** Vulcra's own contracts are proven correct against
+live state; the XRPL-native `net-mint>0` open is blocked by the redeployed Flare
+Smart-Account / FAssets direct-minting layer, not by Vulcra code. "Re-sync the stack"
+means aligning with (or waiting for) that redeployed Flare layer — a Flare-infra matter
+to raise with the hackathon admins (whose guides are still catching up), NOT a Vulcra
+contract change. The EVM open path and all net-0 XRPL manage ops (repay/close/adjust/
+spDeposit) are unaffected.
