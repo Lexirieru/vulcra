@@ -4,11 +4,22 @@
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { flareTestnet } from "@reown/appkit/networks";
 import type { AppKitNetwork } from "@reown/appkit/networks";
-import { cookieStorage, createStorage } from "wagmi";
+import { cookieStorage, createStorage, fallback, http } from "wagmi";
 
 // `flareTestnet` in viem/AppKit IS Coston2 (chain id 114, native C2FLR).
 // Verified at build time: @reown/appkit/networks exports it directly (A-6).
 export const coston2 = flareTestnet;
+
+// Coston2 RPCs, tried in order via a viem `fallback` transport. thirdweb's public
+// endpoint is faster and handles concurrent bursts better than Flare's shared
+// public RPC under load (benchmarked: 25 parallel reads in ~0.9s vs ~1.4s), so it
+// leads; the Flare public RPC is the always-available fallback. Override the
+// primary with NEXT_PUBLIC_COSTON2_RPC_URL.
+const COSTON2_RPCS: string[] = [
+  process.env.NEXT_PUBLIC_COSTON2_RPC_URL?.trim(),
+  "https://flare-testnet-coston2.rpc.thirdweb.com",
+  "https://coston2-api.flare.network/ext/C/rpc",
+].filter((u): u is string => Boolean(u));
 
 export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [coston2];
 
@@ -36,6 +47,9 @@ export const wagmiAdapter = new WagmiAdapter({
   projectId,
   ssr: true,
   storage: createStorage({ storage: cookieStorage }),
+  transports: {
+    [coston2.id]: fallback(COSTON2_RPCS.map((url) => http(url))),
+  },
 });
 
 export const wagmiConfig = wagmiAdapter.wagmiConfig;
