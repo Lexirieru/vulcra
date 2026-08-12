@@ -63,6 +63,28 @@ contract VulcraZap is Initializable, AccessControlUpgradeable, ReentrancyGuardTr
     }
 
     /// @inheritdoc IVulcraZap
+    function openVaultAndForwardAll(
+        uint256 mint18,
+        uint256 annualInterestRateBps,
+        address vusdDestination,
+        address prevHint,
+        address nextHint
+    ) external nonReentrant {
+        // Read the caller's ENTIRE FXRP balance at execution time instead of trusting an amount
+        // baked into the userOp. The 0xFE memo commits keccak256(userOp) BEFORE the direct mint, so
+        // any collateral figure in the calldata is only a prediction — and the net minted is the
+        // amount after `feeBIPS`, rounded to AMG granularity, minus `executorFeeUBA`. Pulling the
+        // live balance makes fee/rounding changes unable to strand a mint (Flare-admin guidance).
+        uint256 collateral6 = fxrpToken.balanceOf(msg.sender);
+        fxrpToken.safeTransferFrom(msg.sender, address(this), collateral6);
+        fxrpToken.forceApprove(address(vaultManager), collateral6);
+        // Vault owned by the caller (PersonalAccount); vUSD delivered to the destination.
+        vaultManager.openVaultFor(
+            msg.sender, collateral6, mint18, annualInterestRateBps, vusdDestination, prevHint, nextHint
+        );
+    }
+
+    /// @inheritdoc IVulcraZap
     function previewOpen(uint256 collateral6, uint256 mint18)
         external
         view

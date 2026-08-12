@@ -22,6 +22,22 @@ export const vulcraZapAbi = [
     outputs: [],
   },
   {
+    // Reads the caller's live FXRP balance at execution instead of a baked-in
+    // collateral amount, so fee/AMG-rounding can't strand the mint. Pair with
+    // Call[0] = FXRP.approve(zap, MAX_UINT256). See IVulcraZap.openVaultAndForwardAll.
+    type: "function",
+    name: "openVaultAndForwardAll",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "mint18", type: "uint256" },
+      { name: "annualInterestRateBps", type: "uint256" },
+      { name: "vusdDestination", type: "address" },
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
     type: "function",
     name: "previewOpen",
     stateMutability: "view",

@@ -122,4 +122,63 @@ contract VulcraZapTest is VaultTestSetup {
         assertEq(fxrp.balanceOf(address(pa)), 100e6); // FXRP untouched (recoverable at Core Vault)
         assertEq(vusd.totalSupply(), 0);
     }
+
+    // --- openVaultAndForwardAll: read live balance, no baked collateral (Flare-admin guidance) ---
+
+    function test_zap_openAll_sweepsLiveBalance() public {
+        address pa = makeAddr("paAll");
+        fxrp.mint(pa, 100e6); // the net FXRP the direct mint delivered
+        vm.prank(pa);
+        fxrp.approve(address(zap), type(uint256).max); // generous upper bound, not an exact amount
+        vm.prank(pa);
+        zap.openVaultAndForwardAll(100e18, 500, dest, address(0), address(0));
+
+        (uint256 coll,, bool active) = mgr.getVault(pa);
+        assertEq(coll, 100e6, "swept the whole live balance as collateral");
+        assertTrue(active);
+        assertEq(vusd.balanceOf(dest), 100e18);
+        assertEq(fxrp.balanceOf(pa), 0, "no dust stranded on the PA");
+        assertEq(fxrp.balanceOf(address(zap)), 0, "zap holdless");
+    }
+
+    function test_zap_openAll_sweepsUnroundedAmount() public {
+        // Fee/AMG rounding can deliver an un-round amount no off-chain prediction would match; the
+        // All variant simply sweeps whatever actually arrived, so nothing is stranded.
+        address pa = makeAddr("paAll2");
+        uint256 unround = 100_123_456; // ~100.12 FXRP, deliberately not a round figure
+        fxrp.mint(pa, unround);
+        vm.prank(pa);
+        fxrp.approve(address(zap), type(uint256).max);
+        vm.prank(pa);
+        zap.openVaultAndForwardAll(100e18, 500, dest, address(0), address(0));
+
+        (uint256 coll,, bool active) = mgr.getVault(pa);
+        assertEq(coll, unround, "swept the exact live balance, whatever it rounded to");
+        assertTrue(active);
+        assertEq(fxrp.balanceOf(pa), 0);
+    }
+
+    function test_atomicMintAll_viaPersonalAccount() public {
+        MockPersonalAccount pa = new MockPersonalAccount();
+        fxrp.mint(address(pa), 100e6);
+
+        MockPersonalAccount.Call[] memory calls = new MockPersonalAccount.Call[](2);
+        calls[0] = MockPersonalAccount.Call({
+            target: address(fxrp),
+            value: 0,
+            data: abi.encodeCall(IERC20.approve, (address(zap), type(uint256).max))
+        });
+        calls[1] = MockPersonalAccount.Call({
+            target: address(zap),
+            value: 0,
+            data: abi.encodeCall(IVulcraZap.openVaultAndForwardAll, (100e18, 500, address(pa), address(0), address(0)))
+        });
+        pa.executeUserOp(calls);
+
+        (uint256 coll,, bool active) = mgr.getVault(address(pa));
+        assertEq(coll, 100e6);
+        assertTrue(active);
+        assertEq(vusd.balanceOf(address(pa)), 100e18);
+        assertEq(fxrp.balanceOf(address(zap)), 0);
+    }
 }

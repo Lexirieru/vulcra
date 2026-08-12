@@ -46,20 +46,25 @@ export const personalAccountAbi = [
   },
 ] as const satisfies Abi;
 
+/** Max uint256 — a generous, prediction-free approval upper bound for the Zap. */
+const MAX_UINT256 = (1n << 256n) - 1n;
+
 /**
  * Build the 2-call batch for the XRPL-native atomic mint:
- *   Call[0] = FXRP.approve(zap, collateral6)
- *   Call[1] = zap.openVaultAndForward(collateral6, mint18, annualInterestRateBps, vusdDestination, prevHint, nextHint)
+ *   Call[0] = FXRP.approve(zap, MAX_UINT256)
+ *   Call[1] = zap.openVaultAndForwardAll(mint18, annualInterestRateBps, vusdDestination, prevHint, nextHint)
  *
- * Both run from the PersonalAccount context, so the Zap pulls FXRP from the
- * PersonalAccount and opens a vault owned by it. Vault identity = owner address
- * (the PersonalAccount), matching the smartcontract authority. `annualInterestRateBps`
- * is V2: for the smoothest XRPL 1-payment UX pass the VaultManager's defaultInterestRateBps().
+ * Both run from the PersonalAccount context, so the Zap reads the PA's live FXRP
+ * balance at execution and opens a vault owned by it. Reading the balance on-chain
+ * (rather than baking a collateral figure into the userOp) is deliberate: the 0xFE
+ * memo commits keccak256(userOp) BEFORE the mint, so any amount here would only be
+ * a prediction of (net minted after feeBIPS, AMG-rounded, minus executorFeeUBA).
+ * `annualInterestRateBps` is V2: for the smoothest XRPL 1-payment UX pass the
+ * VaultManager's defaultInterestRateBps().
  */
 export function buildZapMintCalls(args: {
   fxrp: Address;
   zap: Address;
-  collateral6: bigint;
   mint18: bigint;
   annualInterestRateBps: bigint;
   vusdDestination: Address;
@@ -73,7 +78,7 @@ export function buildZapMintCalls(args: {
     data: encodeFunctionData({
       abi: erc20Abi,
       functionName: "approve",
-      args: [args.zap, args.collateral6],
+      args: [args.zap, MAX_UINT256],
     }),
   };
   const open: Call = {
@@ -81,9 +86,8 @@ export function buildZapMintCalls(args: {
     value: 0n,
     data: encodeFunctionData({
       abi: vulcraZapAbi,
-      functionName: "openVaultAndForward",
+      functionName: "openVaultAndForwardAll",
       args: [
-        args.collateral6,
         args.mint18,
         args.annualInterestRateBps,
         args.vusdDestination,

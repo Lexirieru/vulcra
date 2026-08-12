@@ -59,6 +59,12 @@ export function buildMintUserOp(args: {
   nonce: bigint; // getNonce(personalAccount)
   fxrp: Address;
   zap: Address;
+  /**
+   * The collateral the XRPL payment funds. Used by the CALLER to size the XRP
+   * amount (via computeRequiredXrpDrops); it is NOT baked into the userOp calls
+   * anymore — the Zap reads the PA's live FXRP balance at execution
+   * (openVaultAndForwardAll), so fee/AMG rounding can't strand the mint.
+   */
   collateral6: bigint;
   mint18: bigint;
   /** V2 interest rate for the new vault (bps/year). Pass VaultManager.defaultInterestRateBps() for XRPL UX. */
@@ -72,7 +78,6 @@ export function buildMintUserOp(args: {
   const calls = buildZapMintCalls({
     fxrp: args.fxrp,
     zap: args.zap,
-    collateral6: args.collateral6,
     mint18: args.mint18,
     annualInterestRateBps: args.annualInterestRateBps,
     vusdDestination: args.vusdDestination,

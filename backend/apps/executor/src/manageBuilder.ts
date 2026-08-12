@@ -62,6 +62,14 @@ export type ManageAction =
   | "withdrawCollateral"
   | "spDeposit";
 
+/**
+ * Carrier net-mint for memo-only manage ops (drops = FXRP 6-dec). A fee-only
+ * payment reverts on-chain, so these ops mint a tiny amount of FXRP purely to
+ * carry the 0xFE instruction. 1 XRP matches the starter's recovery-flow default;
+ * tune down once the exact FAssets minimum net mint is confirmed.
+ */
+const CARRIER_NET_MINT_DROPS = 1_000_000n;
+
 export interface ManagePlan {
   action: ManageAction;
   xrplAddress: string;
@@ -116,9 +124,15 @@ export async function buildManagePlan(
   ]);
 
   let calls;
-  // Net mint drops for the XRPL payment: 0 for the memo-only actions, the
-  // supplied collateral for add-collateral (which mints that FXRP).
-  let netMintDrops = 0n;
+  // A true fee-only (net-mint = 0) payment reverts on-chain: direct minting
+  // requires a positive net mint before it runs the committed memo instruction,
+  // so a "memo-only" manage op can't go through this path at all. Every non-supply
+  // manage action therefore rides a small non-zero CARRIER mint — the tiny minted
+  // FXRP lands as dust on the PersonalAccount, keeping the whole CDP lifecycle on
+  // the ONE 0xFE mechanism (mirrors the starter's 0xE0/0xE1 recovery flows, which
+  // default to 1 XRP alongside the opcode). Flare-admin guidance. add-collateral
+  // overrides this with the real supply amount below.
+  let netMintDrops = CARRIER_NET_MINT_DROPS;
   if (input.action === "repay") {
     if (input.amount18 === undefined) throw new Error("amount18 is required for repay.");
     calls = buildRepayCalls({ vusd, vaultManager, amount18: input.amount18 });

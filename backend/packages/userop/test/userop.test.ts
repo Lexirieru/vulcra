@@ -52,13 +52,17 @@ describe("buildMintUserOp — the hash committed in the memo must match the user
     expect(decodeMemo(m.memo).tail.toLowerCase()).toBe(m.userOpHash.toLowerCase());
   });
 
-  it("builds the 2-call batch: approve then openVaultAndForward", () => {
+  it("builds the 2-call batch: max-approve then openVaultAndForwardAll", () => {
     const m = fixtureMint();
     expect(m.calls).toHaveLength(2);
     expect(m.calls[0]!.target.toLowerCase()).toBe(FXRP.toLowerCase()); // approve on FXRP
-    expect(m.calls[1]!.target.toLowerCase()).toBe(ZAP.toLowerCase()); // openVaultAndForward on Zap
+    expect(m.calls[1]!.target.toLowerCase()).toBe(ZAP.toLowerCase()); // openVaultAndForwardAll on Zap
     expect(m.calls[0]!.value).toBe(0n);
     expect(m.calls[1]!.value).toBe(0n);
+    // Call[0] approves MAX_UINT256 (generous upper bound, not a predicted amount).
+    expect(m.calls[0]!.data.endsWith("f".repeat(64))).toBe(true);
+    // Call[1] is openVaultAndForwardAll (reads live FXRP balance on-chain).
+    expect(m.calls[1]!.data.slice(0, 10)).toBe("0x9bfd4037");
   });
 });
 
@@ -67,11 +71,14 @@ describe("GOLDEN VECTOR — locks the encoding so a 1-byte change fails loudly",
   // If this fails, the PackedUserOperation layout, Call encoding, or memo bytes
   // changed — every real mint would revert with CustomInstructionHashMismatch.
   // Re-pin ONLY after deliberately and verifiably changing the encoding.
-  // V2 fixture includes annualInterestRateBps=500 in the zap callData.
+  // Batch is now [FXRP.approve(zap, MAX), zap.openVaultAndForwardAll(mint18, rate,
+  // dest, prevHint, nextHint)] — the Zap reads the PA's live FXRP balance at
+  // execution, so no collateral amount is baked into the userOp (Flare-admin
+  // guidance). Re-pinned after that deliberate change.
   const GOLDEN_USEROP_HASH =
-    "0xd3188bdff0257cfb2d71863d31ca92f87a4ed27ed4fb8a001dcf45a0bbe87a62";
+    "0x8e87a75d7ebc6b1ba2a9395e538fd033cf877e0f683eaa964b043ca3142b20e0";
   const GOLDEN_MEMO =
-    "0xfe0000000000000186a0d3188bdff0257cfb2d71863d31ca92f87a4ed27ed4fb8a001dcf45a0bbe87a62";
+    "0xfe0000000000000186a08e87a75d7ebc6b1ba2a9395e538fd033cf877e0f683eaa964b043ca3142b20e0";
 
   it("matches the pinned hash and memo", () => {
     const m = fixtureMint();

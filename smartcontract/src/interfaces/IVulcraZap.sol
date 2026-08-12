@@ -21,6 +21,20 @@ interface IVulcraZap {
         address nextHint
     ) external;
 
+    /// @notice Like {openVaultAndForward} but reads the caller's live FXRP balance at execution time
+    ///         instead of taking a collateral amount, so no off-chain prediction can strand the mint.
+    /// @dev The 0xFE memo commits keccak256(userOp) BEFORE the mint, so a baked-in collateral figure
+    ///      is only a guess of (minted after feeBIPS, AMG-rounded, minus executorFeeUBA). Pair with
+    ///      `Call[0] = FXRP.approve(zap, type(uint256).max)` (or a generous upper bound). The Zap
+    ///      sweeps the caller's whole FXRP balance into the new vault.
+    function openVaultAndForwardAll(
+        uint256 mint18,
+        uint256 annualInterestRateBps,
+        address vusdDestination,
+        address prevHint,
+        address nextHint
+    ) external;
+
     /// @notice Preview the resulting debt / CR / gating for a prospective atomic mint (R12).
     function previewOpen(uint256 collateral6, uint256 mint18)
         external
