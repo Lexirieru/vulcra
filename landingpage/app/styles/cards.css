@@ -4,7 +4,7 @@
     width: 100%;
     max-width: 1400px;
     height: 650px;
-    margin: 100px auto 100px 100px;
+    margin: 100px auto;
     display: flex;
     justify-content: center;
     cursor: url("/assets/Cursor SVG/cursor-text.svg") 12 12, auto;
@@ -47,10 +47,10 @@
     margin: 0;
 }
 
-/* ─── Card Color Variants ────────────────────────────────────────────────── */
+/* ─── Card Color Variants (6-card fan, uniform 205px stride) ─────────────── */
 .card-green {
     background-color: var(--color-green);
-    left: calc(50% - 700px);
+    left: calc(50% - 670px);
     top: 50px;
     transform: rotate(4deg);
     z-index: 1;
@@ -59,7 +59,7 @@
 .card-darkblue {
     background-color: var(--color-lightblue);
     color: var(--color-dark);
-    left: calc(50% - 430px);
+    left: calc(50% - 465px);
     top: 100px;
     transform: rotate(-5deg);
     z-index: 2;
@@ -68,7 +68,7 @@
 .card-orange {
     background-color: var(--color-orange);
     color: var(--color-dark);
-    left: calc(50% - 220px);
+    left: calc(50% - 260px);
     top: 20px;
     transform: rotate(5deg);
     z-index: 3;
@@ -76,25 +76,34 @@
 
 .card-maroon {
     background-color: var(--color-maroon);
-    left: calc(50% + 50px);
+    left: calc(50% - 55px);
     top: 30px;
     transform: rotate(-8deg);
     z-index: 4;
 }
 
+.card-blue {
+    background-color: var(--color-darkblue);
+    left: calc(50% + 150px);
+    top: 65px;
+    transform: rotate(6deg);
+    z-index: 5;
+}
+
 .card-pink {
     background-color: var(--color-pink);
     color: var(--color-dark);
-    left: calc(50% + 320px);
-    top: 70px;
-    transform: rotate(5deg);
-    z-index: 5;
+    left: calc(50% + 355px);
+    top: 55px;
+    transform: rotate(-4deg);
+    z-index: 6;
 }
 
 /* Expand hit area for middle cards to bridge gaps */
 .card-darkblue::after,
 .card-orange::after,
-.card-maroon::after {
+.card-maroon::after,
+.card-blue::after {
     content: "";
     position: absolute;
     top: 0;

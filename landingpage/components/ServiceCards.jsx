@@ -40,15 +40,17 @@ export default function ServiceCards() {
             <div className="cards-wrapper" id="cards-wrapper">
                 {CARDS_DATA.map((card) => (
                     <div key={card.color} className={`card card-${card.color}`}>
-                        <div className={`card-sticker sticker-${card.sticker}`}>
-                            <img
-                                src={`/assets/Card-Sticker SVG/sticker-${card.sticker}.svg`}
-                                alt=""
-                                width="100%"
-                                loading="lazy"
-                                aria-hidden="true"
-                            />
-                        </div>
+                        {card.sticker && (
+                            <div className={`card-sticker sticker-${card.sticker}`}>
+                                <img
+                                    src={`/assets/Card-Sticker SVG/sticker-${card.sticker}.svg`}
+                                    alt=""
+                                    width="100%"
+                                    loading="lazy"
+                                    aria-hidden="true"
+                                />
+                            </div>
+                        )}
                         <h3 className="card-title">{card.title}</h3>
                         <svg width="100%" height="10" className="card-divider-svg" aria-hidden="true">
                             <use href="#card-divider" />
@@ -79,7 +81,8 @@ function initCardAnimations() {
         { rotation: -5 },
         { rotation: 5 },
         { rotation: -8 },
-        { rotation: 5 }
+        { rotation: 6 },
+        { rotation: -4 }
     ];
 
     const isMobile = window.matchMedia('(max-width: 768px)').matches;
@@ -144,7 +147,7 @@ function initCardAnimations() {
         const cardsWrapper = document.querySelector('.cards-wrapper');
         const scrollPerCard = window.innerHeight * 0.8;
         const navH = 60;
-        const mobileRotations = [-6, 4, -8, 5, -3];
+        const mobileRotations = [-6, 4, -8, 5, -4, 6];
 
         cards.forEach((card, i) => {
             gsap.set(card, {

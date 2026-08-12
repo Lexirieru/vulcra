@@ -53,7 +53,7 @@ export const CARDS_DATA = [
         color: 'darkblue',
         sticker: 'phone',
         title: 'from XRPL',
-        services: ['One XRPL payment', 'No EVM wallet, no FLR', 'Flare Smart Accounts', 'FDC proves your payment', 'Sign once, done']
+        services: ['One XRPL payment', 'No EVM wallet, no FLR', 'Flare Smart Accounts', 'FDC proves your payment', 'Send vUSD to any EVM wallet']
     },
     {
         color: 'orange',
@@ -66,6 +66,12 @@ export const CARDS_DATA = [
         sticker: 'hand',
         title: 'interest',
         services: ['Set your own rate', 'Lowest rate redeemed first', 'Real, on-chain yield', 'Adjust anytime']
+    },
+    {
+        color: 'blue',
+        sticker: null,
+        title: 'earn',
+        services: ['Deposit vUSD to a pool', 'Earn real loan-fee yield', 'Backs the branch loans', 'Withdraw anytime']
     },
     {
         color: 'pink',
