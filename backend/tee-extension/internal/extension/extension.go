@@ -544,12 +544,69 @@ func (e *Extension) decryptRule(ciphertextHex, branch string) (guardian.Rule, er
 // only reachable once KEEPER_TEE_ADDRESS is set, and they fail loudly rather
 // than pretend.
 
+// signViaSignPort asks the TEE node to sign `message` with the enclave keeper key
+// (the /sign endpoint on the sign port, mirroring decryptRule's /decrypt call).
+// ⚠️ UNVERIFIED: the exact recovery-id (v) encoding of the returned 65-byte
+// signature has not been confirmed against a live tee-node.
+func (e *Extension) signViaSignPort(message []byte) ([]byte, error) {
+	if e.cfg.SignPort == "" {
+		return nil, fmt.Errorf("signViaSignPort: SIGN_PORT not configured (TEE node /sign unreachable)")
+	}
+	reqBody, err := json.Marshal(teetypes.SignRequest{Message: message})
+	if err != nil {
+		return nil, fmt.Errorf("signViaSignPort: marshal: %w", err)
+	}
+	url := fmt.Sprintf("http://127.0.0.1:%s/sign", e.cfg.SignPort)
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	resp, err := httpClient.Post(url, "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("signViaSignPort: TEE node /sign: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("signViaSignPort: TEE node /sign returned %d", resp.StatusCode)
+	}
+	var sr teetypes.SignResponse
+	if err := json.NewDecoder(resp.Body).Decode(&sr); err != nil {
+		return nil, fmt.Errorf("signViaSignPort: decode response: %w", err)
+	}
+	return sr.Signature, nil
+}
+
+// submitTx builds a VaultManager call from the keeper wallet, has the TEE sign
+// port sign it inside the enclave, and broadcasts it. ⚠️ UNVERIFIED end-to-end —
+// only reachable once KEEPER_TEE_ADDRESS + SIGN_PORT are set (CanExecuteOnChain).
+func (e *Extension) submitTx(br *config.Branch, data []byte) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	from := common.HexToAddress(e.cfg.KeeperTEEAddress)
+	to := common.HexToAddress(br.VaultManager)
+	chainID := big.NewInt(e.cfg.ChainID)
+	tx, sigHash, err := e.chain.PrepareTx(ctx, from, to, data, chainID)
+	if err != nil {
+		return "", err
+	}
+	sig, err := e.signViaSignPort(sigHash.Bytes())
+	if err != nil {
+		return "", err
+	}
+	return e.chain.SendSigned(ctx, tx, chainID, sig)
+}
+
 func (e *Extension) submitLiquidate(br *config.Branch, owner string) (txHash string, err error) {
-	return "", fmt.Errorf("submitLiquidate[%s]: TEE keeper wallet signing not provisioned in this deployment (liquidate stays decision-only)", branchKeyOf(br))
+	data, err := chain.PackLiquidate(common.HexToAddress(owner))
+	if err != nil {
+		return "", fmt.Errorf("submitLiquidate[%s]: %w", branchKeyOf(br), err)
+	}
+	return e.submitTx(br, data)
 }
 
 func (e *Extension) submitDelegatedRepay(br *config.Branch, owner string, amount *big.Int) (txHash string, err error) {
-	return "", fmt.Errorf("submitDelegatedRepay[%s]: TEE keeper wallet signing not provisioned in this deployment (delegatedRepay stays decision-only)", branchKeyOf(br))
+	data, err := chain.PackDelegatedRepay(common.HexToAddress(owner), amount)
+	if err != nil {
+		return "", fmt.Errorf("submitDelegatedRepay[%s]: %w", branchKeyOf(br), err)
+	}
+	return e.submitTx(br, data)
 }
 
 // branchKeyOf is a nil-safe accessor for a branch's key, for log/error messages.
