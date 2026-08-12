@@ -488,7 +488,7 @@ git clone --recursive https://github.com/Lexirieru/vulcra
 cd vulcra
 
 # 1) Contracts are already live on Coston2 (addresses above). To rebuild/test:
-cd smartcontract && forge build && forge test        # 174 passing
+cd smartcontract && forge build && forge test        # 177 passing
 
 # 2) Backend executor (needs a funded key + FDC/FTSO env in backend/.env)
 cd ../backend && npm install && npm -w apps/executor start     # :8787
@@ -508,9 +508,9 @@ A monorepo. Each part is independently runnable.
 
 | Path | What's inside | Verify it |
 |---|---|---|
-| **`smartcontract/`** | Solidity + Foundry. `VaultManager`, `VulcraZap`, `PriceOracle`, `StabilityPool` (UUPS), per-user vault accounting, by-rate redemption, deploy/upgrade scripts. | `forge test` — **174 passing** |
+| **`smartcontract/`** | Solidity + Foundry. `VaultManager`, `VulcraZap`, `PriceOracle`, `StabilityPool` (UUPS), per-user vault accounting, by-rate redemption, deploy/upgrade scripts. | `forge test` — **177 passing** |
 | **`backend/`** | Node + `tsx` workspace. `apps/executor` (Fastify: build / submit / status, FDC attestation, `executeDirectMintingWithData`), `apps/mcp` (AI-agent MCP), `apps/indexer` (at-risk vaults), `packages/userop` (0xFE memo + `PackedUserOperation`), `packages/chain-client`, `packages/interfaces`, `tee-extension` (Guardian). | `npm test` — userop 20 · executor 56 · indexer 38 |
-| **`frontend/`** | Next.js 16 app. Borrow (EVM FXRP/wFLR + XRPL-native XRP), manage panels, Earn, Redeem, live FTSO prices, mint tracker. | `npm run build` · Playwright 23 |
+| **`frontend/`** | Next.js 16 app. Borrow (EVM FXRP/wFLR + XRPL-native XRP), manage panels, Earn, Redeem, live FTSO prices, mint tracker. | `npm run build` · Playwright 25 |
 | **`landingpage/`** | Marketing / landing experience (Next 15 · GSAP). | its own dev server |
 | **`docs/`** | Build plans + the end-to-end diagnosis fact chain. | — |
 
@@ -563,7 +563,7 @@ Everything targets **Flare Coston2 (114)**.
 | Language / toolchain | **Solidity 0.8.28** · **Foundry** (`forge` · `cast` · `anvil`), `via_ir`, evm `cancun` |
 | Libraries | **OpenZeppelin** (v5) — UUPS proxies + AccessControl · `forge-std` · **`@flarenetwork/flare-periphery-contracts`** (official interfaces) |
 | Flare integration | **FTSOv2** feeds · **FAssets** (`AssetManagerFXRP`) · **Smart Accounts** · all resolved through **FlareContractRegistry** — no hardcoded system addresses except the registry |
-| Tests | `forge test` — **174 passing** (unit + a live FTSOv2 fork test) |
+| Tests | `forge test` — **177 passing** (unit + a live FTSOv2 fork test) |
 
 ### ⚙️ `backend` — executor, MCP & keepers
 
@@ -583,7 +583,7 @@ Everything targets **Flare Coston2 (114)**.
 | Layer | What we use |
 |---|---|
 | Framework | **Next.js 16** (App Router) · **React 19** · **TypeScript** (single light theme) |
-| Web3 (EVM) | **wagmi 3** + **viem 2** + **Reown AppKit** (WalletConnect) — Coston2 only |
+| Web3 (EVM) | **wagmi 3** + **viem 2** + **Reown AppKit** (WalletConnect) — Coston2 only, via a viem `fallback` transport (thirdweb primary → Flare public backup) so a slow/rate-limited RPC can't strand a read |
 | Web3 (XRPL) | **Crossmark** + **GemWallet** — sign the raw Payment in-browser, 0xFE memo preserved verbatim, no server key |
 | Data | **TanStack Query 5** · live **FTSOv2** prices · ABIs from the contracts |
 | UI | **Tailwind CSS** · hand-rolled component kit · `lucide-react` · framer-motion / GSAP · verified headless + Playwright (23 passing) |

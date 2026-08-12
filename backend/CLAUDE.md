@@ -11,7 +11,7 @@ No build step — TypeScript runs directly via `tsx`. **Node ≥ 22.**
 | `apps/executor/` | Fastify HTTP API (`:8787`): build / submit / track mints + manage ops, FDC attestation, `executeDirectMintingWithData`. | [`apps/executor/CLAUDE.md`](apps/executor/CLAUDE.md) |
 | `apps/indexer/` | (scaffold) event/at-risk indexer (R19); the `/vaults/at-risk` endpoint the FE calls. | — |
 | `packages/userop/` | The 0xFE core: memo + `PackedUserOperation` + vault call batches. | [`packages/userop/CLAUDE.md`](packages/userop/CLAUDE.md) |
-| `packages/chain-client/` | Resolve Flare system contracts via `FlareContractRegistry`. | [`packages/chain-client/CLAUDE.md`](packages/chain-client/CLAUDE.md) |
+| `packages/chain-client/` | Resolve Flare system contracts via `FlareContractRegistry`; viem `fallback` RPC transport (thirdweb → Flare public) in `coston2Transport`. | [`packages/chain-client/CLAUDE.md`](packages/chain-client/CLAUDE.md) |
 | `packages/interfaces/` | Shared viem ABIs (VaultManager, Zap, ERC-20, PersonalAccount). | [`packages/interfaces/CLAUDE.md`](packages/interfaces/CLAUDE.md) |
 | `tee-extension/` | Go — Guardian confidential keeper (TEE). | [`tee-extension/CLAUDE.md`](tee-extension/CLAUDE.md) |
 | `docs/` | FDC/TEE run-books + E2E evidence. | — |

@@ -78,8 +78,14 @@ attestation + periphery (`flare-foundry-starter` / `flare-viem-starter@c13a046`)
 `FdcVerification.fdcProtocolId()` (fallback 200). Coston2 direct-minting caps: 100k XRP/hr, 500k/day,
 uncapped `mintingCap` (the "0.1 XRP" figures are fees, not caps).
 
+**RPC:** Coston2 reads/writes go through a viem `fallback` transport — thirdweb's Coston2 endpoint
+(`flare-testnet-coston2.rpc.thirdweb.com`, faster + more concurrency-tolerant than the shared Flare
+public RPC) primary, Flare public backup. Set in `frontend/src/config/index.ts` (`WagmiAdapter`
+transports) and `backend/packages/chain-client/src/clients.ts` (`coston2Transport`); override the
+primary with `NEXT_PUBLIC_COSTON2_RPC_URL` / `COSTON2_RPC_URL`.
+
 Full fact chain: `docs/diagnosis/callfailed-openvault.md`. Also solid: EVM open/manage, Earn, redemption
-UI, the Vulcra MCP server, and all test suites (forge 174 · backend green · FE build · Playwright 23).
+UI, the Vulcra MCP server, and all test suites (forge 177 · backend green · FE build · Playwright 25).
 
 ## Live on Coston2 (chain 114 · https://coston2-explorer.flare.network)
 

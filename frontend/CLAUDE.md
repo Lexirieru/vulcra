@@ -55,6 +55,12 @@ signed Payment — no EVM wallet, no FLR gas.
 - **Contract is the authority.** Flare system addresses resolve at runtime via
   `FlareContractRegistry`; Vulcra addresses come from `NEXT_PUBLIC_*` env with committed
   Coston2 fallbacks. Never hardcode a Flare system address (registry is the one exception).
+- **RPC transport (`src/config/index.ts`).** `WagmiAdapter` uses a viem `fallback([thirdweb,
+  flare-public])` for Coston2 — thirdweb's endpoint is faster + more concurrency-tolerant than the
+  shared Flare public RPC; override the primary with `NEXT_PUBLIC_COSTON2_RPC_URL`.
+- **Hydration-safe inputs.** Controlled amount inputs (BorrowComposer) are `disabled` until a
+  `hydrated` flag flips in `useEffect` — a keystroke typed into the SSR DOM before the component
+  mounts would otherwise be discarded when React re-applies the empty server value.
 
 ## Security
 - Secrets/config live ONLY in gitignored `.env*` files (`.gitignore` ignores `.env*`).
