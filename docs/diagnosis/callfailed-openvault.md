@@ -1,5 +1,28 @@
 # Diagnosis — XRPL-native `openVault` reverts with `CallFailed(bytes)` (0xa5fa8d2b)
 
+> ## ✅ RESOLVED — 12 Aug 2026
+>
+> **XRPL-native openVault via 0xFE works end-to-end on live Coston2.** Proof: tx
+> [`0xc6f4b988…6fb8e391`](https://coston2-explorer.flare.network/tx/0xc6f4b9881aed9c287df83de2ca3f317d9d48f20a298e9ab09f461eee6fb8e391)
+> (status 1) → `getVault(PA 0x6f6639…e3d4)` = active, **0.08 FXRP / 0.05025 vUSD / 5% p.a.**
+>
+> **Root cause was NOT our code and NOT a v1.3 encoding break.** Our `PackedUserOperation` encoding is
+> byte-for-byte identical to `flare-viem-starter@c13a046` (`PACKED_USER_OPERATION_TUPLE`, 9-field packed,
+> single-tuple param); attestationType `XRPPayment` and proofOwner = executor EOA were already correct.
+> The persistent revert was **transient**: the *exact* reverting calldata that failed 57× later passed
+> `cast call` + `cast estimate` (1.19M gas) and the mined submit went through. Most likely FDC proof
+> finality relative to mine-time. (Flare admin "Nik" confirmed the reference 0xFE flow runs clean on live
+> Coston2 and v1.3 did not touch that path; a revert at Call index 1 already proves hash-match, decode,
+> sender/nonce, and the index-0 approve all succeeded — so the encoding was never the problem.)
+>
+> **Robustness follow-ups (not blockers):** (1) don't bake a predicted `collateral6` into the userOp —
+> the memo commits `keccak256(userOp)` before the mint and net minted = amount after `feeBIPS`,
+> AMG-rounded, minus `executorFeeUBA`; have the Zap read `FXRP.balanceOf(msg.sender)` at execution + max
+> approve. (2) net-mint=0 manage ops should ride a small non-zero **carrier mint** (~1 XRP). (3) the
+> earlier `VaultExists()` hypothesis below was **wrong** — the PA had no active vault; it opened fine.
+>
+> The analysis below is kept for the fact chain; read it knowing the outcome above.
+
 **Date:** 2026-08-12 · **Branch:** FXRP · **Network:** Coston2 (114)
 **Symptom:** FDC attestation + proof succeed; `AssetManagerFXRP.executeDirectMintingWithData(proof, data)`
 reverts with selector `0xa5fa8d2b` = `CallFailed(bytes)`. The FXRP mint step is logically fine; the

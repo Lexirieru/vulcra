@@ -34,30 +34,39 @@ So the whole vault lifecycle is one primitive — the frontend's XRPL manage pan
 (Deposit / Withdraw / Borrow / Repay / Interest / Close), each tab a different `Call[]` behind one
 XRPL payment. **No contract changes are needed to manage a vault from the XRP Ledger.**
 
-### ⚠️ CURRENT STATUS (12 Aug 2026) — XRPL-native `_data` path blocked by the FAssets v1.3 redeploy
+### ✅ RESOLVED (12 Aug 2026) — XRPL-native openVault via 0xFE works end-to-end on live Coston2
 
-Verified E2E on Coston2 (see `docs/diagnosis/callfailed-openvault.md` for the full fact chain):
+Proven on-chain: tx [`0xc6f4b988…6fb8e391`](https://coston2-explorer.flare.network/tx/0xc6f4b9881aed9c287df83de2ca3f317d9d48f20a298e9ab09f461eee6fb8e391)
+(status 1, 25 logs incl. `VaultManager` + vUSD mint + `MasterAccountController.UserOperationExecuted`).
+`getVault(PA 0x6f6639…e3d4)` on VaultManager FXRP = **active, 0.08 FXRP collateral, 0.05025 vUSD debt,
+5% p.a.** One signed XRPL Payment (r-address `rHS3D3…moog`) → FDC proof → `executeDirectMintingWithData`
+minted FXRP **and** ran the committed `[FXRP.approve(zap), zap.openVaultAndForward(...)]` batch atomically.
 
-- **FDC works** (attestation submitted → proof retrieved; the old 401 is gone).
-- **Every XRPL-native op that carries a userOp `_data` currently REVERTS** — both `net-mint>0`
-  (open/borrow) **and** `net-mint=0` (repay/close/adjust/spDeposit). Inner revert is
-  `CallFailed(uint256=1, bytes=0x)` = the committed `Call[]` execution returns empty data.
-- **Vulcra's own contracts are PROVEN CORRECT**: an `anvil` fork of live Coston2 opens a vault fine
-  when `Zap.openVaultAndForward(...)` is called directly (transferFrom → vUSD mint → `VaultOpened`,
-  570k gas). The empty revert is **not** in Vulcra code.
-- **Root cause = FAssets v1.3** (the Coston2 redeploy). `executeDirectMintingWithData(proof, _data)`
-  now mints FXRP to a NEW `SmartAccountManager` (`IMemoInstructionsFacet`) and calls
-  `handleMintedFAssets(..., memoData, executor, fullData)`; that v1.3 contract executes the userOp.
-  Our 42-byte 0xFE memo layout matches v1.3 (`UserOpCustomInstruction`: opcode / walletId /
-  executorFeeUBA(8) / hash(32)), so the break is in how the v1.3 SmartAccountManager runs the
-  `_data` (PackedUserOperation) — the whole 0xFE custom-instruction-with-data execution changed.
-- **Fix direction (off-chain only, no Vulcra contract change):** migrate `packages/userop` +
-  `apps/executor` mint/manage flow to the v1.3 `IMemoInstructionsFacet` / `@flarenetwork/smart-accounts-encoder`
-  `_data` + executor-binding format, then re-run a ≤0.1 FXRP E2E (Coston2 direct-minting caps: 0.1
-  FXRP/hr, 0.5/day, large-mint delay >0.1). Needs the deployed `SmartAccountManager` `_data` spec.
-- **Unaffected & demoable now:** the EVM open/manage path, Earn, redemption UI, the Vulcra MCP
-  server (returns unsigned payloads), and all test suites (forge 171 · backend 151 · FE build ·
-  Playwright 23).
+- **Our 0xFE encoding was correct all along — NOT a v1.3 break.** `packages/userop/packedUserOp.ts`
+  is byte-for-byte identical to the `flare-viem-starter@c13a046` `PACKED_USER_OPERATION_TUPLE`
+  (9-field packed, single-tuple `encodeAbiParameters`, `keccak256(_data)` in the 42-byte memo).
+  attestationType = `XRPPayment` ✓, proofOwner = executor EOA ✓. (Flare admin confirmed the reference
+  0xFE flow runs clean on live Coston2 and v1.3 did not touch that path; a revert at Call index 1
+  itself proves hash-match, decode, sender/nonce, and the index-0 approve all succeeded.)
+- **The earlier persistent revert was transient**, not a code bug: the *exact* reverting calldata that
+  failed 57× in the E2E later passed `cast call` (eth_call) + `cast estimate` (1.19M gas) cleanly, then
+  the mined submit succeeded. Most likely FDC proof finality relative to when we mined.
+- **Correction:** Coston2 direct-minting caps are ~100k FXRP/hr, 500k/day (the earlier "0.1 FXRP/hr"
+  was a `formatUnits` misread). Our mint was 0.08 FXRP.
+
+**Robustness follow-ups (Flare-admin guidance, not blockers):**
+- **Don't bake a predicted collateral amount into the userOp.** The memo commits `keccak256(userOp)`
+  *before* the mint, and the net minted is (amount after `feeBIPS`, AMG-rounded, minus `executorFeeUBA`).
+  Robust fix: have the Zap read `FXRP.balanceOf(msg.sender)` at execution time and pull that, with an
+  `approve` of a generous upper bound / max. Then fee + AMG rounding can't strand a mint.
+- **net-mint=0 (repay/close/adjust/spDeposit): attach a small non-zero carrier mint (~1 XRP)** so the
+  instruction rides a real mint — exactly what the starter's 0xE0/0xE1 recovery flows do. Keeps ONE
+  mechanism for the whole CDP lifecycle instead of a second path.
+- The vault is owned by the **PersonalAccount** (not the XRPL-derived EOA); drive all downstream ops
+  from the PA.
+
+Full fact chain: `docs/diagnosis/callfailed-openvault.md`. Also solid: EVM open/manage, Earn, redemption
+UI, the Vulcra MCP server, and all test suites (forge 171 · backend 151 · FE build · Playwright 23).
 
 ## Live on Coston2 (chain 114 · https://coston2-explorer.flare.network)
 

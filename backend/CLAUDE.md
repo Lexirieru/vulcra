@@ -39,21 +39,27 @@ executor logs `live mint pipeline ENABLED`; without it, mints queue with a clear
 
 **net-mint = 0** = fees-only "memo-only" op (no FXRP minted); **net-mint > 0** mints FXRP. Same path.
 
-### ⚠️ BLOCKED by the FAssets v1.3 Coston2 redeploy (12 Aug 2026)
+### ✅ RESOLVED (12 Aug 2026) — Step 3 works end-to-end on live Coston2
 
-Step 3 currently REVERTS for **every** userOp op (net-0 AND net-mint>0): inner
-`CallFailed(uint256=1, bytes=0x)` — the committed `Call[]` runs to empty data. FDC itself is fine
-(attest + proof succeed). Verified: an `anvil` fork of live Coston2 opens a vault when
-`Zap.openVaultAndForward` is called directly, so **Vulcra contracts are correct** — the break is in
-v1.3's new `SmartAccountManager` (`IMemoInstructionsFacet.handleMintedFAssets`), which now executes
-the `_data`. Our 0xFE memo layout already matches v1.3 (`UserOpCustomInstruction`); the mismatch is in
-the `_data` (`PackedUserOperation`) execution.
+XRPL-native openVault via 0xFE is proven on-chain: tx `0xc6f4b988…6fb8e391` (status 1), vault active
+(0.08 FXRP / 0.05025 vUSD / 5% p.a.) for PA `0x6f6639…e3d4`. Our `packages/userop` encoding was
+**correct all along** — byte-for-byte identical to `flare-viem-starter@c13a046`'s
+`PACKED_USER_OPERATION_TUPLE` (9-field packed, single-tuple param, `keccak256(_data)` in the memo);
+attestationType `XRPPayment`, proofOwner = executor EOA. The earlier persistent revert was **transient**
+(the exact reverting calldata later passed `cast call` + `cast estimate` and the mined submit succeeded),
+not a v1.3 `_data` incompatibility. NO contract or encoding change was needed.
 
-**Where to fix (off-chain, no contract change):** `packages/userop` (memo + `PackedUserOperation` +
-`executeExecuteUserOp` callData) and this executor's `submitDirectMinting` / `mintBuilder` — migrate to
-the v1.3 `IMemoInstructionsFacet` + `@flarenetwork/smart-accounts-encoder` `_data`/executor-binding
-format, then re-run a ≤0.1 FXRP E2E (Coston2 caps: 0.1 FXRP/hr, 0.5/day). Full analysis + source refs:
-root `docs/diagnosis/callfailed-openvault.md`.
+**Robustness follow-ups (Flare-admin guidance, not blockers):**
+- `packages/userop` currently bakes a predicted `collateral6` into `zap.openVaultAndForward`. Because the
+  memo commits `keccak256(userOp)` *before* the mint, and net minted = amount after `feeBIPS`,
+  AMG-rounded, minus `executorFeeUBA`, that prediction is fragile. Preferred: a Zap entrypoint that reads
+  `FXRP.balanceOf(msg.sender)` at execution + `approve` a generous upper bound / max.
+- net-mint=0 manage ops (repay/close/adjust/spDeposit) should attach a small non-zero **carrier mint**
+  (~1 XRP), like the starter's 0xE0/0xE1 recovery — one mechanism for the whole lifecycle.
+- `submitDirectMinting` already retries on tx revert; the durable win is making the retry span the FDC
+  finality window so the executor lands the mint without an operator step.
+
+Full analysis + source refs: root `docs/diagnosis/callfailed-openvault.md`.
 
 ## Gotchas
 
