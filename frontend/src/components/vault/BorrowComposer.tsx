@@ -231,6 +231,14 @@ export function BorrowComposer({
   // setState-in-effect: the DOM survives, so focus/scroll are kept, the framer
   // `Reveal` wrapper around this composer never re-animates, and there is no
   // extra render pass. (React's documented "adjusting state when props change".)
+  // Hydration gate: a controlled input rendered on the server starts empty, and
+  // React re-applies that empty value on hydration — so anything typed into the
+  // pre-hydration DOM (before this component's client JS takes over) is discarded.
+  // Mark the inputs not-ready until mounted so a keystroke (or a test's fill) in
+  // that ~first-paint window can't be silently dropped.
+  const [hydrated, setHydrated] = useState(false);
+  useEffect(() => setHydrated(true), []);
+
   const [lastBranchKey, setLastBranchKey] = useState(branch.key);
   if (lastBranchKey !== branch.key) {
     setLastBranchKey(branch.key);
@@ -339,8 +347,9 @@ export function BorrowComposer({
             placeholder="0.0"
             value={collateral}
             onChange={(e) => setCollateral(e.target.value)}
+            disabled={!hydrated}
             aria-label={`${branch.collateralSymbol} to deposit`}
-            className="w-full min-w-0 bg-transparent text-4xl font-semibold tabular-nums text-ink outline-none placeholder:text-muted/50"
+            className="w-full min-w-0 bg-transparent text-4xl font-semibold tabular-nums text-ink outline-none placeholder:text-muted/50 disabled:cursor-wait"
           />
           <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface-2 py-1.5 pl-1.5 pr-3.5 text-base font-semibold text-ink">
             <TokenIcon symbol={branch.collateralSymbol} size={26} alt="" />
@@ -400,8 +409,9 @@ export function BorrowComposer({
                 placeholder="C2FLR amount"
                 value={wrapAmount}
                 onChange={(e) => setWrapAmount(e.target.value)}
+                disabled={!hydrated}
                 aria-label="C2FLR to wrap"
-                className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm tabular-nums text-ink outline-none placeholder:text-muted/60 focus:border-brand"
+                className="h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm tabular-nums text-ink outline-none placeholder:text-muted/60 focus:border-brand disabled:cursor-wait"
               />
               <Button
                 type="submit"
@@ -430,8 +440,9 @@ export function BorrowComposer({
             placeholder="0.0"
             value={mint}
             onChange={(e) => setMint(e.target.value)}
+            disabled={!hydrated}
             aria-label="vUSD to borrow"
-            className="w-full min-w-0 bg-transparent text-4xl font-semibold tabular-nums text-ink outline-none placeholder:text-muted/50"
+            className="w-full min-w-0 bg-transparent text-4xl font-semibold tabular-nums text-ink outline-none placeholder:text-muted/50 disabled:cursor-wait"
           />
           <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-line bg-surface-2 py-1.5 pl-1.5 pr-3.5 text-base font-semibold text-ink">
             <TokenIcon symbol="vUSD" size={26} alt="" />
