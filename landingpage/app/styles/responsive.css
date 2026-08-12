@@ -45,6 +45,25 @@
 /* ─── Mobile (≤ 768px) ───────────────────────────────────────────────────── */
 @media (max-width: 768px) {
 
+    /* The service cards carry ±35px ::after hit-area extenders (to bridge the fan
+       gaps for desktop hover). On mobile GSAP re-stacks the cards centered AND
+       rotated, and the rotated card + its wide ::after produced an AABB ~420px —
+       widening the layout viewport (~27px horizontal scroll / shrink-to-fit zoom).
+       The hover bridges are pointless on mobile (no hover, cards stack), so drop
+       them; that removes the overflow at the source. Scoped ≤768px, desktop
+       untouched. */
+    .card-darkblue::after,
+    .card-orange::after,
+    .card-maroon::after,
+    .card-blue::after {
+        display: none;
+    }
+
+    /* Belt-and-suspenders: clip any residual horizontal overflow in the section. */
+    .service-cards-wrapper {
+        overflow-x: clip;
+    }
+
     /* ── Navbar ─────────────────────── */
     .navbar {
         padding: 14px 16px;
