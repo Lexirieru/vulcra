@@ -594,14 +594,13 @@ Everything targets **Flare Coston2 (114)**.
 
 ---
 
-## 👥 Team
+## 👤 Builder
+
+Built solo — protocol, executor, MCP agent, TEE Guardian, frontend, and landing page.
 
 | | Role | GitHub |
 |---|---|---|
-| **Ghoza** | Architect Engineer | [@ghozzza](https://github.com/ghozzza) |
-| **Axel** | Integration Engineer | [@Lexirieru](https://github.com/Lexirieru) |
-| **Wildan** | Backend Engineer | [@ahmadstiff](https://github.com/ahmadstiff) |
-| **Ahmad** | Frontend Engineer | [@wildanre](https://github.com/wildanre) |
+| **Axel** | Solo builder — full-stack + smart contracts | [@Lexirieru](https://github.com/Lexirieru) |
 
 ---
 
