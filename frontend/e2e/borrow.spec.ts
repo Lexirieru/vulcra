@@ -34,12 +34,19 @@ test.describe("/borrow/fxrp composer", () => {
     await page.goto("/borrow/fxrp", { waitUntil: "domcontentloaded" });
     await waitForShell(page);
 
-    await page.getByLabel("FXRP to deposit").fill("100");
+    // Wait for the live FTSO price to render (composer hydrated, oracle ready).
+    await expect(page.getByText(/XRP\/USD price/i)).toBeVisible({ timeout: 45_000 });
 
-    // Max mint is derived from the live FTSO price, so this asserts the whole
-    // collateral→price→maxMintable chain. Requires the dev server to reach
-    // Coston2 RPC; generous timeout for the first price read.
-    await expect(page.getByRole("button", { name: /^Max\s/ })).toBeVisible({ timeout: 20_000 });
+    // The composer resets its transient inputs whenever its on-chain data settles
+    // (can happen more than once under RPC load), which drops a fill issued during
+    // a settle. Retry the fill AND the Max assertion together so the whole thing
+    // re-runs until the value survives long enough for the live-price→maxMintable
+    // Max button to render — the real oracle chain, no mock.
+    const deposit = page.getByLabel("FXRP to deposit");
+    await expect(async () => {
+      await deposit.fill("100");
+      await expect(page.getByRole("button", { name: /^Max\s/ })).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 40_000 });
   });
 
   test("CTA shows a not-ready reason (never 'Open vault') while the loan is empty", async ({
@@ -68,10 +75,17 @@ test.describe("/borrow/fxrp composer", () => {
   }) => {
     await page.goto("/borrow/fxrp", { waitUntil: "domcontentloaded" });
     await waitForShell(page);
+    // Same hydration gate as above: interacting before the composer hydrates drops
+    // the event. The live price is the readiness signal.
+    await expect(page.getByText(/XRP\/USD price/i)).toBeVisible({ timeout: 45_000 });
 
     // Radiogroup selector — pick wFLR; URL must NOT change (state, not routing).
-    await page.getByRole("radio", { name: /WC2FLR/i }).click();
+    // Retry the click until the switch takes: a click during the composer's initial
+    // settle can be dropped (same window as the fill race above).
+    await expect(async () => {
+      await page.getByRole("radio", { name: /WC2FLR/i }).click();
+      await expect(page.getByLabel("WC2FLR to deposit")).toBeVisible({ timeout: 3_000 });
+    }).toPass({ timeout: 40_000 });
     await expect(page).toHaveURL(/\/borrow\/fxrp$/);
-    await expect(page.getByLabel("WC2FLR to deposit")).toBeVisible();
   });
 });
