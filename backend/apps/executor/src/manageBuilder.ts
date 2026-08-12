@@ -13,6 +13,7 @@ import {
   buildAddCollateralCalls,
   buildWithdrawCollateralCalls,
   buildStabilityDepositCalls,
+  buildSendVusdCalls,
   buildManageUserOp,
   getPersonalAccount,
   getNonce,
@@ -60,7 +61,8 @@ export type ManageAction =
   | "mintMore"
   | "addCollateral"
   | "withdrawCollateral"
-  | "spDeposit";
+  | "spDeposit"
+  | "send";
 
 /**
  * Carrier net-mint for memo-only manage ops (drops = FXRP 6-dec). A fee-only
@@ -107,6 +109,8 @@ export async function buildManagePlan(
     collateral6?: bigint;
     /** New annual interest rate (bps) — required for `adjustRate`. */
     newRateBps?: bigint;
+    /** Destination EVM address — required for `send` (vUSD transfer out of the PA). */
+    toAddress?: Address;
   },
 ): Promise<ManagePlan> {
   if (!env.xrplBranch) {
@@ -170,6 +174,14 @@ export async function buildManagePlan(
       args: [],
     })) as Address;
     calls = buildStabilityDepositCalls({ vusd, pool, amount18: input.amount18 });
+  } else if (input.action === "send") {
+    // Send vUSD held on the PersonalAccount out to an arbitrary EVM address (e.g. a
+    // Rabby / MetaMask wallet): a plain ERC-20 transfer committed as a 0xFE call, so
+    // vUSD borrowed on the XRP Ledger lands as spendable vUSD on any EVM wallet in
+    // ONE signed XRPL payment. Net mint 0 (memo-only, rides the carrier mint).
+    if (input.amount18 === undefined) throw new Error("amount18 is required for send.");
+    if (input.toAddress === undefined) throw new Error("toAddress is required for send.");
+    calls = buildSendVusdCalls({ vusd, to: input.toAddress, amount18: input.amount18 });
   } else if (input.action === "close") {
     // Close approves + burns the FULL debt, so read it live right before building.
     const [, debt18] = (await client.readContract({

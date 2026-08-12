@@ -155,17 +155,18 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
       amount18?: string;
       collateral6?: string;
       newRateBps?: string;
+      to?: string;
     };
   }>("/manage/build", async (req, reply) => {
-    const { xrplAddress, action, amount18, collateral6, newRateBps } = req.body ?? {};
+    const { xrplAddress, action, amount18, collateral6, newRateBps, to } = req.body ?? {};
     if (
       !xrplAddress ||
       !action ||
-      !["repay", "close", "adjustRate", "mintMore", "addCollateral", "withdrawCollateral", "spDeposit"].includes(action)
+      !["repay", "close", "adjustRate", "mintMore", "addCollateral", "withdrawCollateral", "spDeposit", "send"].includes(action)
     ) {
-      return reply.code(400).send({ error: "xrplAddress and action (repay|mintMore|addCollateral|withdrawCollateral|spDeposit|close|adjustRate) are required" });
+      return reply.code(400).send({ error: "xrplAddress and action (repay|mintMore|addCollateral|withdrawCollateral|spDeposit|send|close|adjustRate) are required" });
     }
-    if ((action === "repay" || action === "mintMore" || action === "spDeposit") && amount18 === undefined) {
+    if ((action === "repay" || action === "mintMore" || action === "spDeposit" || action === "send") && amount18 === undefined) {
       return reply.code(400).send({ error: `amount18 is required for ${action}` });
     }
     if ((action === "addCollateral" || action === "withdrawCollateral") && collateral6 === undefined) {
@@ -174,6 +175,9 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
     if (action === "adjustRate" && newRateBps === undefined) {
       return reply.code(400).send({ error: "newRateBps is required for adjustRate" });
     }
+    if (action === "send" && (!to || !/^0x[0-9a-fA-F]{40}$/.test(to))) {
+      return reply.code(400).send({ error: "to (a 0x EVM address) is required for send" });
+    }
     try {
       const plan = await services.buildManage({
         xrplAddress,
@@ -181,6 +185,7 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
         amount18: amount18 !== undefined ? BigInt(amount18) : undefined,
         collateral6: collateral6 !== undefined ? BigInt(collateral6) : undefined,
         newRateBps: newRateBps !== undefined ? BigInt(newRateBps) : undefined,
+        toAddress: to !== undefined ? (to as `0x${string}`) : undefined,
       });
       return serializeBigints(plan);
     } catch (err) {

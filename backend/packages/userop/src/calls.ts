@@ -256,6 +256,27 @@ export function buildStabilityDepositCalls(args: {
   ];
 }
 
+/**
+ * transfer(to, amount18): send vUSD held on the PersonalAccount to an arbitrary
+ * EVM address (e.g. a Rabby / MetaMask wallet). Net mint = 0 (memo-only): the vUSD
+ * already lives on the PA (it was just borrowed), so this is a plain ERC-20
+ * transfer committed as a 0xFE call — "borrow on XRPL → hold real vUSD on any EVM
+ * wallet" in one signed XRPL payment, no EVM wallet needed to move it out.
+ */
+export function buildSendVusdCalls(args: {
+  vusd: Address;
+  to: Address;
+  amount18: bigint;
+}): Call[] {
+  return [
+    {
+      target: args.vusd,
+      value: 0n,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [args.to, args.amount18] }),
+    },
+  ];
+}
+
 /** adjustInterestRate(newRateBps): change the vault's rate (no value moved). */
 export function buildAdjustRateCalls(args: {
   vaultManager: Address;

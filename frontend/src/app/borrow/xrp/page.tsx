@@ -16,6 +16,7 @@ import { Reveal } from "@/components/motion";
 import { LivePrice } from "@/components/vault/LivePrice";
 import { RedemptionsExplainer } from "@/components/vault/RedemptionsExplainer";
 import { XrplMintFlow } from "@/components/xrpl/XrplMintFlow";
+import { XrplSendVusd } from "@/components/xrpl/XrplSendVusd";
 import { BRANCHES } from "@/config/branches";
 
 export default function BorrowXrpPage() {
@@ -52,6 +53,9 @@ export default function BorrowXrpPage() {
       <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="flex flex-col gap-6">
           <XrplMintFlow />
+          <Reveal delay={0.1}>
+            <XrplSendVusd />
+          </Reveal>
         </div>
 
         <aside className="flex flex-col gap-4" aria-label="Market info">

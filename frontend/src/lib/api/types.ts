@@ -93,16 +93,19 @@ export type ManageAction =
   | "mintMore"
   | "addCollateral"
   | "withdrawCollateral"
-  | "spDeposit";
+  | "spDeposit"
+  | "send";
 export interface ManageBuildRequest {
   xrplAddress: string;
   action: ManageAction;
-  /** vUSD (18-dec) to repay / borrow-more / deposit-to-pool, decimal — `repay`/`mintMore`/`spDeposit`. */
+  /** vUSD (18-dec) to repay / borrow-more / deposit-to-pool / send-out, decimal — `repay`/`mintMore`/`spDeposit`/`send`. */
   amount18?: string;
   /** FXRP (6-dec) to supply/withdraw, decimal string — for `addCollateral`/`withdrawCollateral`. */
   collateral6?: string;
   /** new annual interest rate (bps), decimal string — required for `adjustRate`. */
   newRateBps?: string;
+  /** Destination EVM address (0x…) — required for `send` (transfer vUSD out of the PersonalAccount). */
+  to?: string;
 }
 
 export interface MintBuildResponse {

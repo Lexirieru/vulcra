@@ -24,6 +24,7 @@ const ACTION_META: Record<TrackedAction, { title: string; executing: string; don
   adjustRate: { title: "Rate update", executing: "Applying new rate", done: "Rate updated" },
   close: { title: "Close status", executing: "Closing the vault", done: "Vault closed" },
   spDeposit: { title: "Earn deposit", executing: "Depositing to the pool", done: "Earning in the pool" },
+  send: { title: "Send status", executing: "Sending vUSD", done: "vUSD sent to your EVM wallet" },
 };
 
 const ORDER: MintState[] = [
