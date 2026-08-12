@@ -1,4 +1,4 @@
-import type { Address, Hex, PublicClient, WalletClient } from "viem";
+import { encodeFunctionData, type Address, type Hex, type PublicClient, type WalletClient } from "viem";
 
 /**
  * Submit executeDirectMintingWithData(proof, userOpBytes) on AssetManagerFXRP.
@@ -61,6 +61,20 @@ export async function submitDirectMinting(
   const abi = await loadAssetManagerAbi();
   const account = deps.walletClient.account;
   if (!account) throw new Error("wallet client has no account (EXECUTOR_PRIVATE_KEY missing)");
+
+  // Log the exact executeDirectMintingWithData calldata once, so a stuck mint can
+  // be replayed / hand-submitted with `cast` when the FDC proof finalizes (the
+  // transient simulate-revert window can outlast the retry loop below).
+  try {
+    const calldata = encodeFunctionData({
+      abi: abi as never,
+      functionName: "executeDirectMintingWithData",
+      args: [args.proof, args.userOpBytes] as never,
+    });
+    console.log(`[submit] calldata (${(calldata.length - 2) / 2}B): ${calldata}`);
+  } catch {
+    /* logging only */
+  }
 
   let lastErr: unknown;
   for (let attempt = 0; attempt < SUBMIT_RETRIES; attempt++) {
