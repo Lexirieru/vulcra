@@ -85,6 +85,18 @@ contract VulcraZap is Initializable, AccessControlUpgradeable, ReentrancyGuardTr
     }
 
     /// @inheritdoc IVulcraZap
+    function addCollateralAll(address prevHint, address nextHint) external nonReentrant {
+        // Supply side of the balance-read pattern: sweep the caller's whole live FXRP balance into
+        // their EXISTING vault. Same rationale as openVaultAndForwardAll — the 0xFE memo commits the
+        // userOp before the mint, so an amount baked into the calldata is only a prediction of the net
+        // minted. The vault owner is the caller (PersonalAccount); the VaultManager pulls FXRP from us.
+        uint256 amount6 = fxrpToken.balanceOf(msg.sender);
+        fxrpToken.safeTransferFrom(msg.sender, address(this), amount6);
+        fxrpToken.forceApprove(address(vaultManager), amount6);
+        vaultManager.addCollateralFor(msg.sender, amount6, prevHint, nextHint);
+    }
+
+    /// @inheritdoc IVulcraZap
     function previewOpen(uint256 collateral6, uint256 mint18)
         external
         view

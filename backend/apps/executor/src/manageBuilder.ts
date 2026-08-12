@@ -64,9 +64,16 @@ export type ManageAction =
 
 /**
  * Carrier net-mint for memo-only manage ops (drops = FXRP 6-dec). A fee-only
- * payment reverts on-chain, so these ops mint a tiny amount of FXRP purely to
- * carry the 0xFE instruction. 1 XRP matches the starter's recovery-flow default;
- * tune down once the exact FAssets minimum net mint is confirmed.
+ * payment can't run the 0xFE instruction, so these ops mint a tiny amount of
+ * FXRP purely to carry it.
+ *
+ * Sizing: the fassets audit (@ 6d5c103, DirectMintingFacet) suggested the floor
+ * is just `minFee + executorFee` (≈0.2 XRP total, any `netMint > 0`). But a live
+ * Coston2 test of a 0.001-XRP carrier REVERTED persistently (not transiently),
+ * so FAssets enforces a higher effective minimum net mint than the fee floor —
+ * likely an AMG lot / minimum-minting rule not visible from DirectMintingFacet
+ * alone. 1 XRP is proven on-chain (adjustRate 5%→6% executed), so keep it until a
+ * smaller value is proven. TODO: binary-search the true minimum to cut the dust.
  */
 const CARRIER_NET_MINT_DROPS = 1_000_000n;
 
@@ -141,8 +148,11 @@ export async function buildManagePlan(
     calls = buildMintMoreCalls({ vaultManager, amount18: input.amount18 });
   } else if (input.action === "addCollateral") {
     if (input.collateral6 === undefined) throw new Error("collateral6 is required for addCollateral.");
+    if (!env.vulcraZapAddress) throw new Error("VULCRA_ZAP_ADDRESS is not set.");
     const fxrp = await resolveFxrpToken(client);
-    calls = buildAddCollateralCalls({ fxrp, vaultManager, amount6: input.collateral6 });
+    // Goes through the Zap's balance-read entrypoint (like the open path): collateral6 only sizes the
+    // XRP payment; the actual amount added is the PA's live FXRP balance at execution.
+    calls = buildAddCollateralCalls({ fxrp, zap: env.vulcraZapAddress as Address });
     netMintDrops = input.collateral6;
   } else if (input.action === "withdrawCollateral") {
     // Pull FXRP back out of the vault — memo-only (net mint 0), no FXRP minted.

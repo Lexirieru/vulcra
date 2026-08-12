@@ -308,6 +308,27 @@ contract VaultManager is
         emit CollateralAdded(msg.sender, amount6, v.collateral6);
     }
 
+    /// @notice Add collateral to `owner`'s vault, pulling the FXRP from the caller (the Zap). Lets the
+    ///         XRPL-native supply path read the PersonalAccount's live FXRP balance at execution instead
+    ///         of a predicted amount (the 0xFE memo commits the userOp before the mint). ZAP_ROLE-gated,
+    ///         mirroring {openVaultFor}; identical accounting to {addCollateral}.
+    function addCollateralFor(address owner, uint256 amount6, address, address)
+        external
+        whenNotPaused
+        nonReentrant
+        onlyRole(ZAP_ROLE)
+    {
+        Vault storage v = vaults[owner];
+        if (!v.active) revert NoVault();
+        if (amount6 == 0) revert ZeroAmount();
+        _settleAggInterest();
+        uint256 oldWeighted = _accrue(v);
+        aggWeightedDebtSum = aggWeightedDebtSum + v.debt18 * v.annualInterestRateBps - oldWeighted;
+        v.collateral6 += amount6;
+        collateralToken.safeTransferFrom(msg.sender, address(this), amount6);
+        emit CollateralAdded(owner, amount6, v.collateral6);
+    }
+
     /// @notice Withdraw collateral, keeping the vault at or above MCR (against entire debt).
     function withdrawCollateral(uint256 amount6, address, address) external whenNotPaused nonReentrant {
         Vault storage v = vaults[msg.sender];

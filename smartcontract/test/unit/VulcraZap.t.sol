@@ -181,4 +181,51 @@ contract VulcraZapTest is VaultTestSetup {
         assertEq(vusd.balanceOf(address(pa)), 100e18);
         assertEq(fxrp.balanceOf(address(zap)), 0);
     }
+
+    // --- addCollateralAll: supply side of the balance-read pattern ---
+
+    function _openViaAll(address pa, uint256 coll) internal {
+        fxrp.mint(pa, coll);
+        vm.prank(pa);
+        fxrp.approve(address(zap), type(uint256).max);
+        vm.prank(pa);
+        zap.openVaultAndForwardAll(100e18, 500, dest, address(0), address(0));
+    }
+
+    function test_zap_addCollateralAll_sweepsIntoExistingVault() public {
+        address pa = makeAddr("paAdd");
+        _openViaAll(pa, 100e6);
+        (uint256 coll0,,) = mgr.getVault(pa);
+        assertEq(coll0, 100e6);
+
+        // fresh FXRP delivered to the PA (a later mint); sweep it into the existing vault
+        fxrp.mint(pa, 40e6);
+        vm.prank(pa);
+        zap.addCollateralAll(address(0), address(0)); // approval is already MAX
+
+        (uint256 coll1,, bool active) = mgr.getVault(pa);
+        assertEq(coll1, 140e6, "swept the live balance into the existing vault");
+        assertTrue(active);
+        assertEq(fxrp.balanceOf(pa), 0, "no dust stranded");
+        assertEq(fxrp.balanceOf(address(zap)), 0, "zap holdless");
+    }
+
+    function test_zap_addCollateralAll_revertsWithoutVault() public {
+        address pa = makeAddr("paNoVault");
+        fxrp.mint(pa, 10e6);
+        vm.prank(pa);
+        fxrp.approve(address(zap), type(uint256).max);
+        vm.prank(pa);
+        vm.expectRevert(VaultManager.NoVault.selector);
+        zap.addCollateralAll(address(0), address(0));
+    }
+
+    function test_addCollateralFor_onlyZapRole() public {
+        address pa = makeAddr("paRole");
+        _openViaAll(pa, 100e6);
+        // a caller without ZAP_ROLE cannot add collateral on someone's behalf
+        vm.prank(makeAddr("attacker"));
+        vm.expectRevert(); // AccessControlUnauthorizedAccount
+        mgr.addCollateralFor(pa, 1e6, address(0), address(0));
+    }
 }

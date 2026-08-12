@@ -175,15 +175,15 @@ export function buildCloseCalls(args: {
 }
 
 /**
- * addCollateral(amount6): supply MORE FXRP to the existing vault. The FXRP is
- * freshly minted from the XRP the user sends (net mint > 0), so this rides the
- * mint-style payment (collateral + fees), then the PersonalAccount approves the
- * VaultManager and adds it. Raises CR / borrow headroom.
+ * addCollateral: supply MORE FXRP to the existing vault. The FXRP is freshly
+ * minted from the XRP the user sends (net mint > 0), so this rides the mint-style
+ * payment. Like the open path, it goes through the Zap's balance-read entrypoint
+ * (`addCollateralAll`) rather than baking a predicted amount into the userOp — the
+ * Zap sweeps the PersonalAccount's live FXRP balance into the vault at execution.
  */
 export function buildAddCollateralCalls(args: {
   fxrp: Address;
-  vaultManager: Address;
-  amount6: bigint;
+  zap: Address;
   prevHint?: Address;
   nextHint?: Address;
 }): Call[] {
@@ -191,12 +191,16 @@ export function buildAddCollateralCalls(args: {
     {
       target: args.fxrp,
       value: 0n,
-      data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [args.vaultManager, args.amount6] }),
+      data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [args.zap, MAX_UINT256] }),
     },
     {
-      target: args.vaultManager,
+      target: args.zap,
       value: 0n,
-      data: encodeFunctionData({ abi: vaultManagerWriteAbi, functionName: "addCollateral", args: [args.amount6, args.prevHint ?? ZERO, args.nextHint ?? ZERO] }),
+      data: encodeFunctionData({
+        abi: vulcraZapAbi,
+        functionName: "addCollateralAll",
+        args: [args.prevHint ?? ZERO, args.nextHint ?? ZERO],
+      }),
     },
   ];
 }

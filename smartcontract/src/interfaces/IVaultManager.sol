@@ -35,6 +35,10 @@ interface IVaultManager {
         address nextHint
     ) external;
 
+    /// @notice Add collateral to `owner`'s vault, pulling FXRP from the caller (ZAP_ROLE). Lets the
+    ///         XRPL-native supply path read the live balance at execution instead of a predicted amount.
+    function addCollateralFor(address owner, uint256 amount6, address prevHint, address nextHint) external;
+
     /// @notice Preview the debt, collateral ratio, and gating checks for a prospective open.
     function previewOpen(uint256 collateral6, uint256 mint18)
         external

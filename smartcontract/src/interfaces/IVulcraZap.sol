@@ -35,6 +35,11 @@ interface IVulcraZap {
         address nextHint
     ) external;
 
+    /// @notice Supply side of {openVaultAndForwardAll}: sweep the caller's live FXRP balance into their
+    ///         existing vault, so the XRPL-native add-collateral path needs no predicted amount either.
+    ///         Pair with `Call[0] = FXRP.approve(zap, type(uint256).max)`.
+    function addCollateralAll(address prevHint, address nextHint) external;
+
     /// @notice Preview the resulting debt / CR / gating for a prospective atomic mint (R12).
     function previewOpen(uint256 collateral6, uint256 mint18)
         external

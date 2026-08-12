@@ -38,6 +38,18 @@ export const vulcraZapAbi = [
     outputs: [],
   },
   {
+    // Supply side of the balance-read pattern: sweep the caller's live FXRP into
+    // their existing vault (via VaultManager.addCollateralFor). Same MAX-approve pairing.
+    type: "function",
+    name: "addCollateralAll",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "prevHint", type: "address" },
+      { name: "nextHint", type: "address" },
+    ],
+    outputs: [],
+  },
+  {
     type: "function",
     name: "previewOpen",
     stateMutability: "view",
