@@ -54,19 +54,32 @@ minted FXRP **and** ran the committed `[FXRP.approve(zap), zap.openVaultAndForwa
 - **Correction:** Coston2 direct-minting caps are ~100k FXRP/hr, 500k/day (the earlier "0.1 FXRP/hr"
   was a `formatUnits` misread). Our mint was 0.08 FXRP.
 
-**Robustness follow-ups (Flare-admin guidance, not blockers):**
-- **Don't bake a predicted collateral amount into the userOp.** The memo commits `keccak256(userOp)`
-  *before* the mint, and the net minted is (amount after `feeBIPS`, AMG-rounded, minus `executorFeeUBA`).
-  Robust fix: have the Zap read `FXRP.balanceOf(msg.sender)` at execution time and pull that, with an
-  `approve` of a generous upper bound / max. Then fee + AMG rounding can't strand a mint.
-- **net-mint=0 (repay/close/adjust/spDeposit): attach a small non-zero carrier mint (~1 XRP)** so the
-  instruction rides a real mint — exactly what the starter's 0xE0/0xE1 recovery flows do. Keeps ONE
-  mechanism for the whole CDP lifecycle instead of a second path.
-- The vault is owned by the **PersonalAccount** (not the XRPL-derived EOA); drive all downstream ops
-  from the PA.
+**Robustness (Flare-admin guidance) — IMPLEMENTED & verified:**
+- **balanceOf-at-execution ✅** — the Zap has `openVaultAndForwardAll(mint18, rate, dest, hints)` which
+  reads `FXRP.balanceOf(msg.sender)` at execution instead of a baked-in collateral amount (the 0xFE memo
+  commits `keccak256(userOp)` *before* the mint, so any amount is only a prediction of net-after-fees).
+  Mint batch is now `[FXRP.approve(zap, MAX_UINT256), zap.openVaultAndForwardAll(...)]`. Shipped as a UUPS
+  upgrade (proxy `0xCe4f886e…` unchanged, impl `0xb2ade4c5…`).
+- **carrier-mint ✅** — net-mint=0 manage ops (repay/close/adjust/withdraw/spDeposit) ride a small carrier
+  mint (`CARRIER_NET_MINT_DROPS` in `manageBuilder.ts`) so they aren't fee-only (which can't run the
+  instruction on-chain). The mechanism is verified live (adjustRate 5%→6%). The *minimal* carrier size is
+  being tuned: `mintedToSAM = netMint + executorFee` suggests any netMint>0 clears the SAM gate, but on
+  Coston2 a ~0.001 XRP carrier reverted (persistent, not transient), so FAssets enforces a higher
+  effective minimum — keep the carrier at a value proven on-chain. One mechanism for the whole lifecycle.
+- **Still predicted (future work):** `addCollateral` goes straight to the VaultManager, not the Zap, so
+  it can't use the Zap's balance-read; a `VaultManager.addCollateralFor(owner, …)` would be needed. Exact
+  below 40 XRP (flat min-fee regime), so safe for the demo.
+- Vaults are owned by the **PersonalAccount**; drive all downstream ops from the PA.
+
+**Alignment audit (Flare Foundation repos):** core paths are byte-for-byte aligned — smart-accounts 0xFE
+(`flare-smart-accounts@fa301c5`), FAssets direct-minting (`fassets@6d5c103`), FDC `XRPPayment`
+attestation + periphery (`flare-foundry-starter` / `flare-viem-starter@c13a046`), and the FCC extension
+(`fce-extension-scaffold`, manager `0x1a9C4A…`). FDC protocol id is read live from
+`FdcVerification.fdcProtocolId()` (fallback 200). Coston2 direct-minting caps: 100k XRP/hr, 500k/day,
+uncapped `mintingCap` (the "0.1 XRP" figures are fees, not caps).
 
 Full fact chain: `docs/diagnosis/callfailed-openvault.md`. Also solid: EVM open/manage, Earn, redemption
-UI, the Vulcra MCP server, and all test suites (forge 171 · backend 151 · FE build · Playwright 23).
+UI, the Vulcra MCP server, and all test suites (forge 174 · backend green · FE build · Playwright 23).
 
 ## Live on Coston2 (chain 114 · https://coston2-explorer.flare.network)
 

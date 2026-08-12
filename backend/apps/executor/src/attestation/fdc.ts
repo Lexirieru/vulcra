@@ -35,12 +35,28 @@ const relayAbi = [
   },
 ] as const;
 
+const fdcVerificationAbi = [
+  {
+    type: "function",
+    name: "fdcProtocolId",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8" }],
+  },
+] as const;
+
 export interface FdcConfig {
   verifierUrl: string;
   verifierApiKey: string;
   daLayerUrl: string;
   fdcHub: Address;
   relay: Address;
+  /**
+   * FDC protocol id for the Relay finalization check. Read live from
+   * FdcVerification.fdcProtocolId() (drift-proof, single source of truth), with
+   * the canonical 200 as a fallback if the read fails.
+   */
+  protocolId: bigint;
   firstVotingRoundStartTs: bigint;
   votingEpochDurationSeconds: bigint;
   sourceId?: string; // "testXRP" on Coston2
@@ -66,6 +82,22 @@ export async function resolveFdcConfig(
   },
 ): Promise<FdcConfig> {
   const [fdcHub, relay] = await Promise.all([resolve("FdcHub"), resolve("Relay")]);
+  // Read the FDC protocol id from FdcVerification (drift-proof) rather than
+  // hardcoding it; fall back to the canonical 200 if the read fails.
+  let protocolId = BigInt(FDC_PROTOCOL_ID);
+  try {
+    const fdcVerification = await resolve("FdcVerification");
+    protocolId = BigInt(
+      (await publicClient.readContract({
+        address: fdcVerification,
+        abi: fdcVerificationAbi,
+        functionName: "fdcProtocolId",
+        args: [],
+      })) as number,
+    );
+  } catch {
+    // leave the canonical 200 fallback.
+  }
   let firstVotingRoundStartTs = env.firstVotingRoundStartTs ?? 0n;
   let votingEpochDurationSeconds = env.votingEpochDurationSeconds ?? 90n;
   if (firstVotingRoundStartTs === 0n) {
@@ -95,6 +127,7 @@ export async function resolveFdcConfig(
     daLayerUrl: env.daLayerUrl,
     fdcHub,
     relay,
+    protocolId,
     firstVotingRoundStartTs,
     votingEpochDurationSeconds,
     sourceId: env.sourceId,
@@ -170,7 +203,7 @@ export async function waitFinalized(
       address: cfg.relay,
       abi: relayAbi,
       functionName: "isFinalized",
-      args: [BigInt(FDC_PROTOCOL_ID), roundId],
+      args: [cfg.protocolId, roundId],
     })) as boolean;
     if (finalized) return;
     if (Date.now() > deadline) throw new Error(`round ${roundId} not finalized before timeout`);
@@ -200,7 +233,20 @@ export async function fetchProof(
   if (!json.proof) {
     throw new Error("DA layer proof not available yet (retry after finalization)");
   }
-  return { merkleProof: json.proof, data: json.response ?? json.response_hex };
+  // `response` is the DA layer's decoded IXRPPayment.Proof object — the shape viem
+  // encodes for executeDirectMintingWithData (proven live). Do NOT fall back to the
+  // raw `response_hex` blob: it is ABI-encoded bytes, not the tuple object, so viem
+  // would mis-encode it. If a DA layer ever omits `response`, switch this call to the
+  // `/proof-by-request-round-raw` endpoint and decode `response_hex` via the periphery
+  // `ixrpPaymentVerificationAbi` (flare-viem-starter pattern) rather than passing raw hex.
+  if (json.response === undefined) {
+    throw new Error(
+      "DA layer returned a proof without a decoded `response` object; the raw `response_hex` " +
+        "cannot be passed to executeDirectMintingWithData directly (use the *-raw endpoint + " +
+        "periphery decode).",
+    );
+  }
+  return { merkleProof: json.proof, data: json.response };
 }
 
 export { fdcHubAbi, relayAbi };

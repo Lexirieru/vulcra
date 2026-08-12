@@ -16,5 +16,9 @@ export function computeRoundId(args: {
   return (args.blockTimestamp - args.firstVotingRoundStartTs) / args.votingEpochDurationSeconds;
 }
 
-/** FDC protocol id used by the Relay finalization check. */
+/**
+ * Canonical FDC protocol id — used as the FALLBACK for the Relay finalization
+ * check. The live value is read from `FdcVerification.fdcProtocolId()` in
+ * `resolveFdcConfig` (drift-proof); this constant only applies if that read fails.
+ */
 export const FDC_PROTOCOL_ID = 200;

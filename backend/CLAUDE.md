@@ -49,15 +49,19 @@ attestationType `XRPPayment`, proofOwner = executor EOA. The earlier persistent 
 (the exact reverting calldata later passed `cast call` + `cast estimate` and the mined submit succeeded),
 not a v1.3 `_data` incompatibility. NO contract or encoding change was needed.
 
-**Robustness follow-ups (Flare-admin guidance, not blockers):**
-- `packages/userop` currently bakes a predicted `collateral6` into `zap.openVaultAndForward`. Because the
-  memo commits `keccak256(userOp)` *before* the mint, and net minted = amount after `feeBIPS`,
-  AMG-rounded, minus `executorFeeUBA`, that prediction is fragile. Preferred: a Zap entrypoint that reads
-  `FXRP.balanceOf(msg.sender)` at execution + `approve` a generous upper bound / max.
-- net-mint=0 manage ops (repay/close/adjust/spDeposit) should attach a small non-zero **carrier mint**
-  (~1 XRP), like the starter's 0xE0/0xE1 recovery — one mechanism for the whole lifecycle.
-- `submitDirectMinting` already retries on tx revert; the durable win is making the retry span the FDC
-  finality window so the executor lands the mint without an operator step.
+**Robustness (Flare-admin guidance) — IMPLEMENTED:**
+- **balanceOf-at-execution ✅** — `packages/userop` `buildZapMintCalls` now emits
+  `[FXRP.approve(zap, MAX_UINT256), zap.openVaultAndForwardAll(mint18, rate, dest, hints)]`; the Zap reads
+  `FXRP.balanceOf(msg.sender)` at execution rather than a baked `collateral6` (UUPS upgrade, impl
+  `0xb2ade4c5…`). `collateral6` stays only to size the XRP payment (`computeRequiredXrpDrops`).
+- **carrier-mint ✅** — `manageBuilder.ts` gives net-0 ops a small `CARRIER_NET_MINT_DROPS` so they aren't
+  fee-only. Mechanism verified live (adjustRate); minimal size is being tuned on-chain (a ~0.001 XRP
+  carrier persistently reverted, so FAssets enforces a higher effective minimum than the fee floor).
+- **FDC hardening ✅** — `attestation/fdc.ts` reads the protocol id from `FdcVerification.fdcProtocolId()`
+  (fallback 200) and no longer falls back to the raw `response_hex` blob for the proof.
+- **Still predicted (future work):** `addCollateral` calls the VaultManager directly (not the Zap), so it
+  keeps a predicted amount until a `VaultManager.addCollateralFor` exists. Exact below 40 XRP.
+- `submitDirectMinting` retries on tx revert across the FDC finality window (no operator step needed).
 
 Full analysis + source refs: root `docs/diagnosis/callfailed-openvault.md`.
 

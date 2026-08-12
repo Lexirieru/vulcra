@@ -3,9 +3,9 @@ import type { Abi, Address } from "viem";
 /**
  * MasterAccountController — minimal ABI for smart-account state reads.
  *
- * DRAFT/VERIFY: confirm `getPersonalAccount`'s XRPL-address argument type
- * (string vs bytes) against the live MasterAccountController on Coston2 before
- * a real mint. Deterministic — works before the personal account is deployed.
+ * `getPersonalAccount`'s XRPL-address argument is `string` — verified against the
+ * live MasterAccountController on Coston2 (and flare-smart-accounts @ fa301c5 /
+ * flare-viem-starter). Deterministic — works before the personal account is deployed.
  */
 export const masterAccountControllerAbi = [
   {

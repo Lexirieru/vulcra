@@ -255,9 +255,11 @@ so the executor stops emitting `openVault` userOps that on-chain `_open` will re
 
 ## 4. Cheap reproduction + how to decode the inner `CallFailed(bytes)`
 
-### Reproduce within testnet limits (net mint ≤ 0.1 FXRP)
-Direct-minting caps: hourly/daily/large-mint threshold all `0.1 FXRP`, min fee `0.1 FXRP`. Keep
-`collateral6 = 80000` (**0.08 FXRP < 0.1**), so no large-mint delay and within the hourly window.
+### Reproduce (any small mint is fine)
+Coston2 testXRP direct-minting params (authoritative: `fassets@6d5c103` `deployment/config/coston2/f-testxrp.json`):
+minFee `0.1 XRP`, executorFee `0.1 XRP`, feeBIPS `25` (0.25%), **hourly limit 100,000 XRP, daily 500,000,
+large-mint threshold 100,000 (delay 3600s), mintingCap 0 (uncapped)**. So `0.1 FXRP` is the *fee*, never a
+throughput cap — any realistic testnet mint (e.g. `collateral6 = 80000` = 0.08 FXRP) is nowhere near a limit.
 
 1. Off-chain, pick a valid mint with a **free** `previewOpen` (no XRP spent):
    ```bash
