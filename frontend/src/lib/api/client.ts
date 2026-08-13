@@ -1,7 +1,7 @@
 // Thin typed fetch client for the Vulcra backend (KTD5). One place wraps the
 // base URL, JSON handling, and a normalized error so the rest of the app never
 // touches `fetch` directly. Swapping endpoint shapes = edit here + ./types.
-import { API_BASE_URL } from "@/config/contracts";
+import { API_BASE_URL, GUARDIAN_API_URL } from "@/config/contracts";
 import type {
   AccountResponse,
   AtRiskVault,
@@ -29,10 +29,14 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  baseUrl: string = API_BASE_URL,
+): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE_URL}${path}`, {
+    res = await fetch(`${baseUrl}${path}`, {
       ...init,
       headers: { "content-type": "application/json", ...init?.headers },
     });
@@ -126,18 +130,27 @@ export const api = {
     }
   },
 
+  // Guardian rules live on the confidential keeper (guardian-service), a separate
+  // service from the executor — so these three hit GUARDIAN_API_URL, not the
+  // executor base. Falls back to the executor origin when the two are co-located.
   listGuardianRules: (owner: string) =>
-    request<GuardianRule[]>(`/guardian/rules?owner=${encodeURIComponent(owner)}`),
+    request<GuardianRule[]>(
+      `/guardian/rules?owner=${encodeURIComponent(owner)}`,
+      undefined,
+      GUARDIAN_API_URL,
+    ),
 
   createGuardianRule: (input: GuardianRuleInput) =>
-    request<GuardianRule>("/guardian/rules", {
-      method: "POST",
-      body: JSON.stringify(input),
-    }),
+    request<GuardianRule>(
+      "/guardian/rules",
+      { method: "POST", body: JSON.stringify(input) },
+      GUARDIAN_API_URL,
+    ),
 
   setGuardianRuleEnabled: (id: string, enabled: boolean) =>
-    request<GuardianRule>(`/guardian/rules/${encodeURIComponent(id)}`, {
-      method: "PATCH",
-      body: JSON.stringify({ enabled }),
-    }),
+    request<GuardianRule>(
+      `/guardian/rules/${encodeURIComponent(id)}`,
+      { method: "PATCH", body: JSON.stringify({ enabled }) },
+      GUARDIAN_API_URL,
+    ),
 };

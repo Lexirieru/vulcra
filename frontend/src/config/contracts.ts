@@ -37,3 +37,11 @@ export const PRICE_ORACLE_ADDRESS = (
 
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "http://localhost:8787";
+
+// Guardian confidential-keeper API (the Go tee-extension guardian-service). It is
+// a SEPARATE service from the executor — it wraps the TEE node + keeper + a REST
+// facade for /guardian/rules. Defaults to the executor base URL for back-compat
+// (local single-origin dev); set NEXT_PUBLIC_GUARDIAN_API_URL to the guardian
+// service when it runs on its own host/port (e.g. http://localhost:8790).
+export const GUARDIAN_API_URL =
+  process.env.NEXT_PUBLIC_GUARDIAN_API_URL?.trim() || API_BASE_URL;
