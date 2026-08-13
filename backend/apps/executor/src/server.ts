@@ -63,9 +63,15 @@ export function buildServer(services: ExecutorServices, opts: { frontendOrigin?:
   // JSON POSTs (mint/build, mint/submit) send a preflight OPTIONS too, answered
   // by the wildcard route below. No credentials are used, so we only echo an
   // allow-listed localhost origin (falls back to the configured frontendOrigin).
+  // FRONTEND_ORIGIN may be a comma-separated list so the deployed dApp origin(s)
+  // (e.g. https://app.vulcra.xyz, plus a Vercel URL) are all allow-listed in prod.
+  const configuredOrigins = (opts.frontendOrigin ?? "")
+    .split(",")
+    .map((o) => o.trim())
+    .filter(Boolean);
   const allowOrigins = new Set(
     [
-      opts.frontendOrigin,
+      ...configuredOrigins,
       "http://localhost:3000",
       "http://localhost:3210",
       "http://127.0.0.1:3000",

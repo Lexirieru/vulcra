@@ -68,7 +68,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): ExecutorEnv {
   return {
     rpcUrl: source.COSTON2_RPC_URL ?? "https://coston2-api.flare.network/ext/C/rpc",
     chainId: num(source.COSTON2_CHAIN_ID, 114),
-    port: num(source.EXECUTOR_PORT, 8787),
+    // Railway/Render/Fly inject $PORT and expect the app to bind it; fall back to
+    // EXECUTOR_PORT (local dev) then 8787.
+    port: num(source.PORT ?? source.EXECUTOR_PORT, 8787),
     frontendOrigin: source.FRONTEND_ORIGIN ?? "http://localhost:3000",
     dbPath: source.EXECUTOR_DB_PATH ?? "./data/executor.sqlite",
     walletId: num(source.WALLET_ID, 0),

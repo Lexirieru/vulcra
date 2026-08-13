@@ -1,0 +1,4 @@
+# Railway/Nixpacks: use `npm install` (not `npm ci`) so the workspace resolves
+# cleanly even if package-lock lags a devDep→dep move. Node comes from engines>=22.
+[phases.install]
+cmds = ["npm install"]
