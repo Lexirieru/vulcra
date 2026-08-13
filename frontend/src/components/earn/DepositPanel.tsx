@@ -2,22 +2,26 @@
 
 // Deposit/withdraw panel for the selected Stability Pool, fully wired to
 // useStabilityPool's live deposit/withdraw against the branch's StabilityPool
-// on Coston2. Aave-grade guards: deposits are capped to the wallet's vUSD
-// (balance row + Max), withdrawals to the user's pool deposit, buttons explain
-// WHY they are disabled, and the write lifecycle renders through the same
-// TxStatus strip every vault action uses (no more console-only failures). If a
-// branch ever ships without a pool address the actions fall back to the
-// disabled "coming soon" state (spec §4/§5 — no fake flow).
+// on Coston2. A Deposit/Withdraw segmented toggle (matching VaultActions) means
+// only the ACTIVE mode's cap, Max, error and button ever show — so a first-time
+// depositor never sees the withdraw-side "exceeds your pool deposit" error.
+// Aave-grade guards: deposits are capped to the wallet's vUSD, withdrawals to
+// the user's pool deposit, buttons explain WHY they are disabled, and the write
+// lifecycle renders through the same TxStatus strip every vault action uses (no
+// more console-only failures). If a branch ever ships without a pool address the
+// actions fall back to the disabled "coming soon" state (spec §4/§5 — no fake flow).
 import * as React from "react";
 import { useId, useState } from "react";
 import { formatUnits } from "viem";
 import { useAccount } from "wagmi";
-import { Badge, Field, Input, PillButton, SectionCard, TokenIcon } from "@/components/ui";
+import { Badge, Field, Input, PillButton, SectionCard, TokenIcon, cn } from "@/components/ui";
 import { TxStatus } from "@/components/vault/TxStatus";
 import type { CollateralBranch } from "@/config/branches";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { formatToken, parseAmount } from "@/lib/format";
 import { useStabilityPool } from "./useStabilityPool";
+
+type Mode = "deposit" | "withdraw";
 
 export function DepositPanel({
   branch,
@@ -34,44 +38,83 @@ export function DepositPanel({
   const vusdBalance = balances.tokens.find((t) => t.symbol === "vUSD")?.value;
   const inputId = useId();
   const actionsHintId = useId();
+  const [mode, setMode] = useState<Mode>("deposit");
   const [amount, setAmount] = useState("");
-  // Which button is mid-flight — so only IT reads "…ing", not both.
-  const [pending, setPending] = useState<"deposit" | "withdraw" | null>(null);
+  const isDeposit = mode === "deposit";
 
   const amount18 = parseAmount(amount, 18);
   const invalid = amount.trim() !== "" && amount18 === null;
   const positive = pool.deployed && amount18 !== null && amount18 > 0n;
+  // The cap + its error are mode-scoped, so the two constraints are mutually
+  // exclusive and can never contradict the button that's actually showing.
+  const cap = isDeposit ? vusdBalance : pool.userDeposit18;
   const insufficientBalance =
-    amount18 !== null && vusdBalance !== undefined && amount18 > vusdBalance;
+    isDeposit && amount18 !== null && vusdBalance !== undefined && amount18 > vusdBalance;
   const overDeposit =
-    amount18 !== null && pool.userDeposit18 !== undefined && amount18 > pool.userDeposit18;
+    !isDeposit &&
+    amount18 !== null &&
+    pool.userDeposit18 !== undefined &&
+    amount18 > pool.userDeposit18;
 
-  const canDeposit = positive && Boolean(address) && !insufficientBalance && !pool.isBusy;
-  const canWithdraw = positive && Boolean(address) && !overDeposit && !pool.isBusy;
+  const canSubmit =
+    positive &&
+    Boolean(address) &&
+    !pool.isBusy &&
+    (isDeposit ? !insufficientBalance : !overDeposit);
 
-  async function act(kind: "deposit" | "withdraw") {
-    const fn = kind === "deposit" ? pool.deposit : pool.withdraw;
+  function switchMode(next: Mode) {
+    if (next === mode) return;
+    // A stale amount / "Confirmed" strip from the other mode must not haunt this
+    // one — reset both, exactly like VaultActions resets on tab switch.
+    setAmount("");
+    pool.resetTx();
+    setMode(next);
+  }
+
+  async function submit() {
+    const fn = isDeposit ? pool.deposit : pool.withdraw;
     if (!fn || amount18 === null) return;
-    setPending(kind);
-    try {
-      await fn(amount18);
-    } finally {
-      setPending(null);
-    }
+    await fn(amount18);
   }
 
   return (
     <SectionCard
-      title="Deposit vUSD"
-      subtitle={`${branch.label} Stability Pool`}
+      title={`${branch.label} Stability Pool`}
+      subtitle="Deposit or withdraw vUSD"
       icon={<TokenIcon symbol="vUSD" size={36} alt="" />}
       action={pool.deployed ? null : <Badge tone="neutral">Coming soon</Badge>}
     >
       <div className="flex flex-col gap-4">
+        <div
+          className="flex rounded-full border border-line bg-surface-2 p-1"
+          role="tablist"
+          aria-label="Deposit or withdraw"
+        >
+          {(["deposit", "withdraw"] as const).map((m) => (
+            <button
+              key={m}
+              type="button"
+              role="tab"
+              aria-selected={mode === m}
+              onClick={() => switchMode(m)}
+              className={cn(
+                "min-h-10 flex-1 rounded-full px-3 py-1.5 text-sm font-medium capitalize transition-colors",
+                mode === m ? "bg-navy text-white" : "text-muted hover:text-ink",
+              )}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+
         <Field
           label="Amount"
           htmlFor={inputId}
-          hint="Amount of vUSD to move into or out of the pool."
+          hint={
+            isDeposit
+              ? "Amount of vUSD to move into the pool."
+              : "Amount of vUSD to withdraw from the pool."
+          }
           error={invalid ? "Enter a valid vUSD amount." : undefined}
         >
           <div className="relative">
@@ -95,17 +138,20 @@ export function DepositPanel({
           </div>
         </Field>
 
-        {/* Wallet balance (deposit cap) with a full-precision Max. */}
+        {/* Mode-scoped cap (wallet balance to deposit, pool deposit to withdraw)
+            with a full-precision Max. */}
         <div className="-mt-2 flex items-center justify-between text-xs">
           <span className="text-[var(--color-muted)]">
             {address
-              ? `Wallet balance ${formatToken(vusdBalance, 18, 2)} vUSD`
+              ? isDeposit
+                ? `Wallet balance ${formatToken(vusdBalance, 18, 2)} vUSD`
+                : `Your pool deposit ${formatToken(pool.userDeposit18, 18, 2)} vUSD`
               : "Connect a Flare wallet to see your balance"}
           </span>
-          {address && vusdBalance !== undefined && vusdBalance > 0n && (
+          {address && cap !== undefined && cap > 0n && (
             <button
               type="button"
-              onClick={() => setAmount(formatUnits(vusdBalance, 18))}
+              onClick={() => setAmount(formatUnits(cap, 18))}
               className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
             >
               Max
@@ -113,19 +159,23 @@ export function DepositPanel({
           )}
         </div>
 
-        <dl className="flex items-center justify-between rounded-xl bg-[var(--color-surface-2)] px-3.5 py-2.5 text-sm">
-          <dt className="text-[var(--color-muted)]">Your deposit</dt>
-          <dd className="font-medium tabular-nums text-[var(--color-ink)]">
-            {pool.userDeposit18 !== undefined ? (
-              `${formatToken(pool.userDeposit18, 18, 2)} vUSD`
-            ) : (
-              <>
-                <span aria-hidden>—</span>
-                <span className="sr-only">not available yet</span>
-              </>
-            )}
-          </dd>
-        </dl>
+        {/* Position readout — helpful context while depositing; the withdraw cap
+            line above already surfaces it, so it's redundant in withdraw mode. */}
+        {isDeposit && (
+          <dl className="flex items-center justify-between rounded-xl bg-[var(--color-surface-2)] px-3.5 py-2.5 text-sm">
+            <dt className="text-[var(--color-muted)]">Your deposit</dt>
+            <dd className="font-medium tabular-nums text-[var(--color-ink)]">
+              {pool.userDeposit18 !== undefined ? (
+                `${formatToken(pool.userDeposit18, 18, 2)} vUSD`
+              ) : (
+                <>
+                  <span aria-hidden>—</span>
+                  <span className="sr-only">not available yet</span>
+                </>
+              )}
+            </dd>
+          </dl>
+        )}
 
         {insufficientBalance && (
           <p className="-mt-2 text-xs text-danger">
@@ -140,23 +190,19 @@ export function DepositPanel({
           </p>
         )}
 
-        <div className="flex flex-wrap gap-3">
-          <PillButton
-            disabled={!canDeposit}
-            aria-describedby={pool.deployed && address ? undefined : actionsHintId}
-            onClick={() => act("deposit")}
-          >
-            {pending === "deposit" ? "Depositing…" : "Deposit"}
-          </PillButton>
-          <PillButton
-            variant="ghost"
-            disabled={!canWithdraw}
-            aria-describedby={pool.deployed && address ? undefined : actionsHintId}
-            onClick={() => act("withdraw")}
-          >
-            {pending === "withdraw" ? "Withdrawing…" : "Withdraw"}
-          </PillButton>
-        </div>
+        <PillButton
+          disabled={!canSubmit}
+          aria-describedby={pool.deployed && address ? undefined : actionsHintId}
+          onClick={submit}
+        >
+          {pool.isBusy
+            ? isDeposit
+              ? "Depositing…"
+              : "Withdrawing…"
+            : isDeposit
+              ? "Deposit"
+              : "Withdraw"}
+        </PillButton>
         {pool.deployed && !address ? (
           <p id={actionsHintId} className="text-xs text-[var(--color-muted)]">
             Connect a Flare wallet (top right) to deposit or withdraw.
