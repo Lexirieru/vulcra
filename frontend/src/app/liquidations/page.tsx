@@ -78,8 +78,8 @@ export default function LiquidationsPage() {
                   <thead>
                     <tr className="border-b border-line text-left text-xs uppercase text-muted">
                       <th className="py-2 pr-4 font-medium">Owner</th>
-                      <th className="py-2 pr-4 font-medium">Collateral</th>
-                      <th className="py-2 pr-4 font-medium">Debt</th>
+                      <th className="py-2 pr-4 text-right font-medium">Collateral</th>
+                      <th className="py-2 pr-4 text-right font-medium">Debt (vUSD)</th>
                       <th className="py-2 pr-4 font-medium">CR</th>
                       <th className="py-2 pr-4 font-medium sr-only">Action</th>
                     </tr>
@@ -90,11 +90,11 @@ export default function LiquidationsPage() {
                       return (
                         <tr key={v.owner} className="border-b border-line/60">
                           <td className="py-3 pr-4 font-mono">{shortenAddress(v.owner)}</td>
-                          <td className="py-3 pr-4 font-mono tabular-nums">
+                          <td className="py-3 pr-4 text-right font-mono tabular-nums">
                             {formatToken(BigInt(v.collateral6), branch.collateralDecimals, 2)}{" "}
                             {branch.collateralSymbol}
                           </td>
-                          <td className="py-3 pr-4 font-mono tabular-nums">
+                          <td className="py-3 pr-4 text-right font-mono tabular-nums">
                             {formatToken(BigInt(v.debt18), 18, 2)}
                           </td>
                           <td className="py-3 pr-4">

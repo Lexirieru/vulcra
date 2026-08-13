@@ -65,7 +65,7 @@ export function DepositPanel({
       title="Deposit vUSD"
       subtitle={`${branch.label} Stability Pool`}
       icon={<TokenIcon symbol="vUSD" size={36} alt="" />}
-      action={pool.deployed ? null : <Badge tone="blue">Coming soon</Badge>}
+      action={pool.deployed ? null : <Badge tone="neutral">Coming soon</Badge>}
     >
       <div className="flex flex-col gap-4">
         <Field

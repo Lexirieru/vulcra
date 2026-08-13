@@ -9,7 +9,7 @@
 // says so and its CTA flips to "Manage". Roadmap assets (stXRP, sFLR) render
 // "Soon" cards — no fabricated numbers.
 import Link from "next/link";
-import { Badge, Card, PillButton, TokenIcon } from "@/components/ui";
+import { Badge, Card, ChainMarks, PillButton, TokenIcon, type ChainId } from "@/components/ui";
 import { Reveal, Stagger } from "@/components/motion";
 import { BRANCH_ORDER, BRANCHES, type CollateralBranch } from "@/config/branches";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
@@ -24,20 +24,28 @@ import { useXrplWalletContext } from "@/context/xrpl";
 import { XRPL_PROVIDERS } from "@/lib/xrpl/wallets";
 import { formatBps, formatPrice, formatToken } from "@/lib/format";
 
-const SOON = [
+const SOON: {
+  symbol: string;
+  label: string;
+  sub: string;
+  note: string;
+  chains: ChainId[];
+}[] = [
   {
     symbol: "STXRP",
     label: "stXRP",
     sub: "Staked XRP · Firelight",
     note: "Liquid-staked XRP as collateral — on the Vulcra roadmap.",
+    chains: ["xrpl"],
   },
   {
     symbol: "SFLR",
     label: "sFLR",
     sub: "Staked FLR · Sceptre",
     note: "Liquid-staked FLR as collateral — on the Vulcra roadmap.",
+    chains: ["flare"],
   },
-] as const;
+];
 
 function PickerRow({ left, right }: { left: React.ReactNode; right: React.ReactNode }) {
   return (
@@ -71,6 +79,7 @@ function LiveCard({
   ctaLabel,
   ctaHref,
   badge,
+  chains,
 }: {
   symbol: string;
   label: string;
@@ -84,6 +93,8 @@ function LiveCard({
   ctaHref: string;
   /** e.g. "You have a position" — position-aware markets show it here. */
   badge?: React.ReactNode;
+  /** Chain(s) the collateral is supplied FROM. */
+  chains: ChainId[];
 }) {
   return (
     <Card className="flex h-full flex-col gap-4">
@@ -99,6 +110,7 @@ function LiveCard({
       </div>
 
       <div className="space-y-1.5 border-t border-line pt-3">
+        <PickerRow left="Supply from" right={<ChainMarks chains={chains} />} />
         <PickerRow
           left={
             <span className="inline-flex items-center gap-1.5">
@@ -147,15 +159,14 @@ function BranchCard({ branch }: { branch: CollateralBranch }) {
       symbol={branch.collateralSymbol}
       label={branch.label}
       subtitle={
-        branch.hasXrplMint
-          ? "FXRP on Flare · fund from Flare or the XRP Ledger"
-          : `${branch.collateralSymbol} · Coston2`
+        branch.hasXrplMint ? "FXRP on Flare · via FAssets" : `${branch.collateralSymbol} · Coston2`
       }
       feedLabel={branch.feedLabel}
       price18={price18}
       isStale={isStale}
       params={params}
       interest={interest}
+      chains={branch.hasXrplMint ? ["flare", "xrpl"] : ["flare"]}
       badge={hasPosition ? <Badge tone="green">You have a position</Badge> : undefined}
       ctaLabel={
         hasPosition
@@ -167,7 +178,7 @@ function BranchCard({ branch }: { branch: CollateralBranch }) {
   );
 }
 
-function SoonCard({ symbol, label, sub, note }: (typeof SOON)[number]) {
+function SoonCard({ symbol, label, sub, note, chains }: (typeof SOON)[number]) {
   return (
     <Card className="flex h-full flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
@@ -180,7 +191,10 @@ function SoonCard({ symbol, label, sub, note }: (typeof SOON)[number]) {
         </span>
         <Badge tone="neutral">Soon</Badge>
       </div>
-      <p className="border-t border-line pt-3 text-sm text-muted">{note}</p>
+      <div className="space-y-1.5 border-t border-line pt-3">
+        <PickerRow left="Supply from" right={<ChainMarks chains={chains} />} />
+      </div>
+      <p className="mt-auto text-sm text-muted">{note}</p>
     </Card>
   );
 }

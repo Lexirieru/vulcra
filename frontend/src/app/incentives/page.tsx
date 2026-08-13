@@ -15,7 +15,7 @@ const PROGRAMS = [
     title: "Stability Pool rewards",
     body: "Loan fees and interest from each collateral branch stream to vUSD depositors in its stability pool.",
     icon: <TokenIcon symbol="vUSD" size={36} alt="" />,
-    badge: { tone: "blue", label: "Coming soon" },
+    badge: { tone: "brand", label: "Coming soon" },
     action: (
       <PillButton size="sm" variant="ghost" href="/earn">
         Go to Earn
@@ -26,7 +26,7 @@ const PROGRAMS = [
     title: "Borrower incentives",
     body: "Rate rebates for vUSD borrowers who keep healthy positions on the FXRP and wFLR branches.",
     icon: <TokenIcon symbol="FXRP" size={36} alt="" />,
-    badge: { tone: "blue", label: "Coming soon" },
+    badge: { tone: "brand", label: "Coming soon" },
     action: null,
   },
   {

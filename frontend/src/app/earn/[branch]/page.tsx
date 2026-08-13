@@ -69,15 +69,8 @@ export default function EarnPoolPage() {
             <ArrowLeft className="h-4 w-4" aria-hidden /> All pools
           </Link>
           <div className="flex items-center gap-3">
-            <span className="flex items-center">
-              <TokenIcon symbol="vUSD" size={40} alt="" />
-              <TokenIcon
-                symbol={branch.collateralSymbol}
-                size={40}
-                alt=""
-                className="-ml-2.5 ring-2 ring-surface"
-              />
-            </span>
+            {/* ONE token logo — the deposit asset (vUSD); the branch is in the title. */}
+            <TokenIcon symbol="vUSD" size={40} alt="" />
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-semibold tracking-tight text-ink">

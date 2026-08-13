@@ -50,7 +50,7 @@ constants. Spring-first, reduced-motion safe. Wrap page sections in these.
 
 ## Other feature folders
 - `dashboard/` — `BorrowMarketsCard`, `EarnPoolsCard` (live branch/pool tables).
-- `earn/` — `EarnView`, `StabilityPoolCard`, `DepositPanel`, and `useStabilityPool.ts`
+- `earn/` — `EarnView`, `DepositPanel`, and `useStabilityPool.ts`
   (co-located hook: live TVL/APR/deposit reads + approve+provide/withdraw writes).
 - `liquidations/LiquidateButton.tsx`, `borrow/RailToggle.tsx` (GSAP Flare↔XRP rail toggle).
 

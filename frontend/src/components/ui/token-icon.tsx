@@ -91,3 +91,87 @@ export function TokenIcon({
     </span>
   );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Chain badges — which chain collateral is supplied FROM. Deliberately a small
+// ROUNDED-SQUARE mark, not a circular token coin, so a "Chain" cell can never
+// be misread as another asset.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type ChainId = "flare" | "xrpl";
+
+const CHAIN: Record<ChainId, { src: string; label: string }> = {
+  flare: { src: "/brand/logos/flare.svg", label: "Flare" },
+  xrpl: { src: "/brand/logos/xrp.svg", label: "XRP Ledger" },
+};
+
+/** Single chain mark (rounded square). Pass alt="" when a text label sits next to it. */
+export function ChainIcon({
+  chain,
+  size = 18,
+  className,
+  alt,
+}: {
+  chain: ChainId;
+  size?: number;
+  className?: string;
+  alt?: string;
+}) {
+  const entry = CHAIN[chain];
+  const label = alt ?? entry.label;
+  const glyph = Math.round(size * 0.62);
+  return (
+    <span
+      title={entry.label}
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-md border border-[var(--color-line)] bg-[var(--color-surface)]",
+        className,
+      )}
+      style={{ width: size, height: size }}
+    >
+      <img
+        src={entry.src}
+        alt={label}
+        aria-hidden={label === "" || undefined}
+        width={glyph}
+        height={glyph}
+        className="object-contain"
+        style={{ width: glyph, height: glyph }}
+      />
+    </span>
+  );
+}
+
+/**
+ * One or two chain marks with a text label — the standard content of a "Chain"
+ * table cell / card row (e.g. FXRP is fundable from Flare AND the XRP Ledger).
+ * The visible text carries the semantics; the icons are decorative.
+ */
+export function ChainMarks({
+  chains,
+  size = 18,
+  showLabel = true,
+  className,
+}: {
+  chains: ChainId[];
+  size?: number;
+  showLabel?: boolean;
+  className?: string;
+}) {
+  const label = chains.map((c) => CHAIN[c].label).join(" · ");
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1.5", className)}
+      aria-label={showLabel ? undefined : label}
+    >
+      <span className="flex items-center gap-1">
+        {chains.map((c) => (
+          <ChainIcon key={c} chain={c} size={size} alt={showLabel ? "" : undefined} />
+        ))}
+      </span>
+      {showLabel && (
+        <span className="whitespace-nowrap text-xs text-[var(--color-muted)]">{label}</span>
+      )}
+    </span>
+  );
+}

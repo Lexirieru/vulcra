@@ -7,6 +7,7 @@ import {
   SectionCard,
   DataTable,
   TokenIcon,
+  ChainMarks,
   PillButton,
   Badge,
   type DataTableColumn,
@@ -18,9 +19,9 @@ import { formatBps, formatToken } from "@/lib/format";
 type PoolRow = {
   key: string;
   name: string;
-  collateralSymbol: string;
   sub: string;
   aprBps?: number;
+  apr7dBps?: number;
   tvl18?: bigint;
 };
 
@@ -30,17 +31,10 @@ const COLUMNS: Array<DataTableColumn<PoolRow>> = [
   {
     key: "pool",
     header: "Pool",
+    // ONE token logo — the deposit asset (vUSD); the branch is in the name.
     cell: (row) => (
       <span className="flex items-center gap-2.5">
-        <span className="flex items-center">
-          <TokenIcon symbol="vUSD" size={32} alt="" />
-          <TokenIcon
-            symbol={row.collateralSymbol}
-            size={32}
-            alt=""
-            className="-ml-2 ring-2 ring-surface"
-          />
-        </span>
+        <TokenIcon symbol="vUSD" size={32} alt="" />
         <span className="flex min-w-0 flex-col">
           <span className="flex items-center gap-2 font-medium">
             {row.name}
@@ -50,6 +44,11 @@ const COLUMNS: Array<DataTableColumn<PoolRow>> = [
         </span>
       </span>
     ),
+  },
+  {
+    key: "chain",
+    header: "Chain",
+    cell: () => <ChainMarks chains={["flare"]} />,
   },
   {
     key: "apr",
@@ -67,8 +66,8 @@ const COLUMNS: Array<DataTableColumn<PoolRow>> = [
     header: "7d APR",
     align: "right",
     cell: (row) =>
-      row.aprBps !== undefined ? (
-        <span className="tabular-nums">{formatBps(row.aprBps)}</span>
+      row.apr7dBps !== undefined ? (
+        <span className="tabular-nums">{formatBps(row.apr7dBps)}</span>
       ) : (
         <Dash />
       ),
@@ -88,8 +87,8 @@ const COLUMNS: Array<DataTableColumn<PoolRow>> = [
     key: "action",
     header: <span className="sr-only">Action</span>,
     align: "right",
-    cell: () => (
-      <PillButton href="/earn" variant="ghost" size="sm">
+    cell: (row) => (
+      <PillButton href={`/earn/${row.key}`} variant="ghost" size="sm">
         Earn
       </PillButton>
     ),
@@ -104,17 +103,17 @@ export function EarnPoolsCard() {
     {
       key: "fxrp",
       name: "FXRP stability pool",
-      collateralSymbol: "FXRP",
       sub: "Deposit vUSD · rewards in FXRP",
       aprBps: fxrp.aprBps,
+      apr7dBps: fxrp.apr7dBps,
       tvl18: fxrp.tvl18,
     },
     {
       key: "wflr",
       name: "wFLR stability pool",
-      collateralSymbol: "WFLR",
       sub: "Deposit vUSD · rewards in wFLR",
       aprBps: wflr.aprBps,
+      apr7dBps: wflr.apr7dBps,
       tvl18: wflr.tvl18,
     },
   ];

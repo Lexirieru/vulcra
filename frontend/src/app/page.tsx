@@ -47,7 +47,7 @@ export default function DashboardPage() {
         </Reveal>
         <Reveal delay={0.1}>
           <HeroCard
-            tone="blue"
+            tone="maroon"
             title="Earn"
             desc="Deposit vUSD to earn protocol revenues and liquidation proceeds"
             href="/earn"

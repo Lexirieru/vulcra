@@ -9,10 +9,12 @@ import {
   SectionCard,
   DataTable,
   TokenIcon,
+  ChainMarks,
   PillButton,
   RatePill,
   Badge,
   Skeleton,
+  type ChainId,
   type DataTableColumn,
 } from "@/components/ui";
 import { formatBps, formatToken } from "@/lib/format";
@@ -23,8 +25,8 @@ type Row = {
   name: string;
   symbol: string;
   sub?: string;
-  /** Small info chip next to the name (e.g. "via XRPL" on the FXRP row). */
-  chip?: string;
+  /** Chain(s) the collateral is supplied FROM — the "Chain" column. */
+  chains: ChainId[];
   href?: string;
   live: boolean;
   stats?: BranchStats;
@@ -70,11 +72,6 @@ const COLUMNS: Array<DataTableColumn<Row>> = [
         <span className="flex min-w-0 flex-col">
           <span className="flex items-center gap-2 font-medium">
             {row.name}
-            {row.chip && (
-              <Badge tone="blue" className="normal-case">
-                {row.chip}
-              </Badge>
-            )}
             {!row.live && (
               <Badge tone="neutral" className="normal-case">
                 Soon
@@ -85,6 +82,13 @@ const COLUMNS: Array<DataTableColumn<Row>> = [
         </span>
       </span>
     ),
+  },
+  {
+    // Which chain the collateral is supplied FROM. FXRP shows BOTH marks — the
+    // same market is fundable with FXRP on Flare or XRP from the XRP Ledger.
+    key: "chain",
+    header: "Chain",
+    cell: (row) => <ChainMarks chains={row.chains} />,
   },
   {
     key: "rate",
@@ -128,13 +132,13 @@ export function BorrowMarketsCard() {
   const rows: Row[] = [
     {
       // ONE row for the FXRP market — the XRPL-native path funds this same
-      // market (XRP becomes FXRP via FAssets), so it is a chip on this row,
-      // not a second row with identical numbers.
+      // market (XRP becomes FXRP via FAssets), so the Chain column carries
+      // both marks instead of a second row with identical numbers.
       key: "fxrp",
       name: "FXRP",
       symbol: "FXRP",
-      sub: "FAssets XRP · fund from Flare or the XRP Ledger",
-      chip: "via XRPL",
+      sub: "FAssets XRP",
+      chains: ["flare", "xrpl"],
       href: "/borrow/fxrp",
       live: true,
       stats: fxrp,
@@ -143,13 +147,28 @@ export function BorrowMarketsCard() {
       key: "wflr",
       name: "wFLR",
       symbol: "WFLR",
-      sub: "Wrapped FLR (WC2FLR)",
+      sub: "Wrapped C2FLR",
+      chains: ["flare"],
       href: "/borrow/wflr",
       live: true,
       stats: wflr,
     },
-    { key: "stxrp", name: "stXRP", symbol: "STXRP", sub: "Staked XRP", live: false },
-    { key: "sflr", name: "sFLR", symbol: "SFLR", sub: "Staked FLR", live: false },
+    {
+      key: "stxrp",
+      name: "stXRP",
+      symbol: "STXRP",
+      sub: "Staked XRP",
+      chains: ["xrpl"],
+      live: false,
+    },
+    {
+      key: "sflr",
+      name: "sFLR",
+      symbol: "SFLR",
+      sub: "Staked FLR",
+      chains: ["flare"],
+      live: false,
+    },
   ];
 
   return (

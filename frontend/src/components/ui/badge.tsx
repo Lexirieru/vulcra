@@ -4,7 +4,6 @@ import { cn } from "./cn";
 export type BadgeTone =
   | "neutral"
   | "brand"
-  | "blue"
   | "navy"
   | "green"
   | "orange"
@@ -21,7 +20,6 @@ const TONE: Record<BadgeTone, string> = {
   neutral:
     "bg-[var(--color-surface-2)] text-[var(--color-muted)] border-[var(--color-line)]",
   brand: BRAND_TINT,
-  blue: "bg-[color-mix(in_srgb,var(--color-blue)_10%,transparent)] text-[var(--color-blue)] border-[color-mix(in_srgb,var(--color-blue)_28%,transparent)]",
   navy: "bg-[color-mix(in_srgb,var(--color-navy)_8%,transparent)] text-[var(--color-navy)] border-[color-mix(in_srgb,var(--color-navy)_25%,transparent)]",
   green: GREEN_TINT,
   orange:

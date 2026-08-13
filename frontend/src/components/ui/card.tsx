@@ -77,9 +77,11 @@ export function SectionCard({
   );
 }
 
-const HERO_TONE: Record<"navy" | "blue", string> = {
+// Warm-palette hero tones only — navy ink + brand maroon. (The old cool-blue
+// tone read as an off-brand accent against the warm light theme.)
+const HERO_TONE: Record<"navy" | "maroon", string> = {
   navy: "bg-[var(--color-navy)]",
-  blue: "bg-[var(--color-blue)]",
+  maroon: "bg-[var(--color-maroon)]",
 };
 
 export function HeroCard({
@@ -90,7 +92,7 @@ export function HeroCard({
   href,
   className,
 }: {
-  tone: "navy" | "blue";
+  tone: "navy" | "maroon";
   title: React.ReactNode;
   desc: React.ReactNode;
   icon?: React.ReactNode;
