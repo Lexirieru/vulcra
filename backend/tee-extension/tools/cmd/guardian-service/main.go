@@ -426,8 +426,12 @@ func startSignServer(priv *ecdsa.PrivateKey, port string) {
 		}
 		_ = json.NewEncoder(w).Encode(teetypes.SignResponse{Signature: sig})
 	})
+	// Bind loopback ONLY: the /decrypt + /sign endpoints wield the enclave key and
+	// must never be reachable outside this process. The keeper calls them at
+	// 127.0.0.1:SIGN_PORT, so loopback is sufficient and can't be exposed by a
+	// stray public domain on this port.
 	go func() {
-		if err := http.ListenAndServe(":"+port, mux); err != nil {
+		if err := http.ListenAndServe("127.0.0.1:"+port, mux); err != nil {
 			log.Fatalf("sign server: %v", err)
 		}
 	}()
