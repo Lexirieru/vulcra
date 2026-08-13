@@ -18,6 +18,10 @@ CDP from an XRP wallet only** through the Vulcra MCP server.
 [![Rails](https://img.shields.io/badge/Flare-FAssets_·_FTSOv2_·_FDC_·_FCC-1f6feb?style=for-the-badge)](https://dev.flare.network)
 [![Agent](https://img.shields.io/badge/AI_agent-MCP_zero--custody-f0883e?style=for-the-badge)](#-the-ai-agent--drive-a-cdp-from-an-xrp-wallet-mcp)
 
+### ▶︎ Live now: **[vulcra.xyz](https://vulcra.xyz)**
+
+**[▶ Launch the dApp — app.vulcra.xyz](https://app.vulcra.xyz)** · API [api.vulcra.xyz](https://api.vulcra.xyz/health) · Guardian TEE [tee.vulcra.xyz](https://tee.vulcra.xyz/health)
+
 **[Explorer](https://coston2-explorer.flare.network)** ·
 **[VaultManager (FXRP)](https://coston2-explorer.flare.network/address/0x93e572cDbfb62557E041B53490e5208C147b5388)** ·
 **[vUSD](https://coston2-explorer.flare.network/address/0x333FDCf66792122e80654E197Eb6Fa3705f1B6D8)** ·
@@ -145,6 +149,22 @@ flowchart TB
 
 Every core contract is deployed and live on Coston2. Every claim below links to the explorer. The full
 authoritative list lives in [`smartcontract/deployments/coston2.json`](smartcontract/deployments/coston2.json).
+
+### Live services (hosted)
+
+The whole stack runs in production on your own domain — nothing is localhost-only:
+
+| Service | URL | Host | What it is |
+|---|---|---|---|
+| **Landing** | [vulcra.xyz](https://vulcra.xyz) | Vercel | Marketing site (`landingpage/`) |
+| **dApp** | [app.vulcra.xyz](https://app.vulcra.xyz) | Vercel | The app (`frontend/`) — borrow, earn, redeem, guardian, liquidations |
+| **Executor API** | [api.vulcra.xyz](https://api.vulcra.xyz/health) | Railway | 0xFE mint/manage build + FDC + `executeDirectMintingWithData` (`backend/apps/executor`) |
+| **Guardian TEE** | [tee.vulcra.xyz](https://tee.vulcra.xyz/health) | Railway | Confidential auto-repay keeper (`backend/tee-extension` · `guardian-service`) |
+| **Vault indexer** | Goldsky subgraph `vulcra-vaults-fxrp` | Goldsky | At-risk vault discovery on the Liquidations page — folds VaultManager events to current state, CR via live FTSO |
+
+Reads/writes hit Coston2 through a viem `fallback` transport (thirdweb → Flare public). The dApp
+computes at-risk vaults **client-side** from the Goldsky subgraph (verified against on-chain
+`getVault` + `collateralRatioBps`), with the executor's `/vaults/at-risk` REST as fallback.
 
 ### Core contracts (UUPS · AccessControl)
 
@@ -422,32 +442,33 @@ in a single signature.
 
 ## 🛡️ Guardian — confidential, opt-in liquidation protection (FCC)
 
-The Guardian is an opt-in keeper that runs inside a **Trusted Execution Environment** on Flare
-Confidential Compute (`backend/tee-extension`, built on Flare's `fce-extension-scaffold`). Rule
-parameters (trigger health ratio, max repay) are submitted **once over TLS to the TEE**, never read
-from a public on-chain source — so your protection thresholds aren't front-runnable.
+An opt-in keeper that runs inside a **Trusted Execution Environment** on Flare Confidential Compute
+(`backend/tee-extension`, built on Flare's `fce-extension-scaffold`). You register a **private** rule
+— *trigger CR + max repay* — and it auto-repays your vault before liquidation. The rule is
+**ECIES-encrypted to the enclave key**, decrypted only inside the TEE, and committed on-chain only as
+`keccak256(owner, trigger, maxRepay)` — so your threshold is never front-runnable.
+
+The dApp talks to it through **`guardian-service`** (live at
+**[tee.vulcra.xyz](https://tee.vulcra.xyz/health)**), a Go service that bundles the TEE node key
+(`/decrypt` + `/sign`), the keeper (authoritative in-enclave Coston2 reads), a REST facade
+(`/guardian/rules`), and a watch loop that re-evaluates every enabled rule.
 
 ```mermaid
-sequenceDiagram
-    autonumber
-    actor U as 👤 User
-    participant TEE as 🔒 Guardian (TEE)
-    participant VM as VaultManager
-    U->>TEE: submit rule over TLS<br/>(trigger HF, max repay) — private
-    Note over TEE: threshold lives only inside the enclave
-    loop every cycle
-      TEE->>VM: read health factor
-      VM-->>TEE: HF
-      alt HF approaches liquidation
-        TEE->>VM: auto-repay from mandate → pull vault to safety
-      else healthy
-        TEE-->>TEE: hold
-      end
-    end
+flowchart LR
+  U["👤 owner<br/>app.vulcra.xyz/guardian"] -->|"rule (trigger, maxRepay)<br/>over TLS"| GS
+  subgraph TEE["🔒 guardian-service · tee.vulcra.xyz (TEE)"]
+    GS["REST facade<br/>/guardian/rules"] -->|"ECIES(rule)"| K["keeper"]
+    K <-->|"/decrypt · /sign<br/>(loopback only)"| N["TEE node key"]
+    K -->|"watch loop<br/>re-evaluate"| K
+  end
+  K -->|"getVault · FTSO price<br/>(authoritative, in-enclave)"| VM["VaultManager · FTSOv2<br/>Coston2"]
+  K -.->|"CR ≤ trigger →<br/>delegatedRepay (gated)"| VM
 ```
 
-Judged in `SIMULATED_TEE` mode (deterministic, reproducible build); production mode runs a measured
-GCP Confidential Space attestation. The extension targets the current `FlareTeeManager`
+Only the public `termsCommitment` ever leaves the enclave. Execution (`delegatedRepay`) is gated to a
+keeper wallet holding `GUARDIAN_EXECUTOR_ROLE`; until then the Guardian is decision-only. Judged in
+`SIMULATED_TEE` mode (deterministic, reproducible build) — the judge-approved Coston2 posture;
+production mode runs a measured GCP Confidential Space attestation against the current `FlareTeeManager`
 (`0x1a9C4A…`).
 
 ---
@@ -575,7 +596,7 @@ Everything targets **Flare Coston2 (114)**.
 | **`packages/userop`** | 0xFE memo encoding · `PackedUserOperation` build/hash · vault call batches (open / add / withdraw / mint-more / repay / adjust-rate / close / SP-deposit) |
 | **`packages/chain-client`** | Flare contract resolution (registry → AssetManager, MasterAccountController, FdcVerification, FXRP token) |
 | **`packages/interfaces`** | shared ABIs (VaultManager, Zap, ERC-20, PersonalAccount) |
-| **`tee-extension`** | Guardian confidential keeper (Go · Flare `fce-extension-scaffold`) |
+| **`tee-extension`** | Guardian confidential keeper (Go · Flare `fce-extension-scaffold`) + **`guardian-service`** — TEE node + keeper + REST `/guardian/rules` (deployed at [tee.vulcra.xyz](https://tee.vulcra.xyz/health)) |
 | Runtime | **Node ≥ 22** · **`tsx`** (run TS directly, no build step) · npm workspaces · **vitest** |
 
 ### 🖥️ `frontend` — the app
@@ -585,7 +606,7 @@ Everything targets **Flare Coston2 (114)**.
 | Framework | **Next.js 16** (App Router) · **React 19** · **TypeScript** (single light theme) |
 | Web3 (EVM) | **wagmi 3** + **viem 2** + **Reown AppKit** (WalletConnect) — Coston2 only, via a viem `fallback` transport (thirdweb primary → Flare public backup) so a slow/rate-limited RPC can't strand a read |
 | Web3 (XRPL) | **Crossmark** + **GemWallet** — sign the raw Payment in-browser, 0xFE memo preserved verbatim, no server key |
-| Data | **TanStack Query 5** · live **FTSOv2** prices · ABIs from the contracts |
+| Data | **TanStack Query 5** · live **FTSOv2** prices · ABIs from the contracts · **Goldsky** subgraph (`src/graphql/`) for at-risk vault discovery on Liquidations |
 | UI | **Tailwind CSS** · hand-rolled component kit · `lucide-react` · framer-motion / GSAP · verified headless + Playwright (23 passing) |
 
 ### 🌐 `landingpage`

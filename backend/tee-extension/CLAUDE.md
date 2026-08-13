@@ -27,6 +27,24 @@ so thresholds aren't front-runnable. Ops: `GUARDIAN/REGISTER`, `GUARDIAN/EVALUAT
 run-book). Hackathon posture is **simulated attestation** (judge-approved); production attestation is
 the documented next step and needs a live TEE host + tunnel.
 
+## `guardian-service` — the FE-facing deployment (`tools/cmd/guardian-service/`)
+
+The long-running Go binary the frontend's `/guardian` page actually talks to. One process bundles:
+the **TEE node key** (simulated attestation, serves `/decrypt` + `/sign` on `SIGN_PORT`, **loopback only**),
+the **keeper** invoked in-process (`extension.ProcessAction`, no localhost `/action` hop), a **REST facade**
+matching the FE api client — `GET/POST /guardian/rules`, `PATCH /guardian/rules/{id}`,
+`POST /guardian/rules/{id}/evaluate`, `GET /health` — and a **watch loop** re-evaluating enabled rules.
+
+- Register flow: FE sends the plaintext rule over TLS → facade ECIES-encrypts it to the TEE key
+  (`teeutils.Encrypt`) → `GUARDIAN/REGISTER` → stores owner-facing metadata + the `termsCommitment`.
+  The private terms live only in the enclave; on-chain only `keccak256(owner, trigger, maxRepay)`.
+- **Deployed** at `https://tee.vulcra.xyz` (Railway, Dockerfile `tools/cmd/guardian-service/Dockerfile`
+  selected by `backend/tee-extension/railway.json`; `$PORT` → REST facade). Env: branch addresses +
+  `MCR_BPS` + `SIMULATED_TEE=true` + `FRONTEND_ORIGIN`. **No FCC indexer DB creds needed** — the keeper
+  reads chain via RPC directly. Rule store is in-memory (resets on restart). `delegatedRepay` stays gated
+  until `KEEPER_TEE_ADDRESS` (a funded wallet with `GUARDIAN_EXECUTOR_ROLE`) is set.
+- Run locally: see `tools/cmd/guardian-service/README.md`. FE points at it via `NEXT_PUBLIC_GUARDIAN_API_URL`.
+
 ## 🔒 Security
 The whole point is confidentiality — no trigger data on-chain. Keys/creds only in gitignored `.env`.
 Never commit `.env`, `references/`, or `VULCRA_PRD.md`.

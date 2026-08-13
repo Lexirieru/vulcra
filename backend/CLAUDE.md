@@ -4,6 +4,8 @@ Node + `tsx` **npm workspace** (`packages/*` + `apps/*`) that turns a signed XRP
 on-chain FXRP mint + vault operation on Flare Coston2, and hosts the confidential Guardian keeper.
 No build step — TypeScript runs directly via `tsx`. **Node ≥ 22.**
 
+> **Deployed:** the executor is live on Railway at `https://api.vulcra.xyz` (root dir `backend/`, `nixpacks.toml` forces `npm install`, `railway.json` start = `npm -w apps/executor start`, health `/health`). The Go Guardian `guardian-service` is a **separate** Railway service at `https://tee.vulcra.xyz` (root dir `backend/tee-extension`, Dockerfile via `backend/tee-extension/railway.json`). Both set `FRONTEND_ORIGIN=https://app.vulcra.xyz` for CORS. The executor reads **zero** FCC vars — those belong to `tee-extension` only.
+
 ## Layout
 
 | Path | Role | Its own CLAUDE.md |
@@ -13,7 +15,7 @@ No build step — TypeScript runs directly via `tsx`. **Node ≥ 22.**
 | `packages/userop/` | The 0xFE core: memo + `PackedUserOperation` + vault call batches. | [`packages/userop/CLAUDE.md`](packages/userop/CLAUDE.md) |
 | `packages/chain-client/` | Resolve Flare system contracts via `FlareContractRegistry`; viem `fallback` RPC transport (thirdweb → Flare public) in `coston2Transport`. | [`packages/chain-client/CLAUDE.md`](packages/chain-client/CLAUDE.md) |
 | `packages/interfaces/` | Shared viem ABIs (VaultManager, Zap, ERC-20, PersonalAccount). | [`packages/interfaces/CLAUDE.md`](packages/interfaces/CLAUDE.md) |
-| `tee-extension/` | Go — Guardian confidential keeper (TEE). | [`tee-extension/CLAUDE.md`](tee-extension/CLAUDE.md) |
+| `tee-extension/` | Go — Guardian confidential keeper (TEE) + `tools/cmd/guardian-service` (TEE node + keeper + REST `/guardian/rules` the FE calls; **deployed at `tee.vulcra.xyz`**). | [`tee-extension/CLAUDE.md`](tee-extension/CLAUDE.md) |
 | `docs/` | FDC/TEE run-books + E2E evidence. | — |
 
 ## Run

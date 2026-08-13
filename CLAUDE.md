@@ -18,6 +18,24 @@ Liquity-V2 model: borrowers set their own interest rate; redemptions hit the low
 | `frontend/` | Next.js 16 dApp — borrow (EVM + XRPL-native), earn, redeem, guardian, liquidations. | `:3000` |
 | `landingpage/` | Marketing/landing experience (separate app). | its own dev server |
 
+## 🚀 Live in production (deployed 13 Aug 2026)
+
+The full stack runs on real domains — verified end-to-end from the browser:
+
+| Service | URL | Host | Source |
+|---|---|---|---|
+| Landing | `https://vulcra.xyz` | Vercel | `landingpage/` |
+| dApp | `https://app.vulcra.xyz` | Vercel | `frontend/` |
+| Executor API | `https://api.vulcra.xyz` (`/health`) | Railway (root `backend/`, nixpacks) | `backend/apps/executor` |
+| Guardian TEE | `https://tee.vulcra.xyz` (`/health`) | Railway (root `backend/tee-extension`, Dockerfile via `railway.json`) | `backend/tee-extension/tools/cmd/guardian-service` |
+| Vault indexer | Goldsky subgraph `vulcra-vaults-fxrp` (public GraphQL) | Goldsky | `frontend/src/graphql/` |
+
+- **FE env** (Vercel): `NEXT_PUBLIC_API_BASE_URL=https://api.vulcra.xyz`, `NEXT_PUBLIC_GUARDIAN_API_URL=https://tee.vulcra.xyz`. Goldsky URL is a committed public default in `frontend/src/graphql/subgraphs.ts`.
+- **CORS**: `FRONTEND_ORIGIN=https://app.vulcra.xyz` on both Railway services.
+- **Liquidations**: at-risk vaults come from the Goldsky subgraph (fold events → current-state, CR via live FTSO), REST `/vaults/at-risk` as fallback.
+- **Guardian**: `guardian-service` = TEE node (sim) + keeper in-process + REST `/guardian/rules` + watch loop. FE calls it via `GUARDIAN_API_URL`.
+- Deploy notes / envs live in `frontend/.env.example`, `backend/.env.example`, and the guardian-service `README.md`. Push to `main` → Vercel + Railway auto-redeploy.
+
 ## The core idea — the 0xFE custom instruction
 
 XRPL-native minting rides Flare's **0xFE direct-minting custom instruction** through **Flare Smart

@@ -28,6 +28,10 @@ npm run dev            # Next dev — DEFAULT PORT 3000
 > ⚠️ **Port clash:** the dApp (`frontend/`) also uses `:3000`. Run the landing on another port when
 > both are up: `npm run dev -- -p 3001` (or start only one at a time).
 
+> **Deployed** at `https://vulcra.xyz` (Vercel, root dir `landingpage/`). The "Launch app" CTAs in
+> `components/Navbar.jsx` point at `NEXT_PUBLIC_APP_URL` (prod `https://app.vulcra.xyz`, default
+> `https://app.vulcra.xyz`) and open in a **new tab** (`target="_blank" rel="noopener noreferrer"`).
+
 ## QA notes (static)
 
 - The npm package is still named **`truus`** (template default) — rename to something Vulcra-specific

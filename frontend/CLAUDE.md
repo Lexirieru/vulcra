@@ -35,6 +35,10 @@ signed Payment — no EVM wallet, no FLR gas.
 - `hooks/` — chain-read/write + XRPL React hooks. See `hooks/CLAUDE.md`.
 - `lib/` — ABIs, backend API client, XRPL wallet abstraction, pure math/format. See `lib/CLAUDE.md`.
 - `config/` — chain constants, branch registry, AppKit/wagmi setup. See `config/CLAUDE.md`.
+- `graphql/` — **Goldsky** subgraph client: `client.ts` (typed `gqlFetch`), `subgraphs.ts` (per-branch
+  endpoints, FXRP default committed), `vaults.ts` (fetch every VaultManager event → `foldVaults` →
+  current-state → `toAtRiskVaults`, verified against on-chain `getVault` + `collateralRatioBps`). Powers
+  Liquidations at-risk discovery (`hooks/useAtRiskVaults`), REST `/vaults/at-risk` as the fallback source.
 - `context/` — provider tree (wagmi, Query, XRPL wallet, branch, drawer). See `context/CLAUDE.md`.
 - `stubs/empty.ts` — empty module aliased over optional x402/Base-Account deps the
   wagmi/AppKit graph pulls but Vulcra never uses (see `next.config.ts`).
@@ -57,7 +61,13 @@ signed Payment — no EVM wallet, no FLR gas.
   Coston2 fallbacks. Never hardcode a Flare system address (registry is the one exception).
 - **RPC transport (`src/config/index.ts`).** `WagmiAdapter` uses a viem `fallback([thirdweb,
   flare-public])` for Coston2 — thirdweb's endpoint is faster + more concurrency-tolerant than the
-  shared Flare public RPC; override the primary with `NEXT_PUBLIC_COSTON2_RPC_URL`.
+  shared Flare public RPC; override the primary with `NEXT_PUBLIC_COSTON2_RPC_URL`. (thirdweb keyless
+  429-throttles under bursts; reads still succeed via the Flare-public fallback.)
+- **Two backends, two base URLs (`config/contracts.ts`).** The executor is `API_BASE_URL`
+  (`NEXT_PUBLIC_API_BASE_URL`, prod `https://api.vulcra.xyz`); the Guardian keeper is a **separate**
+  service `GUARDIAN_API_URL` (`NEXT_PUBLIC_GUARDIAN_API_URL`, prod `https://tee.vulcra.xyz`, falls back
+  to `API_BASE_URL`). `lib/api/client.ts` `request(path, init, baseUrl)` routes the 3 guardian calls to
+  `GUARDIAN_API_URL`; everything else hits the executor. Deployed at `app.vulcra.xyz` (Vercel).
 - **Hydration-safe inputs.** Controlled amount inputs (BorrowComposer) are `disabled` until a
   `hydrated` flag flips in `useEffect` — a keystroke typed into the SSR DOM before the component
   mounts would otherwise be discarded when React re-applies the empty server value.
