@@ -299,7 +299,7 @@ export function XrplMintFlow() {
               price18={price18}
               params={params}
               collDec={COLL_DEC}
-              collateralSymbol="FXRP"
+              collateralSymbol="XRP"
               feedLabel={BRANCHES.fxrp.feedLabel}
               rateBps={currentRateBps}
             />
@@ -844,23 +844,25 @@ function XrplCollateralForm({
   const overVault = !isAdd && amt6 !== null && amt6 > vault.collateral;
   const valid = amt6 !== null && amt6 > 0n && !insufficient && !overVault;
   const cap = isAdd ? spendableDrops : vault.collateral;
-  const capSymbol = isAdd ? "XRP" : "FXRP";
+  // The XRP path reasons in XRP end-to-end (collateral is FXRP on Flare, 1:1 with
+  // XRP); the amount label stays "XRP", the hint explains the FXRP mechanic.
+  const capSymbol = "XRP";
   const error = insufficient
     ? `Insufficient balance — you have ${formatToken(spendableDrops!, COLL_DEC, 2)} XRP spendable.`
     : overVault
-      ? `You only have ${formatToken(vault.collateral, COLL_DEC, 2)} FXRP in the vault.`
+      ? `You only have ${formatToken(vault.collateral, COLL_DEC, 2)} XRP in the vault.`
       : undefined;
 
   return (
     <div className="flex flex-col gap-3">
       <Field
-        label={isAdd ? "Supply collateral (XRP)" : "Withdraw collateral (FXRP)"}
+        label={isAdd ? "Supply collateral (XRP)" : "Withdraw collateral (XRP)"}
         htmlFor={`xrpl-coll-${mode}`}
         error={error}
         hint={
           isAdd
             ? "Sent from your XRP Ledger wallet · becomes FXRP collateral on Flare"
-            : "Returned as FXRP to your Flare personal account · one XRPL payment (fees only)"
+            : "Returned as FXRP (1:1 with XRP) to your Flare personal account · one XRPL payment (fees only)"
         }
       >
         <Input

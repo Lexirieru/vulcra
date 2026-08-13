@@ -9,6 +9,7 @@
 // composer): different source asset (XRP vs FXRP), different chain (XRP Ledger
 // vs Flare), different wallet. Same visual layout, its own route — the two paths
 // are never merged onto one page.
+import { useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { TokenIcon } from "@/components/ui";
@@ -18,11 +19,20 @@ import { RedemptionsExplainer } from "@/components/vault/RedemptionsExplainer";
 import { XrplMintFlow } from "@/components/xrpl/XrplMintFlow";
 import { XrplSendVusd } from "@/components/xrpl/XrplSendVusd";
 import { BRANCHES } from "@/config/branches";
+import { useBranch } from "@/context/branch";
 
 export default function BorrowXrpPage() {
   // XRPL-native collateral settles on the FXRP branch on Flare — the price feed
   // and redemption mechanics shown here are that branch's, framed as XRP.
   const branch = BRANCHES.fxrp;
+
+  // Sync the app-wide branch context to FXRP so the utility routes (/redeem,
+  // /guardian, /liquidations) don't keep operating on a stale wFLR context after
+  // the user came here from /borrow/wflr.
+  const { setBranchKey } = useBranch();
+  useEffect(() => {
+    setBranchKey("fxrp");
+  }, [setBranchKey]);
 
   return (
     <div className="flex flex-col gap-6">

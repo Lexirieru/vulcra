@@ -15,6 +15,7 @@
 // EVM writeContract from the wrong owner.
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
+import { useAccount } from "wagmi";
 import { Card, TokenIcon } from "@/components/ui";
 import { useXrplWalletContext } from "@/context/xrpl";
 import { usePersonalAccount } from "@/hooks/usePersonalAccount";
@@ -23,14 +24,19 @@ import type { CollateralBranch } from "@/config/branches";
 import { formatToken } from "@/lib/format";
 
 export function XrplVaultBanner({ branch }: { branch: CollateralBranch }) {
+  const { isConnected: evmConnected } = useAccount();
   const { address: xrplAddress } = useXrplWalletContext();
   const account = usePersonalAccount(xrplAddress ?? "");
   const pa = account.data?.personalAccount as `0x${string}` | undefined;
   const { vault, hasVault } = useVault(pa, branch.vaultManager || undefined);
 
-  // Only meaningful on a branch that has an XRPL-native path, and only when the
-  // PersonalAccount actually holds a vault the EVM view can't see.
-  if (!branch.hasXrplMint || !xrplAddress || !hasVault || !vault) return null;
+  // This is the "did my EVM collateral vanish?" bridge — it only makes sense on
+  // the EVM borrow page when an EVM wallet IS connected (so this page is showing
+  // that wallet's empty vault) yet the connected XRP wallet's PersonalAccount
+  // holds a vault the EVM view can't see. Without an EVM wallet, the two paths
+  // stay isolated: the EVM route just prompts "connect wallet", never surfacing
+  // the XRP-path vault.
+  if (!evmConnected || !branch.hasXrplMint || !xrplAddress || !hasVault || !vault) return null;
 
   return (
     <Card className="flex flex-col gap-3 border-brand/20">

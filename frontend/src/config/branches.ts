@@ -70,7 +70,10 @@ export const BRANCHES: Record<BranchKey, CollateralBranch> = {
   wflr: {
     key: "wflr",
     label: "wFLR",
-    collateralSymbol: "WC2FLR",
+    // Display symbol — kept as "wFLR" so every surface (nav, picker, borrow
+    // headers, composer, vault actions, earn) names the collateral the same
+    // thing. The on-chain token is Wrapped C2FLR (WNat) on Coston2.
+    collateralSymbol: "wFLR",
     collateralDecimals: 18,
     feedId: FLR_USD_FEED,
     feedLabel: "FLR/USD",

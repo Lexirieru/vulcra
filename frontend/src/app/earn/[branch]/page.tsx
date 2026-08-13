@@ -9,6 +9,7 @@ import { ArrowLeft } from "lucide-react";
 import { Badge, Card, CardTitle, TokenIcon } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { BRANCHES, type BranchKey } from "@/config/branches";
+import { useAccount } from "wagmi";
 import { useXrplWalletContext } from "@/context/xrpl";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import { useStabilityPool } from "@/components/earn/useStabilityPool";
@@ -53,6 +54,7 @@ export default function EarnPoolPage() {
   const pool = useStabilityPool(branch);
   const { price18, isStale } = useFtsoPrice(branch.feedId);
   const xrpConnected = Boolean(useXrplWalletContext().address);
+  const evmConnected = useAccount().isConnected;
   const isFxrp = branch.key === "fxrp";
   const dash = <span className="text-muted">—</span>;
 
@@ -167,7 +169,11 @@ export default function EarnPoolPage() {
 
         <aside className="lg:sticky lg:top-6">
           <Reveal delay={0.08}>
-            {isFxrp && xrpConnected ? (
+            {/* Only swap to the PersonalAccount (XRP-path) deposit when NO EVM wallet
+                is connected — an EVM user (even with an XRP wallet also connected)
+                keeps their own vUSD DepositPanel. XRP-path pool deposits are also
+                reachable from /borrow/xrp. */}
+            {isFxrp && xrpConnected && !evmConnected ? (
               <XrplEarnDeposit />
             ) : (
               <DepositPanel branch={branch} />
