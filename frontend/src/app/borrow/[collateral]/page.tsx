@@ -17,7 +17,7 @@ import { Suspense, use, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { useAccount } from "wagmi";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, CheckCircle2, ChevronDown, ExternalLink, X } from "lucide-react";
 import { Card, Skeleton, TokenIcon } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { BorrowComposer } from "@/components/vault/BorrowComposer";
@@ -31,7 +31,12 @@ import { XrplVaultBanner } from "@/components/vault/XrplVaultBanner";
 import { BRANCHES, isBranchKey, type BranchKey } from "@/config/branches";
 import { useBranch } from "@/context/branch";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
-import { useCollateralToken, useVault, useVaultParams } from "@/hooks/useVault";
+import {
+  useCollateralToken,
+  useVault,
+  useVaultParams,
+  useXrplPathVault,
+} from "@/hooks/useVault";
 import { useVaultRate, useRedeemableBefore } from "@/hooks/useInterest";
 import {
   DUR,
@@ -81,10 +86,33 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
   const vaultManager = branch.vaultManager || undefined;
   const { price18 } = useFtsoPrice(branch.feedId);
   const { params } = useVaultParams(vaultManager);
-  const { vault, hasVault, notConfigured, isLoading } = useVault(address, vaultManager);
+  const {
+    vault,
+    hasVault,
+    notConfigured,
+    isLoading,
+    refetch: refetchVault,
+  } = useVault(address, vaultManager);
   const { address: collateralToken } = useCollateralToken(branch);
   const { rateBps } = useVaultRate(address, vaultManager);
   const { data: redeemableBefore } = useRedeemableBefore(address, vaultManager, hasVault);
+
+  // The XRP-path position: a vault on this branch owned by the connected XRPL
+  // wallet's PersonalAccount (not this EVM wallet). When it exists and the EVM
+  // wallet has none, it IS the user's position — show it instead of an
+  // open-vault composer so a second vault can't be opened by accident.
+  const xrplPath = useXrplPathVault(branch);
+
+  // Set when the composer's openVault confirms, so the "Confirmed + Explorer"
+  // proof survives the composer → PositionCard swap (the composer unmounts the
+  // moment the vault read flips to active).
+  const [openedHash, setOpenedHash] = useState<`0x${string}` | undefined>(undefined);
+  const onOpened = (hash?: `0x${string}`) => {
+    setOpenedHash(hash);
+    // Refetch getVault immediately — waiting on the 12s poll leaves the user
+    // staring at a stale composer after the tx confirmed.
+    void refetchVault();
+  };
 
   // Subtle GSAP crossfade over the two regions whose content changes when the
   // collateral is switched. The page no longer remounts, so a plain ref
@@ -153,6 +181,30 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
             </Card>
           ) : hasVault && vault ? (
             <>
+              {openedHash && (
+                <Reveal>
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-green/30 bg-green/10 px-4 py-3 text-sm">
+                    <CheckCircle2 className="h-4 w-4 shrink-0 text-green" aria-hidden />
+                    <span className="font-medium text-ink">Vault opened.</span>
+                    <a
+                      href={`https://coston2-explorer.flare.network/tx/${openedHash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 font-medium text-brand hover:underline"
+                    >
+                      Explorer <ExternalLink className="h-3 w-3" aria-hidden />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setOpenedHash(undefined)}
+                      aria-label="Dismiss"
+                      className="ml-auto grid size-8 place-items-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+                    >
+                      <X className="h-4 w-4" aria-hidden />
+                    </button>
+                  </div>
+                </Reveal>
+              )}
               <Reveal>
                 <PositionCard
                   vault={vault}
@@ -193,16 +245,45 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
                 </Reveal>
               </div>
             </>
-          ) : (
+          ) : xrplPath.hasVault ? (
             <Reveal>
               <div className="flex flex-col gap-6">
-                {/* If this EVM wallet has no vault but the connected XRP wallet's
-                    PersonalAccount does, surface it here instead of a bare
-                    "open a vault" form — the vault isn't missing, it's on the
-                    XRP path. */}
+                {/* This EVM wallet has no vault but the connected XRP wallet's
+                    PersonalAccount does — that IS the user's position on this
+                    market, so it renders as the primary card. The open-vault
+                    composer never sits next to it: opening a second,
+                    EVM-owned vault stays possible but only behind an explicit
+                    disclosure, so it can't happen by accident. */}
                 <XrplVaultBanner branch={branch} />
-                <BorrowComposer branch={branch} onSelectBranch={setActiveKey} />
+                <details className="group rounded-2xl border border-dashed border-line px-4 py-3">
+                  <summary className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-ink [&::-webkit-details-marker]:hidden">
+                    <ChevronDown
+                      className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180"
+                      aria-hidden
+                    />
+                    Open a separate {branch.label} vault with this EVM wallet
+                  </summary>
+                  <p className="mt-1 text-xs text-muted/80">
+                    This creates a second vault owned by the connected EVM wallet,
+                    independent of the XRP-path vault above.
+                  </p>
+                  <div className="mt-4">
+                    <BorrowComposer
+                      branch={branch}
+                      onSelectBranch={setActiveKey}
+                      onOpened={onOpened}
+                    />
+                  </div>
+                </details>
               </div>
+            </Reveal>
+          ) : (
+            <Reveal>
+              <BorrowComposer
+                branch={branch}
+                onSelectBranch={setActiveKey}
+                onOpened={onOpened}
+              />
             </Reveal>
           )}
         </div>

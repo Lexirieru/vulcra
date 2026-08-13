@@ -11,7 +11,7 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import { zeroAddress } from "viem";
-import { ArrowDown, Gauge, Info } from "lucide-react";
+import { ArrowDown, Gauge, Info, Loader2 } from "lucide-react";
 import { Badge, Button, Card, PillButton, TokenIcon, cn } from "@/components/ui";
 import { TxStatus } from "./TxStatus";
 import {
@@ -191,13 +191,18 @@ function CollateralSelector({
  * the borrow page, which owns it as local state.
  * @param onSelectBranch Called when the user picks a different asset in the
  * selector. The page swaps state; nothing navigates.
+ * @param onOpened Fired once when openVault confirms (with the tx hash), so the
+ * page can refetch getVault immediately and keep the confirmation visible after
+ * this composer unmounts.
  */
 export function BorrowComposer({
   branch,
   onSelectBranch,
+  onOpened,
 }: {
   branch: CollateralBranch;
   onSelectBranch: (key: BranchKey) => void;
+  onOpened?: (hash?: `0x${string}`) => void;
 }) {
   const { address: owner } = useAccount();
   const { open } = useAppKit();
@@ -252,6 +257,23 @@ export function BorrowComposer({
   useEffect(() => {
     if (approval.approved) approval.refetchAllowance();
   }, [approval.approved]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Tell the page the vault opened — exactly once per successful open — so it
+  // refetches getVault immediately (instead of waiting on the 12s poll) and
+  // keeps the "Confirmed + Explorer" proof visible across the composer →
+  // position-card swap. The ref resets when the phase leaves "success" so a
+  // later open (e.g. a second vault from the disclosure) notifies again.
+  const notifiedOpened = useRef(false);
+  useEffect(() => {
+    if (action.phase === "success") {
+      if (!notifiedOpened.current) {
+        notifiedOpened.current = true;
+        onOpened?.(action.hash);
+      }
+    } else {
+      notifiedOpened.current = false;
+    }
+  }, [action.phase, action.hash, onOpened]);
 
   const collateralAmt = parseAmount(collateral, collDec);
   const mint18 = parseAmount(mint, 18);
@@ -547,7 +569,18 @@ export function BorrowComposer({
 
       {/* CTA */}
       <div className="mt-1 flex flex-col gap-2">
-        {!owner ? (
+        {action.phase === "success" ? (
+          // The vault is open on-chain; the page is refetching getVault. A
+          // status card — not a re-enabled button — so a second openVault
+          // can't be fired while the position read catches up.
+          <div className="flex items-center gap-3 rounded-xl border border-green/30 bg-green/10 p-4">
+            <Loader2 className="h-5 w-5 shrink-0 text-brand motion-safe:animate-spin" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">Vault opened</p>
+              <p className="text-xs text-muted">Loading your position…</p>
+            </div>
+          </div>
+        ) : !owner ? (
           <PillButton size="lg" onClick={() => open()}>
             Connect wallet to borrow
           </PillButton>
@@ -586,7 +619,7 @@ export function BorrowComposer({
         {/* Why a loan is required: a vault is a debt position, so opening one
             always borrows some vUSD. Collateral itself earns nothing — yield
             lives in Earn. After opening, borrow more / add / repay run anytime. */}
-        {owner && !needsApproval && !action.isBusy && (
+        {owner && !needsApproval && !action.isBusy && action.phase !== "success" && (
           <p className="flex items-start gap-1.5 text-xs text-muted/80">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
             <span>

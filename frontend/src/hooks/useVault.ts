@@ -8,6 +8,8 @@
 import { useReadContract } from "wagmi";
 import type { Address } from "viem";
 import { COSTON2_CHAIN_ID } from "@/config/contracts";
+import { useXrplWalletContext } from "@/context/xrpl";
+import { usePersonalAccount } from "@/hooks/usePersonalAccount";
 import { vaultManagerAbi } from "@/lib/contracts/abis";
 import { useContractAddress } from "@/lib/contracts/registry";
 import type { CollateralBranch } from "@/config/branches";
@@ -118,5 +120,34 @@ export function useVault(owner?: Address, vaultManager?: Address) {
     isLoading: query.isLoading,
     isError: query.isError,
     refetch: query.refetch,
+  };
+}
+
+/**
+ * The XRP-path vault for a branch: the vault owned by the connected XRPL
+ * wallet's Flare PersonalAccount (a Smart Account derived from the r-address),
+ * NOT by any EVM wallet. The VaultManager keys vaults by owner, so the same
+ * person can hold a PersonalAccount-owned vault the EVM borrow page's
+ * getVault(evmWallet) read can never see — this hook is the shared detection
+ * for that position (XrplVaultBanner, the borrow pages' "manage vs open"
+ * decision, the /borrow/xrp header). Only meaningful on branches with an
+ * XRPL-native mint (FXRP); everywhere else it resolves to "no vault".
+ */
+export function useXrplPathVault(branch: CollateralBranch) {
+  const { address: xrplAddress } = useXrplWalletContext();
+  const account = usePersonalAccount(xrplAddress ?? "");
+  const pa = account.data?.personalAccount as Address | undefined;
+  const enabled = branch.hasXrplMint && Boolean(xrplAddress);
+  const { vault, hasVault } = useVault(
+    enabled ? pa : undefined,
+    branch.vaultManager || undefined,
+  );
+  return {
+    /** Connected XRPL r-address, if any. */
+    xrplAddress,
+    /** The derived Flare PersonalAccount that owns the vault. */
+    pa,
+    vault,
+    hasVault: enabled && hasVault,
   };
 }

@@ -1,65 +1,82 @@
 "use client";
 
-// "Your vault is on the XRP path" bridge.
+// "Your vault lives on the XRP path" — a first-class POSITION card, not a
+// warning banner.
 //
 // A vault opened through the XRPL-native flow (/borrow/xrp) is owned by the
 // user's Flare PersonalAccount (a Smart Account derived from their r-address),
 // NOT their EVM wallet. So the EVM borrow page — which reads getVault(evmWallet)
-// — shows an empty "open a vault" composer even though the user already has a
-// vault. That mismatch reads as "my collateral/balance vanished".
+// — would show an empty "open a vault" composer even though the user already
+// has a live position. That mismatch reads as "my collateral/balance vanished",
+// and worse, the composer invites opening a SECOND vault by accident.
 //
-// This banner closes the gap: on an XRPL-capable branch (FXRP), if the EVM
-// wallet has no vault but the connected XRP wallet's PersonalAccount does, it
-// surfaces that vault (read-only summary) and links to /borrow/xrp — the ONLY
-// place its actions work, since managing it requires the 0xFE XRPL path, not an
-// EVM writeContract from the wrong owner.
-import Link from "next/link";
+// This card closes the gap: on an XRPL-capable branch (FXRP), if the connected
+// XRP wallet's PersonalAccount holds a vault, surface it as THE position on
+// this market — owner, collateral, debt, health — with a primary "Manage vault"
+// CTA into /borrow/xrp, the ONLY place its actions work (each one is a signed
+// XRPL 0xFE payment, not an EVM writeContract from the wrong owner). It renders
+// whether or not an EVM wallet is also connected: the position exists either
+// way, and hiding it from an XRPL-only visitor would re-open the same trap.
 import { ArrowRight } from "lucide-react";
-import { useAccount } from "wagmi";
-import { Card, TokenIcon } from "@/components/ui";
-import { useXrplWalletContext } from "@/context/xrpl";
-import { usePersonalAccount } from "@/hooks/usePersonalAccount";
-import { useVault } from "@/hooks/useVault";
+import { Badge, Card, PillButton, TokenIcon } from "@/components/ui";
+import { useXrplPathVault, useVaultParams } from "@/hooks/useVault";
+import { useFtsoPrice } from "@/hooks/useFtsoPrice";
 import type { CollateralBranch } from "@/config/branches";
-import { formatToken } from "@/lib/format";
+import { computeCrBps, healthBand } from "@/lib/vault-math";
+import { formatBps, formatToken, shortenAddress } from "@/lib/format";
 
 export function XrplVaultBanner({ branch }: { branch: CollateralBranch }) {
-  const { isConnected: evmConnected } = useAccount();
-  const { address: xrplAddress } = useXrplWalletContext();
-  const account = usePersonalAccount(xrplAddress ?? "");
-  const pa = account.data?.personalAccount as `0x${string}` | undefined;
-  const { vault, hasVault } = useVault(pa, branch.vaultManager || undefined);
+  const { pa, vault, hasVault } = useXrplPathVault(branch);
+  const { price18 } = useFtsoPrice(branch.feedId);
+  const { params } = useVaultParams(branch.vaultManager || undefined);
 
-  // This is the "did my EVM collateral vanish?" bridge — it only makes sense on
-  // the EVM borrow page when an EVM wallet IS connected (so this page is showing
-  // that wallet's empty vault) yet the connected XRP wallet's PersonalAccount
-  // holds a vault the EVM view can't see. Without an EVM wallet, the two paths
-  // stay isolated: the EVM route just prompts "connect wallet", never surfacing
-  // the XRP-path vault.
-  if (!evmConnected || !branch.hasXrplMint || !xrplAddress || !hasVault || !vault) return null;
+  if (!hasVault || !vault) return null;
+
+  const crBps = price18
+    ? computeCrBps(vault.collateral, branch.collateralDecimals, vault.debt18, price18)
+    : null;
+  const band = healthBand(crBps, params.mcrBps);
+  const riskLabel =
+    band === "danger" ? "High risk" : band === "warning" ? "Watch" : "Healthy";
 
   return (
-    <Card className="flex flex-col gap-3 border-brand/20">
-      <div className="flex items-start gap-3">
-        <span className="flex shrink-0 items-center">
-          <TokenIcon symbol="vUSD" size={32} alt="" />
-          <TokenIcon
-            symbol={branch.collateralSymbol}
-            size={32}
-            alt=""
-            className="-ml-2 ring-2 ring-surface"
-          />
-        </span>
-        <div className="min-w-0">
-          <p className="font-medium text-ink">You already have a {branch.label} vault</p>
-          <p className="mt-0.5 text-sm text-muted">
-            Opened from the XRP path, so it lives under your Flare personal account —
-            not this EVM wallet. Manage it there.
-          </p>
+    <Card className="flex flex-col gap-4 border-brand/20">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="flex shrink-0 items-center">
+            <TokenIcon symbol="vUSD" size={32} alt="" />
+            <TokenIcon
+              symbol={branch.collateralSymbol}
+              size={32}
+              alt=""
+              className="-ml-2 ring-2 ring-surface"
+            />
+          </span>
+          <div className="min-w-0">
+            <p className="font-medium text-ink">
+              Your {branch.label} vault{" "}
+              <span className="font-normal text-muted">(opened from the XRP Ledger)</span>
+            </p>
+            <p className="mt-0.5 text-sm text-muted">
+              This is your position on this market. It is owned by your Flare
+              personal account
+              {pa ? (
+                <>
+                  {" "}
+                  <span className="font-mono">{shortenAddress(pa)}</span>
+                </>
+              ) : null}{" "}
+              — derived from your r-address — so every action is one signed XRPL
+              payment.
+            </p>
+          </div>
         </div>
+        <Badge tone={band === "danger" ? "danger" : band === "warning" ? "warning" : "green"}>
+          {riskLabel}
+        </Badge>
       </div>
 
-      <dl className="grid grid-cols-2 gap-3 border-t border-line pt-3 text-sm">
+      <dl className="grid grid-cols-2 gap-3 border-t border-line pt-3 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-xs text-muted">Collateral</dt>
           <dd className="tabular-nums text-ink">
@@ -71,15 +88,18 @@ export function XrplVaultBanner({ branch }: { branch: CollateralBranch }) {
           <dt className="text-xs text-muted">Debt (incl. interest)</dt>
           <dd className="tabular-nums text-ink">{formatToken(vault.debt18, 18, 2)} vUSD</dd>
         </div>
+        <div>
+          <dt className="text-xs text-muted">Collateral ratio</dt>
+          <dd className="tabular-nums text-ink">
+            {crBps === null ? "—" : formatBps(crBps)}
+          </dd>
+        </div>
       </dl>
 
-      <Link
-        href="/borrow/xrp"
-        className="inline-flex w-fit items-center gap-1.5 text-sm font-medium text-brand hover:underline"
-      >
-        Manage on the XRP path
+      <PillButton href="/borrow/xrp" size="md" className="w-fit">
+        Manage vault
         <ArrowRight className="h-4 w-4" aria-hidden />
-      </Link>
+      </PillButton>
     </Card>
   );
 }

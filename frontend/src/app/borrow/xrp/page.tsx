@@ -20,11 +20,18 @@ import { XrplMintFlow } from "@/components/xrpl/XrplMintFlow";
 import { XrplSendVusd } from "@/components/xrpl/XrplSendVusd";
 import { BRANCHES } from "@/config/branches";
 import { useBranch } from "@/context/branch";
+import { useXrplPathVault } from "@/hooks/useVault";
 
 export default function BorrowXrpPage() {
   // XRPL-native collateral settles on the FXRP branch on Flare — the price feed
   // and redemption mechanics shown here are that branch's, framed as XRP.
   const branch = BRANCHES.fxrp;
+
+  // Does the connected XRPL wallet's PersonalAccount already hold a vault?
+  // Then this page is the MANAGE surface for that position — the header must
+  // say so (mirroring the EVM branch page), or arriving via "Manage vault"
+  // reads as "the XRP pool" instead of "my vault".
+  const { hasVault } = useXrplPathVault(branch);
 
   // Sync the app-wide branch context to FXRP so the utility routes (/redeem,
   // /guardian, /liquidations) don't keep operating on a stale wFLR context after
@@ -48,12 +55,12 @@ export default function BorrowXrpPage() {
             <TokenIcon symbol="XRP" size={40} alt="" />
             <div>
               <h1 className="text-2xl font-semibold tracking-tight text-ink">
-                Borrow vUSD with your XRP
+                {hasVault ? "Your XRP vault" : "Borrow vUSD with your XRP"}
               </h1>
               <p className="mt-0.5 text-sm text-muted">
-                Supply XRP from the XRP Ledger as collateral — it becomes FXRP on
-                Flare — and borrow vUSD cross-chain. One payment, no Flare wallet
-                or FLR gas.
+                {hasVault
+                  ? "Manage collateral, debt, and interest — every action is one signed XRPL payment, no Flare wallet or FLR gas."
+                  : "Supply XRP from the XRP Ledger as collateral — it becomes FXRP on Flare — and borrow vUSD cross-chain. One payment, no Flare wallet or FLR gas."}
               </p>
             </div>
           </div>

@@ -14,7 +14,9 @@
 // connects inline (per provider) or raises the drawer; pasting an r-address you
 // don't hold is still supported for the QR / Xaman path.
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import QRCode from "react-qr-code";
+import { useAccount } from "wagmi";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowDown,
@@ -148,6 +150,12 @@ export function XrplMintFlow() {
     account.data?.personalAccount,
     FXRP_VAULT_MANAGER,
   );
+  // The connected EVM wallet may hold its OWN FXRP vault (opened on
+  // /borrow/fxrp — vaults are keyed by owner, so it is invisible to the
+  // PersonalAccount read above). Opening here would create a SECOND, separate
+  // vault; the composer warns first instead of letting that happen silently.
+  const { address: evmAddress } = useAccount();
+  const { hasVault: evmHasVault } = useVault(evmAddress, FXRP_VAULT_MANAGER);
   // vUSD the borrow delivered to the PersonalAccount — this is what the "Earn"
   // card lets you deposit into the stability pool from your XRP wallet (spDeposit).
   const paBalances = useWalletBalances(account.data?.personalAccount);
@@ -354,6 +362,30 @@ export function XrplMintFlow() {
           payment instead of an EVM tx. Shown only when there is no vault yet. */}
       {account.data && !hasVault && (
         <>
+          {/* If the connected EVM wallet already has its own FXRP vault, say so
+              BEFORE the composer — this flow opens a separate, PersonalAccount-
+              owned vault, and that must never happen by surprise. */}
+          {evmHasVault && (
+            <Reveal>
+              <div className="flex items-start gap-3 rounded-xl border border-brand/20 bg-brand/5 p-4 text-sm">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
+                <p className="text-muted">
+                  <span className="font-medium text-ink">
+                    This opens a separate vault owned by your XRP personal account.
+                  </span>{" "}
+                  Your connected EVM wallet already has an FXRP vault of its own —{" "}
+                  <Link
+                    href="/borrow/fxrp"
+                    className="font-medium text-brand hover:underline"
+                  >
+                    manage that one instead
+                  </Link>
+                  .
+                </p>
+              </div>
+            </Reveal>
+          )}
+
           {/* Card 1 — Collateral (XRP) */}
           <Reveal>
             <Card>
