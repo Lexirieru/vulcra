@@ -9,8 +9,10 @@ branch registry, and the AppKit/wagmi adapter. Everything is env-driven
 - `FLARE_CONTRACT_REGISTRY_ADDRESS` — the ONE hardcoded system address allowed (same on
   every Flare network). Every other Flare system contract is resolved through it at runtime.
 - `CONTRACT_NAMES` — registry names (`FtsoV2`, `AssetManagerFXRP`, `MasterAccountController`).
-- `XRP_USD_FEED_ID`, optional Vulcra address overrides, and
-  `API_BASE_URL` (`NEXT_PUBLIC_API_BASE_URL`, default `http://localhost:8787`).
+- `XRP_USD_FEED_ID`, optional Vulcra address overrides, `API_BASE_URL`
+  (`NEXT_PUBLIC_API_BASE_URL`, default `http://localhost:8787`, prod `https://api.vulcra.xyz`), and
+  `GUARDIAN_API_URL` (`NEXT_PUBLIC_GUARDIAN_API_URL`, the separate Guardian keeper, prod
+  `https://tee.vulcra.xyz`; falls back to `API_BASE_URL`).
 
 ## `branches.ts` — multi-collateral registry
 - `BranchKey = "fxrp" | "wflr"`; `BRANCHES`, `BRANCH_ORDER`, `DEFAULT_BRANCH = "fxrp"`,

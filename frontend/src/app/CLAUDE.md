@@ -32,8 +32,10 @@ App Router pages for the Vulcra dApp. `layout.tsx` is the only server root; most
   (`redeem(vusdAmount18, maxIterations=25)`); insufficient-vUSD guard, live preview.
 - `/guardian` — create/list private TEE auto-repay rules (backend `/guardian/rules`).
   Trigger CR must exceed MCR. Branch-scoped.
-- `/liquidations` — at-risk vaults for the active branch from the backend indexer,
-  riskiest first; one-click liquidate re-checks CR on-chain.
+- `/liquidations` — at-risk vaults for the active branch, riskiest first; one-click liquidate
+  re-checks CR on-chain. Source is env-gated via `useAtRiskVaults`: the **Goldsky** subgraph
+  (`src/graphql/` — fold events → current-state, CR from live FTSO) when the branch has one (FXRP),
+  else the backend indexer `/vaults/at-risk`. Shows a "via Goldsky subgraph" tag when live.
 - `/incentives` — static "coming soon" placeholders (no live program yet, no fake APRs).
 - `/borrow/xrp` — the XRPL-native mint (`XrplMintFlow`) with a LivePrice + redemptions
   sidebar. This is the single XRPL entry point; the old standalone `/xrpl` route was

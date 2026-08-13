@@ -27,8 +27,10 @@ abstraction, and pure format/math with no chain or React dependency.
   (This file IS `"use client"` — the only React piece under `lib/`.)
 
 ## `api/`
-- `client.ts` — thin typed `fetch` wrapper for the backend (`API_BASE_URL`, default
-  `http://localhost:8787`). `ApiError` normalizes failures; `at-risk` 404 degrades to `[]`.
+- `client.ts` — thin typed `fetch` wrapper. `request(path, init, baseUrl=API_BASE_URL)` — the 3
+  guardian calls pass `GUARDIAN_API_URL` (the separate Guardian keeper, prod `tee.vulcra.xyz`), the
+  rest hit the executor (`API_BASE_URL`, prod `api.vulcra.xyz`). `ApiError` normalizes failures;
+  `at-risk` 404 degrades to `[]`.
   Adapts the backend's flat `MintPlan` → the nested `MintBuildResponse` the UI uses.
   Endpoints: `getAccount`, `preflight`, `buildMint`, `buildManage`, `submitMint`,
   `getMintStatus`, `listAtRiskVaults`, `listGuardianRules`, `createGuardianRule`,

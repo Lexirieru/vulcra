@@ -21,6 +21,9 @@ generated hooks). Every hook is real Coston2/XRPL data — no mocks; unresolved 
 - `useBranchStats.ts` — dashboard aggregates: `useBranchStats` (`getEntireSystemDebt`,
   `params`, `vaultCount` + debt-weighted avg rate walked highest→lower, cap 50) and
   `useBranchDebt`.
+- `useAtRiskVaults.ts` — at-risk vault discovery for Liquidations. Env-gated source: the **Goldsky**
+  subgraph (`@/graphql` — fold events → current state, CR via `useFtsoPrice`) when the branch has one,
+  else the backend REST `/vaults/at-risk`. Both yield the same `AtRiskVault[]` the page renders.
 
 ## Prices & balances
 - `useFtsoPrice.ts` — live collateral/USD from FTSOv2 (`getFeedById`), resolved via
