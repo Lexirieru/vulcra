@@ -1,16 +1,16 @@
 "use client";
 
-// Liquidations (U11 / R19), per selected collateral branch. At-risk vaults from
-// the backend indexer (scoped to the branch), riskiest first, with one-click
+// Liquidations (U11 / R19), per selected collateral branch. At-risk vaults come from
+// the Goldsky subgraph when the branch has one (folded to current state + live FTSO
+// CR), else the backend indexer — see useAtRiskVaults. Riskiest first, with one-click
 // liquidation through the shared tx lifecycle. liquidate() re-checks CR on-chain.
-import { useQuery } from "@tanstack/react-query";
 import type { Address } from "viem";
 import { Badge, Card, CardTitle, EmptyState, ErrorState, Skeleton } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { LiquidateButton } from "@/components/liquidations/LiquidateButton";
 import { ContractsNotice } from "@/components/vault/ContractsNotice";
-import { api } from "@/lib/api/client";
 import { useVaultParams } from "@/hooks/useVault";
+import { useAtRiskVaults } from "@/hooks/useAtRiskVaults";
 import { useBranch } from "@/context/branch";
 import { formatCr, formatToken, shortenAddress } from "@/lib/format";
 
@@ -20,12 +20,9 @@ export default function LiquidationsPage() {
   const { params } = useVaultParams(vaultManager);
   const mcrBps = Number(params.mcrBps);
 
-  const { data, isLoading, isError, refetch } = useQuery({
-    queryKey: ["at-risk-vaults", branch.key],
-    queryFn: () => api.listAtRiskVaults(Math.round(mcrBps * 1.2), branch.key),
-    retry: 1,
-    refetchInterval: 15_000,
-  });
+  // Discover at-risk vaults up to 1.2× MCR (at-risk, not only already-liquidatable).
+  const belowCrBps = mcrBps > 0 ? Math.round(mcrBps * 1.2) : 0;
+  const { data, isLoading, isError, refetch, source } = useAtRiskVaults(branch, belowCrBps);
 
   const rows = (data ?? []).slice().sort((a, b) => a.crBps - b.crBps);
 
@@ -51,7 +48,12 @@ export default function LiquidationsPage() {
 
       <Reveal delay={0.05}>
         <Card>
-          <CardTitle>At-risk vaults</CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle>At-risk vaults</CardTitle>
+            {source === "goldsky" && (
+              <span className="text-xs text-muted">via Goldsky subgraph</span>
+            )}
+          </div>
           <div className="mt-4">
             {isLoading ? (
               <div className="flex flex-col gap-2">
