@@ -20,7 +20,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { useAccount } from "wagmi";
 import { ArrowLeft, CheckCircle2, ChevronDown, ExternalLink, X } from "lucide-react";
-import { Card, Skeleton, TokenIcon } from "@/components/ui";
+import { Card, ErrorState, Skeleton, TokenIcon } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { RailToggle, type Rail } from "@/components/borrow/RailToggle";
 import { BorrowComposer } from "@/components/vault/BorrowComposer";
@@ -96,6 +96,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
     hasVault,
     notConfigured,
     isLoading,
+    isError: vaultReadError,
     refetch: refetchVault,
   } = useVault(address, vaultManager);
   const { address: collateralToken } = useCollateralToken(branch);
@@ -108,7 +109,20 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
   // invitation to open a second vault by accident.
   const xrplPath = useXrplPathVault(branch);
   const { rateBps: xrplRateBps } = useVaultRate(xrplPath.pa, vaultManager);
+  const { data: xrplRedeemableBefore } = useRedeemableBefore(
+    xrplPath.pa,
+    vaultManager,
+    xrplPath.hasVault,
+  );
   const positionCount = (hasVault && vault ? 1 : 0) + (xrplPath.hasVault && xrplPath.vault ? 1 : 0);
+
+  // Keep the URL in step with the locally-switched collateral. The native
+  // history API is App-Router-aware (shallow) — no navigation, no remount —
+  // so refresh/share lands on the collateral actually shown.
+  useEffect(() => {
+    const want = `/borrow/${activeKey}`;
+    if (window.location.pathname !== want) window.history.replaceState(null, "", want);
+  }, [activeKey]);
 
   // Which rail funds a NEW vault (no-position state only): the Flare wallet
   // (FXRP composer) or the XRP Ledger (the XRPL-native flow). FXRP-only —
@@ -195,6 +209,19 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
             </Card>
           ) : positionCount > 0 ? (
             <>
+              {/* The EVM read failed while the XRP-path position rendered fine —
+                  say so instead of silently listing an incomplete set. */}
+              {isConnected && vaultReadError && (
+                <Reveal>
+                  <Card>
+                    <ErrorState
+                      title="Couldn't read your EVM vault"
+                      description="The RPC read failed, so this list may be missing your EVM-owned position."
+                      onRetry={() => void refetchVault()}
+                    />
+                  </Card>
+                </Reveal>
+              )}
               {openedHash && (
                 <Reveal>
                   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-green/30 bg-green/10 px-4 py-3 text-sm">
@@ -282,6 +309,7 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
                       collateralSymbol="XRP"
                       feedLabel={branch.feedLabel}
                       rateBps={xrplRateBps}
+                      redeemableBefore18={xrplRedeemableBefore?.debt18}
                       ownerChip={`XRP Ledger · personal account ${shortenAddress(xrplPath.pa)}`}
                     />
                   </Reveal>
@@ -340,6 +368,17 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
                 </Reveal>
               )}
             </>
+          ) : isConnected && vaultReadError ? (
+            // Fail CLOSED, not into the open composer: if the vault read
+            // errored, this page cannot know whether a vault already exists —
+            // showing the composer would invite opening a duplicate.
+            <Card>
+              <ErrorState
+                title="Couldn't read your vault"
+                description="The RPC read failed, so this page can't tell whether you already have a vault here. Retry before opening a new one."
+                onRetry={() => void refetchVault()}
+              />
+            </Card>
           ) : (
             <Reveal>
               <div className="flex flex-col gap-6">

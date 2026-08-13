@@ -14,6 +14,11 @@
 // The vUSD address is resolved from the pool itself (pool.vusd(), the same
 // no-env pattern as StatsBar). A blank `stabilityPool` renders the honest
 // "coming soon" state — no fake numbers, per spec §5.
+//
+// Writes surface a TxStatus-compatible lifecycle (phase / txHash / error) —
+// they are NOT swallowed to the console: the deposit panel renders the same
+// signing → confirming → success/error strip every vault action shows.
+import { useState } from "react";
 import { useAccount, useConfig, useReadContracts } from "wagmi";
 import {
   readContract,
@@ -23,6 +28,7 @@ import {
 import { zeroAddress, type Address } from "viem";
 import { COSTON2_CHAIN_ID } from "@/config/contracts";
 import { erc20Abi, stabilityPoolAbi } from "@/lib/contracts/abis";
+import type { TxPhase } from "@/hooks/useVaultAction";
 import type { BranchKey, CollateralBranch } from "@/config/branches";
 
 const SEVEN_DAYS = 7n * 24n * 60n * 60n;
@@ -45,6 +51,12 @@ export interface StabilityPoolState {
   deposit?: (amount18: bigint) => Promise<void>;
   /** StabilityPool.withdrawFromSP (principal + pending rewards). */
   withdraw?: (amount18: bigint) => Promise<void>;
+  /** Write lifecycle — same phases TxStatus renders. */
+  phase: TxPhase;
+  txHash?: `0x${string}`;
+  txError: Error | null;
+  isBusy: boolean;
+  resetTx: () => void;
 }
 
 export function useStabilityPool(branch: CollateralBranch): StabilityPoolState {
@@ -73,62 +85,75 @@ export function useStabilityPool(branch: CollateralBranch): StabilityPoolState {
   const vusd = read<Address>(3);
   const userDeposit18 = account ? read<bigint>(4) : undefined;
 
-  // The deposit panel has no error slot (scaffold contract): failures — user
-  // rejection included — surface on the console instead of crashing the tree.
-  async function deposit(amount18: bigint) {
-    if (!pool || !account || !vusd) return;
-    try {
-      await runDeposit(amount18);
-    } catch (err) {
-      console.error("[earn] deposit failed", err);
-    }
+  // Write lifecycle, TxStatus-compatible: "signing" while a wallet popup is
+  // open, "confirming" while a sent tx waits for its receipt.
+  const [phase, setPhase] = useState<TxPhase>("idle");
+  const [txHash, setTxHash] = useState<`0x${string}` | undefined>(undefined);
+  const [txError, setTxError] = useState<Error | null>(null);
+
+  function resetTx() {
+    setPhase("idle");
+    setTxHash(undefined);
+    setTxError(null);
   }
 
-  async function runDeposit(amount18: bigint) {
-    if (!pool || !account || !vusd) return;
-    const allowance = await readContract(config, {
-      address: vusd,
-      abi: erc20Abi,
-      functionName: "allowance",
-      args: [account, pool],
-      chainId: COSTON2_CHAIN_ID,
-    });
-    if (allowance < amount18) {
-      const approveHash = await writeContract(config, {
-        address: vusd,
-        abi: erc20Abi,
-        functionName: "approve",
-        args: [pool, amount18],
-        chainId: COSTON2_CHAIN_ID,
-      });
-      await waitForTransactionReceipt(config, {
-        hash: approveHash,
-        chainId: COSTON2_CHAIN_ID,
-      });
-    }
-    const hash = await writeContract(config, {
-      ...base,
-      address: pool,
-      functionName: "provideToSP",
-      args: [amount18],
-    });
-    await waitForTransactionReceipt(config, { hash, chainId: COSTON2_CHAIN_ID });
-    await refetch();
-  }
-
-  async function withdraw(amount18: bigint) {
+  async function run(kind: "deposit" | "withdraw", amount18: bigint) {
     if (!pool || !account) return;
+    setTxHash(undefined);
+    setTxError(null);
     try {
-      const hash = await writeContract(config, {
-        ...base,
-        address: pool,
-        functionName: "withdrawFromSP",
-        args: [amount18],
-      });
-      await waitForTransactionReceipt(config, { hash, chainId: COSTON2_CHAIN_ID });
+      if (kind === "deposit") {
+        if (!vusd) return;
+        setPhase("signing");
+        const allowance = await readContract(config, {
+          address: vusd,
+          abi: erc20Abi,
+          functionName: "allowance",
+          args: [account, pool],
+          chainId: COSTON2_CHAIN_ID,
+        });
+        if (allowance < amount18) {
+          const approveHash = await writeContract(config, {
+            address: vusd,
+            abi: erc20Abi,
+            functionName: "approve",
+            args: [pool, amount18],
+            chainId: COSTON2_CHAIN_ID,
+          });
+          setPhase("confirming");
+          await waitForTransactionReceipt(config, {
+            hash: approveHash,
+            chainId: COSTON2_CHAIN_ID,
+          });
+          setPhase("signing");
+        }
+        const hash = await writeContract(config, {
+          ...base,
+          address: pool,
+          functionName: "provideToSP",
+          args: [amount18],
+        });
+        setTxHash(hash);
+        setPhase("confirming");
+        await waitForTransactionReceipt(config, { hash, chainId: COSTON2_CHAIN_ID });
+      } else {
+        setPhase("signing");
+        const hash = await writeContract(config, {
+          ...base,
+          address: pool,
+          functionName: "withdrawFromSP",
+          args: [amount18],
+        });
+        setTxHash(hash);
+        setPhase("confirming");
+        await waitForTransactionReceipt(config, { hash, chainId: COSTON2_CHAIN_ID });
+      }
+      setPhase("success");
       await refetch();
     } catch (err) {
-      console.error("[earn] withdraw failed", err);
+      console.error(`[earn] ${kind} failed`, err);
+      setPhase("error");
+      setTxError(err instanceof Error ? err : new Error(String(err)));
     }
   }
 
@@ -140,7 +165,12 @@ export function useStabilityPool(branch: CollateralBranch): StabilityPoolState {
     apr7dBps: apr7dRaw !== undefined ? Number(apr7dRaw) : undefined,
     userDeposit18,
     isLoading,
-    deposit: pool ? deposit : undefined,
-    withdraw: pool ? withdraw : undefined,
+    deposit: pool ? (amount18) => run("deposit", amount18) : undefined,
+    withdraw: pool ? (amount18) => run("withdraw", amount18) : undefined,
+    phase,
+    txHash,
+    txError,
+    isBusy: phase === "signing" || phase === "confirming",
+    resetTx,
   };
 }

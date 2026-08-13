@@ -53,7 +53,7 @@ import { usePersonalAccount, isValidRAddress } from "@/hooks/usePersonalAccount"
 import { useXrplWalletContext } from "@/context/xrpl";
 import { useWalletUi } from "@/context/wallet-ui";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
-import { useVaultRate } from "@/hooks/useInterest";
+import { useRedeemableBefore, useVaultRate } from "@/hooks/useInterest";
 import { useVault, useVaultParams } from "@/hooks/useVault";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
 import { useXrpBalance } from "@/hooks/useXrpBalance";
@@ -149,6 +149,13 @@ export function XrplMintFlow() {
   const { rateBps: currentRateBps } = useVaultRate(
     account.data?.personalAccount,
     FXRP_VAULT_MANAGER,
+  );
+  // Lower-rate debt redeemed before this vault — the same "redeemable before
+  // you" figure the EVM position card shows (rail parity).
+  const { data: redeemableBefore } = useRedeemableBefore(
+    account.data?.personalAccount,
+    FXRP_VAULT_MANAGER,
+    hasVault,
   );
   // The connected EVM wallet may hold its OWN FXRP vault (opened on
   // /borrow/fxrp — vaults are keyed by owner, so it is invisible to the
@@ -257,6 +264,20 @@ export function XrplMintFlow() {
         )}
       </Reveal>
 
+      {/* The whole flow gates on the backend's PersonalAccount lookup — when it
+          fails, a blank body would read as "broken page". Fail loudly + retry. */}
+      {validAddr && account.isError && (
+        <Reveal>
+          <Card>
+            <ErrorState
+              title="Couldn't resolve your Flare personal account"
+              description="The backend is unavailable — vault status and actions need it. Your funds are safe; retry when it's back."
+              onRetry={() => void account.refetch()}
+            />
+          </Card>
+        </Reveal>
+      )}
+
       {/* MANAGE — the PersonalAccount already has an FXRP vault. Same shape as the
           EVM branch page: a position card + a tabbed Actions panel + the price
           simulator. Every action is ONE XRPL 0xFE payment instead of an EVM tx. */}
@@ -271,6 +292,7 @@ export function XrplMintFlow() {
               collateralSymbol="XRP"
               feedLabel={BRANCHES.fxrp.feedLabel}
               rateBps={currentRateBps}
+              redeemableBefore18={redeemableBefore?.debt18}
               ownerChip={
                 account.data
                   ? `XRP Ledger · personal account ${shortenAddress(account.data.personalAccount)}`
@@ -625,6 +647,20 @@ export function XrplMintFlow() {
               void refetchVault();
               xrpBalance.refetch();
               void account.refetch();
+              // A CLOSE returns the flow to the open composer — clear the
+              // finished pipeline and the stale composer inputs so it starts
+              // fresh instead of showing the old tracker under a new form.
+              if (
+                build.variables &&
+                "action" in build.variables &&
+                build.variables.action === "close"
+              ) {
+                build.reset();
+                submit.reset();
+                setXrplTxId("");
+                setCollateral("");
+                setBorrow("");
+              }
             }}
           />
         </Reveal>

@@ -382,7 +382,7 @@ export function BorrowComposer({
           <span className="text-sm tabular-nums text-muted/70">
             {derived.collateralUsd !== undefined ? formatUsd(derived.collateralUsd) : "$0.00"}
           </span>
-          {collBalance !== undefined && (
+          {collBalance !== undefined ? (
             <button
               type="button"
               onClick={() =>
@@ -392,7 +392,13 @@ export function BorrowComposer({
             >
               Balance {formatToken(collBalance, collDec, 4)} {branch.collateralSymbol}
             </button>
-          )}
+          ) : !owner ? (
+            // Say WHY there is no Balance/Max here instead of silently
+            // omitting it — the disconnected composer otherwise looks broken.
+            <span className="text-xs text-muted/60">
+              Connect a wallet to see your balance
+            </span>
+          ) : null}
         </div>
         {insufficientCollateral && (
           <p className="mt-2 text-xs text-danger">
@@ -585,14 +591,21 @@ export function BorrowComposer({
             Connect wallet to borrow
           </PillButton>
         ) : needsApproval && collateralToken ? (
-          <PillButton
-            size="lg"
-            variant="dark"
-            disabled={!collateralAmt || approval.isApproving}
-            onClick={() => collateralAmt && approval.approve(collateralAmt)}
-          >
-            {approval.isApproving ? "Approving…" : `Approve ${branch.collateralSymbol}`}
-          </PillButton>
+          <>
+            <PillButton
+              size="lg"
+              variant="dark"
+              disabled={!collateralAmt || approval.isApproving}
+              onClick={() => collateralAmt && approval.approve(collateralAmt)}
+            >
+              {approval.isApproving
+                ? "Approving… (step 1 of 2)"
+                : `Step 1 of 2 · Approve ${branch.collateralSymbol}`}
+            </PillButton>
+            <p className="text-center text-xs text-muted/70">
+              Step 2 — opening the vault — unlocks once the approval confirms.
+            </p>
+          </>
         ) : (
           <PillButton
             size="lg"

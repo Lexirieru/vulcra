@@ -22,7 +22,7 @@ import { Reveal } from "@/components/motion";
 import { api } from "@/lib/api/client";
 import { useVaultParams } from "@/hooks/useVault";
 import { useBranch } from "@/context/branch";
-import { formatCr, parseAmount } from "@/lib/format";
+import { formatCr, formatToken, parseAmount } from "@/lib/format";
 
 export default function GuardianPage() {
   const { branch } = useBranch();
@@ -37,6 +37,13 @@ export default function GuardianPage() {
     enabled: Boolean(address),
     retry: 1,
   });
+  // The backend returns ALL of the owner's rules; scope the list to the active
+  // branch client-side so the "protects your {branch} vault" copy stays true.
+  // Rules created before the multi-collateral pivot carry no branch tag — keep
+  // showing those rather than hiding them.
+  const rules = (rulesQuery.data ?? []).filter(
+    (r) => !r.branch || r.branch === branch.key,
+  );
 
   const [triggerPct, setTriggerPct] = useState("150");
   const [maxRepay, setMaxRepay] = useState("");
@@ -160,14 +167,14 @@ export default function GuardianPage() {
                   description="The backend is unavailable."
                   onRetry={() => rulesQuery.refetch()}
                 />
-              ) : (rulesQuery.data ?? []).length === 0 ? (
+              ) : rules.length === 0 ? (
                 <EmptyState
-                  title="No protection rules yet"
+                  title={`No protection rules for ${branch.label} yet`}
                   description="Create a rule to auto-repay before liquidation territory."
                 />
               ) : (
                 <ul className="flex flex-col gap-2">
-                  {rulesQuery.data!.map((r) => (
+                  {rules.map((r) => (
                     <li
                       key={r.id}
                       className="flex items-center justify-between rounded-lg border border-line bg-surface-2/40 px-4 py-3"
@@ -177,7 +184,7 @@ export default function GuardianPage() {
                           Auto-repay at CR {formatCr(BigInt(r.triggerCrBps))}
                         </div>
                         <div className="text-xs text-muted">
-                          up to {r.maxRepay18} base-unit vUSD
+                          up to {formatToken(BigInt(r.maxRepay18), 18, 2)} vUSD
                         </div>
                       </div>
                       <Badge tone={r.enabled ? "green" : "neutral"}>

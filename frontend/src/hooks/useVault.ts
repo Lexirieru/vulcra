@@ -129,8 +129,8 @@ export function useVault(owner?: Address, vaultManager?: Address) {
  * NOT by any EVM wallet. The VaultManager keys vaults by owner, so the same
  * person can hold a PersonalAccount-owned vault the EVM borrow page's
  * getVault(evmWallet) read can never see — this hook is the shared detection
- * for that position (XrplVaultBanner, the borrow pages' "manage vs open"
- * decision, the /borrow/xrp header). Only meaningful on branches with an
+ * for that position (the market page's position list, the borrow pages'
+ * "manage vs open" decision, the /borrow/xrp header). Only meaningful on branches with an
  * XRPL-native mint (FXRP); everywhere else it resolves to "no vault".
  */
 export function useXrplPathVault(branch: CollateralBranch) {

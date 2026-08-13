@@ -27,7 +27,7 @@ import {
   PenLine,
   ShieldAlert,
 } from "lucide-react";
-import type { Address } from "viem";
+import { formatUnits, type Address } from "viem";
 import {
   Button,
   Card,
@@ -462,9 +462,11 @@ function XrplDebtForm({
       </Field>
       {!isBorrow && (
         <div className="-mt-1 flex items-center justify-end text-xs">
+          {/* Full-precision string (not a rounded display value) so a full
+              repay leaves zero debt, never dust below the minimum. */}
           <button
             type="button"
-            onClick={() => setAmount(formatToken(vault.debt18, 18, 2).replace(/,/g, ""))}
+            onClick={() => setAmount(formatUnits(vault.debt18, 18))}
             className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
           >
             Repay full debt

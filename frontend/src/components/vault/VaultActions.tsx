@@ -1,13 +1,20 @@
 "use client";
 
 // Vault write actions (U7), branch-aware and mapped 1:1 to the real VaultManager:
-// openVault / addCollateral / withdrawCollateral / mintMore / repay / closeVault.
-// Collateral deposits gate on an ERC-20 approval; the wFLR branch also offers a
-// "wrap C2FLR → wFLR" helper (collateral is obtained by wrapping, not a faucet).
-// vUSD is burned from the caller by the protocol, so repay/close need no approval.
+// addCollateral / withdrawCollateral / mintMore / repay / adjustInterestRate /
+// closeVault. Opening a vault is BorrowComposer's job — this panel only mounts
+// when a vault exists. Collateral deposits gate on an ERC-20 approval; the wFLR
+// branch also offers a "wrap C2FLR → wFLR" helper (collateral is obtained by
+// wrapping, not a faucet). vUSD is burned from the caller by the protocol, so
+// repay/close need no approval.
+//
+// Parity with the XRPL twin (XrplVaultActions): every form bounds its input
+// (wallet balance, vault collateral, max borrow at MCR, outstanding debt, the
+// min-debt floor) and previews the collateral ratio AFTER the action via the
+// shared vault-math — the two rails must feel identical.
 import { useEffect, useState } from "react";
-import { zeroAddress, type Address } from "viem";
-import { Button, Card, CardTitle, Field, Input, cn } from "@/components/ui";
+import { formatUnits, zeroAddress, type Address } from "viem";
+import { Badge, Button, Card, CardTitle, Field, Input, cn } from "@/components/ui";
 import { TxStatus } from "./TxStatus";
 import { useVaultAction, useTokenApproval, useWrapNative } from "@/hooks/useVaultAction";
 import { useWalletBalances } from "@/hooks/useWalletBalances";
@@ -15,7 +22,12 @@ import { useInterestConfig, useVaultRate } from "@/hooks/useInterest";
 import type { InterestConfig } from "@/hooks/useInterest";
 import type { VaultParams, VaultState } from "@/hooks/useVault";
 import type { CollateralBranch } from "@/config/branches";
-import { annualInterest18, maxMintableVusd18 } from "@/lib/vault-math";
+import {
+  annualInterest18,
+  computeCrBps,
+  healthBand,
+  maxMintableVusd18,
+} from "@/lib/vault-math";
 import { formatBps, formatToken, parseAmount } from "@/lib/format";
 
 const HINTS = [zeroAddress, zeroAddress] as const; // contract falls back to a bounded descent
@@ -78,6 +90,39 @@ function InterestSlider({
   );
 }
 
+// "Collateral ratio after" preview — the Aave-style health read on every form.
+// Renders only once a valid amount is typed and the live price is in.
+function CrAfterRow({
+  collateralAfter,
+  debtAfter,
+  collDec,
+  price18,
+  mcrBps,
+}: {
+  collateralAfter: bigint;
+  debtAfter: bigint;
+  collDec: number;
+  price18?: bigint;
+  mcrBps: bigint;
+}) {
+  if (!price18) return null;
+  const crBps = computeCrBps(collateralAfter, collDec, debtAfter, price18);
+  const band = healthBand(crBps, mcrBps);
+  return (
+    <div className="-mt-1 flex items-center justify-between text-xs">
+      <span className="text-muted/70">Collateral ratio after</span>
+      <span className="inline-flex items-center gap-1.5 tabular-nums text-ink">
+        {crBps === null ? "∞ (debt-free)" : formatBps(crBps)}
+        {crBps !== null && (
+          <Badge tone={band === "danger" ? "danger" : band === "warning" ? "warning" : "green"}>
+            {band === "danger" ? "Below MCR" : band === "warning" ? "Watch" : "Healthy"}
+          </Badge>
+        )}
+      </span>
+    </div>
+  );
+}
+
 export function VaultActions({
   vault,
   price18,
@@ -87,7 +132,7 @@ export function VaultActions({
   owner,
   disabled,
 }: {
-  vault?: VaultState;
+  vault: VaultState;
   price18?: bigint;
   params: VaultParams;
   branch: CollateralBranch;
@@ -95,7 +140,6 @@ export function VaultActions({
   owner?: Address;
   disabled?: boolean;
 }) {
-  const hasVault = Boolean(vault);
   const [tab, setTab] = useState<Tab>("deposit");
   const action = useVaultAction(branch.vaultManager || undefined);
   const blocked = disabled || !action.configured;
@@ -118,92 +162,96 @@ export function VaultActions({
         <WrapPanel wnat={collateralToken} disabled={blocked} symbol={branch.collateralSymbol} />
       )}
 
-      {!hasVault ? (
-        <div className="mt-4">
-          <OpenForm
+      <div
+        className="mt-4 flex overflow-x-auto rounded-full border border-line bg-surface-2 p-1"
+        role="tablist"
+        aria-label="Vault action"
+      >
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            onClick={() => {
+              // A stale "Confirmed"/error from the previous tab must not haunt
+              // the next one — reset the shared tx lifecycle on every switch.
+              if (tab !== t.id) action.reset();
+              setTab(t.id);
+            }}
+            className={cn(
+              "min-h-10 flex-1 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+              tab === t.id ? "bg-navy text-white" : "text-muted hover:text-ink",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-4">
+        {tab === "deposit" && (
+          <CollateralForm
+            mode="add"
+            vault={vault}
             price18={price18}
             params={params}
-            branch={branch}
+            collDec={collDec}
+            symbol={branch.collateralSymbol}
             action={action}
             collateralToken={collateralToken}
+            vaultManager={branch.vaultManager || undefined}
             owner={owner}
-            interest={interest}
             collBalance={collBalance}
             blocked={blocked}
           />
-        </div>
-      ) : (
-        <>
-          <div
-            className="mt-4 flex overflow-x-auto rounded-full border border-line bg-surface-2 p-1"
-            role="tablist"
-            aria-label="Vault action"
-          >
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                role="tab"
-                aria-selected={tab === t.id}
-                onClick={() => setTab(t.id)}
-                className={cn(
-                  "min-h-10 flex-1 whitespace-nowrap rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
-                  tab === t.id ? "bg-navy text-white" : "text-muted hover:text-ink",
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="mt-4">
-            {tab === "deposit" && (
-              <CollateralForm
-                mode="add"
-                collDec={collDec}
-                symbol={branch.collateralSymbol}
-                action={action}
-                collateralToken={collateralToken}
-                vaultManager={branch.vaultManager || undefined}
-                owner={owner}
-                collBalance={collBalance}
-                blocked={blocked}
-              />
-            )}
-            {tab === "withdraw" && (
-              <CollateralForm
-                mode="withdraw"
-                collDec={collDec}
-                symbol={branch.collateralSymbol}
-                action={action}
-                blocked={blocked}
-              />
-            )}
-            {tab === "borrow" && (
-              <DebtForm mode="borrow" action={action} blocked={blocked} />
-            )}
-            {tab === "repay" && (
-              <DebtForm
-                mode="repay"
-                action={action}
-                vault={vault}
-                vusdBalance={vusdBalance}
-                blocked={blocked}
-              />
-            )}
-            {tab === "rate" && (
-              <RateForm
-                key={String(currentRate)}
-                action={action}
-                interest={interest}
-                currentRateBps={currentRate}
-                debt18={vault?.debt18}
-                blocked={blocked}
-              />
-            )}
-            {tab === "close" && <CloseForm vault={vault} action={action} blocked={blocked} />}
-          </div>
-        </>
-      )}
+        )}
+        {tab === "withdraw" && (
+          <CollateralForm
+            mode="withdraw"
+            vault={vault}
+            price18={price18}
+            params={params}
+            collDec={collDec}
+            symbol={branch.collateralSymbol}
+            action={action}
+            blocked={blocked}
+          />
+        )}
+        {tab === "borrow" && (
+          <DebtForm
+            mode="borrow"
+            vault={vault}
+            price18={price18}
+            params={params}
+            collDec={collDec}
+            action={action}
+            blocked={blocked}
+          />
+        )}
+        {tab === "repay" && (
+          <DebtForm
+            mode="repay"
+            vault={vault}
+            price18={price18}
+            params={params}
+            collDec={collDec}
+            action={action}
+            vusdBalance={vusdBalance}
+            blocked={blocked}
+          />
+        )}
+        {tab === "rate" && (
+          <RateForm
+            key={String(currentRate)}
+            action={action}
+            interest={interest}
+            currentRateBps={currentRate}
+            debt18={vault.debt18}
+            blocked={blocked}
+          />
+        )}
+        {tab === "close" && <CloseForm vault={vault} action={action} blocked={blocked} />}
+      </div>
 
       <TxStatus phase={action.phase} hash={action.hash} error={action.error} />
     </Card>
@@ -260,138 +308,12 @@ function WrapPanel({
   );
 }
 
-// ── Open (collateral + mint) with approval gate ──────────────────────────────
-function OpenForm({
-  price18,
-  params,
-  branch,
-  action,
-  collateralToken,
-  owner,
-  interest,
-  collBalance,
-  blocked,
-}: {
-  price18?: bigint;
-  params: VaultParams;
-  branch: CollateralBranch;
-  action: Action;
-  collateralToken?: Address;
-  owner?: Address;
-  interest: InterestConfig;
-  collBalance?: bigint;
-  blocked: boolean;
-}) {
-  const collDec = branch.collateralDecimals;
-  const [collateral, setCollateral] = useState("");
-  const [mint, setMint] = useState("");
-  const [rateBps, setRateBps] = useState(interest.defaultBps);
-  const clampedRate = Math.min(Math.max(rateBps, interest.minBps), interest.maxBps);
-
-  const collateralAmt = parseAmount(collateral, collDec);
-  const mint18 = parseAmount(mint, 18);
-  const maxMint =
-    collateralAmt !== null && price18
-      ? maxMintableVusd18(collateralAmt, collDec, price18, params.mcrBps, params.mintFeeBps)
-      : null;
-  const insufficientCollateral =
-    collateralAmt !== null && collBalance !== undefined && collateralAmt > collBalance;
-  const collError = insufficientCollateral
-    ? `Insufficient ${branch.collateralSymbol} — you have ${formatToken(collBalance!, collDec, 4)}.`
-    : undefined;
-
-  let error: string | undefined;
-  if (mint18 !== null && mint18 < params.minDebt18 && mint18 > 0n)
-    error = `Minimum debt is ${formatToken(params.minDebt18, 18, 0)} vUSD.`;
-  else if (maxMint !== null && mint18 !== null && mint18 > maxMint)
-    error = `Exceeds max mint (${formatToken(maxMint, 18, 2)} vUSD at MCR).`;
-
-  const valid =
-    collateralAmt !== null &&
-    collateralAmt > 0n &&
-    mint18 !== null &&
-    mint18 > 0n &&
-    !error &&
-    !insufficientCollateral;
-
-  const approval = useTokenApproval(collateralToken, branch.vaultManager || undefined, owner);
-  useEffect(() => {
-    if (approval.approved) approval.refetchAllowance();
-  }, [approval.approved]); // eslint-disable-line react-hooks/exhaustive-deps
-  const needsApproval =
-    collateralAmt !== null &&
-    collateralAmt > 0n &&
-    !insufficientCollateral &&
-    (approval.allowance === undefined || approval.allowance < collateralAmt);
-
-  return (
-    <form
-      className="flex flex-col gap-3"
-      onSubmit={(e) => {
-        e.preventDefault();
-        if (!valid || blocked) return;
-        action.execute("openVault", [collateralAmt, mint18, BigInt(clampedRate), ...HINTS]);
-      }}
-    >
-      <Field
-        label={`Deposit ${branch.collateralSymbol}`}
-        htmlFor="open-collateral"
-        error={collError}
-        hint={
-          collBalance !== undefined
-            ? `Balance ${formatToken(collBalance, collDec, 4)} ${branch.collateralSymbol}`
-            : `${collDec}-decimal collateral`
-        }
-      >
-        <Input
-          id="open-collateral"
-          inputMode="decimal"
-          placeholder="0.0"
-          value={collateral}
-          onChange={(e) => setCollateral(e.target.value)}
-        />
-      </Field>
-      <Field
-        label="Borrow vUSD"
-        htmlFor="open-mint"
-        error={error}
-        hint={maxMint !== null ? `Max ${formatToken(maxMint, 18, 2)} at MCR` : undefined}
-      >
-        <Input
-          id="open-mint"
-          inputMode="decimal"
-          placeholder="0.0"
-          value={mint}
-          onChange={(e) => setMint(e.target.value)}
-        />
-      </Field>
-      <InterestSlider
-        config={interest}
-        rateBps={clampedRate}
-        onChange={setRateBps}
-        debt18={mint18 ?? undefined}
-      />
-      {needsApproval && collateralToken ? (
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={!valid || blocked || approval.isApproving}
-          onClick={() => collateralAmt && approval.approve(collateralAmt)}
-        >
-          {approval.isApproving ? "Approving…" : `Approve ${branch.collateralSymbol}`}
-        </Button>
-      ) : (
-        <Button type="submit" disabled={!valid || blocked || action.isBusy}>
-          {action.isBusy ? "Opening…" : "Open vault"}
-        </Button>
-      )}
-    </form>
-  );
-}
-
 // ── Add / withdraw collateral ────────────────────────────────────────────────
 function CollateralForm({
   mode,
+  vault,
+  price18,
+  params,
   collDec,
   symbol,
   action,
@@ -402,6 +324,9 @@ function CollateralForm({
   blocked,
 }: {
   mode: "add" | "withdraw";
+  vault: VaultState;
+  price18?: bigint;
+  params: VaultParams;
   collDec: number;
   symbol: string;
   action: Action;
@@ -413,10 +338,21 @@ function CollateralForm({
 }) {
   const [amount, setAmount] = useState("");
   const amt = parseAmount(amount, collDec);
-  // Only "add" spends wallet balance; "withdraw" is bounded by vault collateral.
+  const isAdd = mode === "add";
+  // "Add" spends wallet balance; "withdraw" is bounded by the vault collateral.
   const insufficient =
-    mode === "add" && amt !== null && collBalance !== undefined && amt > collBalance;
-  const valid = amt !== null && amt > 0n && !insufficient;
+    isAdd && amt !== null && collBalance !== undefined && amt > collBalance;
+  const overVault = !isAdd && amt !== null && amt > vault.collateral;
+  const valid = amt !== null && amt > 0n && !insufficient && !overVault;
+  const cap = isAdd ? collBalance : vault.collateral;
+
+  // Collateral after the action — feeds the CR preview.
+  const collateralAfter =
+    amt !== null && amt > 0n && !overVault
+      ? isAdd
+        ? vault.collateral + amt
+        : vault.collateral - amt
+      : undefined;
 
   const approval = useTokenApproval(
     mode === "add" ? collateralToken : undefined,
@@ -445,11 +381,12 @@ function CollateralForm({
       <Field
         label={`${mode === "add" ? "Add" : "Withdraw"} ${symbol}`}
         htmlFor={`col-${mode}`}
-        error={insufficient ? `Insufficient ${symbol} — you have ${formatToken(collBalance!, collDec, 4)}.` : undefined}
-        hint={
-          mode === "add" && collBalance !== undefined
-            ? `Balance ${formatToken(collBalance, collDec, 4)} ${symbol}`
-            : undefined
+        error={
+          insufficient
+            ? `Insufficient ${symbol} — you have ${formatToken(collBalance!, collDec, 4)}.`
+            : overVault
+              ? `You only have ${formatToken(vault.collateral, collDec, 4)} ${symbol} in the vault.`
+              : undefined
         }
       >
         <Input
@@ -460,6 +397,29 @@ function CollateralForm({
           onChange={(e) => setAmount(e.target.value)}
         />
       </Field>
+      {cap !== undefined && (
+        <div className="-mt-1 flex items-center justify-between text-xs">
+          <span className="text-muted/70">
+            {isAdd ? "Balance" : "In vault"} {formatToken(cap, collDec, 4)} {symbol}
+          </span>
+          <button
+            type="button"
+            onClick={() => setAmount(formatUnits(cap, collDec))}
+            className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
+          >
+            Max
+          </button>
+        </div>
+      )}
+      {collateralAfter !== undefined && (
+        <CrAfterRow
+          collateralAfter={collateralAfter}
+          debtAfter={vault.debt18}
+          collDec={collDec}
+          price18={price18}
+          mcrBps={params.mcrBps}
+        />
+      )}
       {needsApproval && collateralToken ? (
         <Button
           type="button"
@@ -481,23 +441,72 @@ function CollateralForm({
 // ── Borrow more / repay ──────────────────────────────────────────────────────
 function DebtForm({
   mode,
-  action,
   vault,
+  price18,
+  params,
+  collDec,
+  action,
   vusdBalance,
   blocked,
 }: {
   mode: "borrow" | "repay";
+  vault: VaultState;
+  price18?: bigint;
+  params: VaultParams;
+  collDec: number;
   action: Action;
-  vault?: VaultState;
   vusdBalance?: bigint;
   blocked: boolean;
 }) {
   const [amount, setAmount] = useState("");
   const amt = parseAmount(amount, 18);
-  // Repay pulls vUSD from the wallet — can't repay more than you hold.
+  const isBorrow = mode === "borrow";
+
+  // Borrow-more is bounded by the max debt the collateral supports at MCR
+  // (mirrors the XRPL twin — the contract would revert past it anyway).
+  const maxMint = price18
+    ? maxMintableVusd18(vault.collateral, collDec, price18, params.mcrBps, params.mintFeeBps)
+    : undefined;
+  const maxMore = maxMint !== undefined && maxMint > vault.debt18 ? maxMint - vault.debt18 : 0n;
+  const overMore = isBorrow && amt !== null && maxMint !== undefined && amt > maxMore;
+
+  // Repay pulls vUSD from the wallet — can't repay more than you hold, more
+  // than the debt, or into the sub-minimum band (repay less, or close).
   const insufficient =
-    mode === "repay" && amt !== null && vusdBalance !== undefined && amt > vusdBalance;
-  const valid = amt !== null && amt > 0n && !insufficient;
+    !isBorrow && amt !== null && vusdBalance !== undefined && amt > vusdBalance;
+  const overRepay = !isBorrow && amt !== null && amt > vault.debt18;
+  const remaining =
+    amt !== null ? (vault.debt18 > amt ? vault.debt18 - amt : 0n) : vault.debt18;
+  const belowMin = !isBorrow && amt !== null && remaining > 0n && remaining < params.minDebt18;
+
+  const valid = isBorrow
+    ? amt !== null && amt > 0n && !overMore
+    : amt !== null &&
+      amt > 0n &&
+      !insufficient &&
+      !overRepay &&
+      (remaining === 0n || remaining >= params.minDebt18);
+
+  const error = isBorrow
+    ? overMore
+      ? `Exceeds the max borrow for this collateral (${formatToken(maxMore, 18, 2)} vUSD).`
+      : undefined
+    : insufficient
+      ? `Insufficient vUSD — you have ${formatToken(vusdBalance!, 18, 2)}.`
+      : overRepay
+        ? `You can't repay more than the ${formatToken(vault.debt18, 18, 2)} vUSD debt.`
+        : belowMin
+          ? `That leaves the debt below the ${formatToken(params.minDebt18, 18, 0)} vUSD minimum — repay less, or close the vault.`
+          : undefined;
+
+  // Debt after the action — the borrow side includes the mint fee the contract
+  // adds on top of what you receive.
+  const debtAfter =
+    amt !== null && amt > 0n
+      ? isBorrow
+        ? vault.debt18 + amt + (amt * params.mintFeeBps) / 10_000n
+        : remaining
+      : undefined;
 
   return (
     <form
@@ -511,15 +520,13 @@ function DebtForm({
       <Field
         label={mode === "borrow" ? "Borrow more vUSD" : "Repay vUSD"}
         htmlFor={`debt-${mode}`}
-        error={
-          insufficient
-            ? `Insufficient vUSD — you have ${formatToken(vusdBalance!, 18, 2)}.`
-            : undefined
-        }
+        error={error}
         hint={
-          mode === "repay" && vault
-            ? `Outstanding debt ${formatToken(vault.debt18, 18, 2)} vUSD`
-            : undefined
+          isBorrow
+            ? maxMint !== undefined
+              ? `Max +${formatToken(maxMore, 18, 2)} vUSD at the current price`
+              : "Borrow more against your collateral"
+            : `Outstanding debt ${formatToken(vault.debt18, 18, 2)} vUSD`
         }
       >
         <Input
@@ -530,6 +537,28 @@ function DebtForm({
           onChange={(e) => setAmount(e.target.value)}
         />
       </Field>
+      {!isBorrow && (
+        <div className="-mt-1 flex items-center justify-end text-xs">
+          {/* Full-precision string (not a rounded display value) so a full
+              repay leaves zero debt, never dust below the minimum. */}
+          <button
+            type="button"
+            onClick={() => setAmount(formatUnits(vault.debt18, 18))}
+            className="min-h-8 rounded-full px-2 font-medium text-brand hover:underline"
+          >
+            Repay full debt
+          </button>
+        </div>
+      )}
+      {debtAfter !== undefined && (
+        <CrAfterRow
+          collateralAfter={vault.collateral}
+          debtAfter={debtAfter}
+          collDec={collDec}
+          price18={price18}
+          mcrBps={params.mcrBps}
+        />
+      )}
       <Button type="submit" disabled={!valid || blocked || action.isBusy}>
         {action.isBusy ? "Submitting…" : mode === "borrow" ? "Borrow" : "Repay"}
       </Button>
@@ -582,16 +611,15 @@ function CloseForm({
   action,
   blocked,
 }: {
-  vault?: VaultState;
+  vault: VaultState;
   action: Action;
   blocked: boolean;
 }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm text-muted">
-        Closing repays the full debt
-        {vault ? ` (${formatToken(vault.debt18, 18, 2)} vUSD)` : ""} and returns all
-        collateral. You must hold enough vUSD to cover the debt.
+        Closing repays the full debt ({formatToken(vault.debt18, 18, 2)} vUSD) and
+        returns all collateral. You must hold enough vUSD to cover the debt.
       </p>
       <Button
         variant="secondary"
