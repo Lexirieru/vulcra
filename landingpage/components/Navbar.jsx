@@ -267,7 +267,7 @@ export default function Navbar() {
                                         <h4 className="nav-work-title">oracle-priced, TEE-guarded</h4>
                                     </div>
                                 </div>
-                                <a href={APP_URL} className="nav-work-btn"><span className="nav-work-btn__text">Launch app</span></a>
+                                <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="nav-work-btn"><span className="nav-work-btn__text">Launch app</span></a>
                             </div>
                         </div>
                     </div>
@@ -278,7 +278,7 @@ export default function Navbar() {
                     </svg>
                 </div>
                 <div className="nav-right" style={{ cursor: "url('/assets/Cursor SVG/cursor-pointer.svg') 12 12, pointer" }}>
-                    <a href={APP_URL} className="nav-launch-cta" aria-label="Launch the Vulcra app">
+                    <a href={APP_URL} target="_blank" rel="noopener noreferrer" className="nav-launch-cta" aria-label="Launch the Vulcra app">
                         <span className="nav-launch-cta__text">Launch app</span>
                     </a>
                 </div>
