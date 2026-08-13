@@ -4,6 +4,10 @@ import { useEffect } from 'react';
 import { gsap } from 'gsap';
 import { WIGGLE_CONFIG } from '@/lib/data';
 
+// Where "Launch app" points. Override with NEXT_PUBLIC_APP_URL at build; defaults
+// to the production dApp domain.
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || 'https://app.vulcra.xyz';
+
 function initWiggle(element, intensity) {
     const target = element.querySelector('[data-wiggle-target]') || element;
     gsap.set(target, { transformOrigin: 'center center' });
@@ -263,7 +267,7 @@ export default function Navbar() {
                                         <h4 className="nav-work-title">oracle-priced, TEE-guarded</h4>
                                     </div>
                                 </div>
-                                <a href="#" className="nav-work-btn"><span className="nav-work-btn__text">Launch app</span></a>
+                                <a href={APP_URL} className="nav-work-btn"><span className="nav-work-btn__text">Launch app</span></a>
                             </div>
                         </div>
                     </div>
@@ -274,7 +278,7 @@ export default function Navbar() {
                     </svg>
                 </div>
                 <div className="nav-right" style={{ cursor: "url('/assets/Cursor SVG/cursor-pointer.svg') 12 12, pointer" }}>
-                    <a href="http://localhost:3000" className="nav-launch-cta" aria-label="Launch the Vulcra app">
+                    <a href={APP_URL} className="nav-launch-cta" aria-label="Launch the Vulcra app">
                         <span className="nav-launch-cta__text">Launch app</span>
                     </a>
                 </div>
