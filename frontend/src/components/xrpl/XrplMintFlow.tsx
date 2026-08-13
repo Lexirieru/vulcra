@@ -350,23 +350,26 @@ export function XrplMintFlow() {
           payment instead of an EVM tx. Shown only when there is no vault yet. */}
       {account.data && !hasVault && (
         <>
-          {/* If the connected EVM wallet already has its own FXRP vault, say so
-              BEFORE the composer — this flow opens a separate, PersonalAccount-
-              owned vault, and that must never happen by surprise. */}
+          {/* The XRP and FXRP markets are separate (by supply chain). If the
+              connected EVM wallet already holds an FXRP vault on the Flare
+              market, say so BEFORE the composer — opening here creates an XRP
+              vault (PersonalAccount-owned), and that must never surprise. */}
           {evmHasVault && (
             <Reveal>
               <div className="flex items-start gap-3 rounded-xl border border-brand/20 bg-brand/5 p-4 text-sm">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden />
                 <p className="text-muted">
                   <span className="font-medium text-ink">
-                    This opens a separate vault owned by your XRP personal account.
+                    This opens an XRP vault — a separate position on the XRP market,
+                    owned by your XRP personal account.
                   </span>{" "}
-                  Your connected EVM wallet already has an FXRP vault of its own —{" "}
+                  Your connected EVM wallet already has an FXRP vault on the Flare
+                  market —{" "}
                   <Link
                     href="/borrow/fxrp"
                     className="font-medium text-brand hover:underline"
                   >
-                    manage that one instead
+                    manage it on the FXRP market
                   </Link>
                   .
                 </p>

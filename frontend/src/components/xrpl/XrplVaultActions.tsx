@@ -1,9 +1,7 @@
 "use client";
 
-// XRPL-native vault management, extracted from XrplMintFlow so the manage
-// surface can mount ANYWHERE the PersonalAccount's vault shows up (the
-// /borrow/xrp flow and the unified FXRP market page's position list) — a MOVE,
-// not a rewrite: the tabbed Actions panel, its forms, the PaymentPanel and the
+// XRPL-native vault management, extracted from XrplMintFlow — a MOVE, not a
+// rewrite: the tabbed Actions panel, its forms, the PaymentPanel and the
 // build → sign → track pipeline are byte-identical to what /borrow/xrp always
 // ran. Every action is ONE signed XRPL 0xFE payment; the client never builds
 // the memo.
@@ -14,8 +12,6 @@
 //   - XrplVaultActions — the tabbed Deposit / Withdraw / Borrow / Repay /
 //     Interest / Close panel (presentational; the host owns the pipeline).
 //   - PaymentPanel — sign-status strip / QR + Xaman manual fallback.
-//   - XrplManagePanel — the self-contained composition of all three for
-//     mounting outside XrplMintFlow (position list on /borrow/fxrp).
 import { useState } from "react";
 import QRCode from "react-qr-code";
 import { useMutation } from "@tanstack/react-query";
@@ -27,7 +23,7 @@ import {
   PenLine,
   ShieldAlert,
 } from "lucide-react";
-import { formatUnits, type Address } from "viem";
+import { formatUnits } from "viem";
 import {
   Button,
   Card,
@@ -37,7 +33,6 @@ import {
   PillButton,
   cn,
 } from "@/components/ui";
-import { MintStatusTracker } from "@/components/xrpl/MintStatusTracker";
 import { api } from "@/lib/api/client";
 import type {
   ManageAction,
@@ -46,17 +41,12 @@ import type {
   MintBuildResponse,
 } from "@/lib/api/types";
 import { useXrplWalletContext } from "@/context/xrpl";
-import { useFtsoPrice } from "@/hooks/useFtsoPrice";
-import { useVaultRate } from "@/hooks/useInterest";
-import { useVaultParams, type VaultParams, type VaultState } from "@/hooks/useVault";
-import { useXrpBalance } from "@/hooks/useXrpBalance";
+import type { VaultParams, VaultState } from "@/hooks/useVault";
 import { annualInterest18, maxMintableVusd18 } from "@/lib/vault-math";
-import { XRPL_PROVIDERS } from "@/lib/xrpl/wallets";
 import { BRANCHES } from "@/config/branches";
 import { formatBps, formatToken, parseAmount } from "@/lib/format";
 
 // XRPL-native collateral is always the FXRP branch (see XrplMintFlow).
-const FXRP_VAULT_MANAGER = BRANCHES.fxrp.vaultManager || undefined;
 const INTEREST = BRANCHES.fxrp.interest;
 // XRP == FXRP: 6 decimals (drops).
 const COLL_DEC = 6;
@@ -724,75 +714,3 @@ export function PaymentPanel({
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// XrplManagePanel — the standalone composition: Actions + sign strip + tracker,
-// with its own pipeline. Mount it wherever the PA vault surfaces outside
-// /borrow/xrp (the unified market page's position list).
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function XrplManagePanel({
-  rAddress,
-  personalAccount,
-  vault,
-  onVaultChanged,
-}: {
-  /** The XRPL r-address the payments are built for (the connected wallet). */
-  rAddress: string;
-  /** The derived Flare PersonalAccount that owns the vault. */
-  personalAccount: Address;
-  vault: VaultState;
-  /** Fired when an action lands on-chain (EXECUTED) — refetch the vault. */
-  onVaultChanged?: () => void;
-}) {
-  const { wallet, build, submit, xrplTxId, setXrplTxId, signAndTrack, pendingAction, busy } =
-    useXrplPaymentPipeline();
-  const { price18 } = useFtsoPrice(BRANCHES.fxrp.feedId);
-  const { params } = useVaultParams(FXRP_VAULT_MANAGER);
-  const { rateBps: currentRateBps } = useVaultRate(personalAccount, FXRP_VAULT_MANAGER);
-  const xrpBalance = useXrpBalance(rAddress);
-
-  return (
-    <div className="flex h-full flex-col gap-6">
-      <XrplVaultActions
-        vault={vault}
-        price18={price18}
-        params={params}
-        onBuild={(req) => build.mutate(req)}
-        busy={busy}
-        pendingAction={pendingAction}
-        spendableDrops={xrpBalance.data?.spendableDrops}
-        currentRateBps={currentRateBps}
-        xrplAddress={rAddress}
-      />
-
-      {build.data && !submit.data && (
-        <PaymentPanel
-          intent={build.data}
-          xrplTxId={xrplTxId}
-          onXrplTxId={setXrplTxId}
-          onSubmit={() => submit.mutate({ txId: xrplTxId.trim(), built: build.data! })}
-          submitting={submit.isPending}
-          submitError={submit.isError}
-          walletConnected={Boolean(wallet.address)}
-          walletName={wallet.providerId ? XRPL_PROVIDERS[wallet.providerId].name : undefined}
-          onWalletSign={() => build.data && signAndTrack(build.data)}
-          signing={wallet.signing}
-          walletError={wallet.error}
-        />
-      )}
-
-      {submit.data && (
-        <MintStatusTracker
-          mintId={submit.data.mintId}
-          action={
-            build.variables && "action" in build.variables ? build.variables.action : "open"
-          }
-          onExecuted={() => {
-            onVaultChanged?.();
-            xrpBalance.refetch();
-          }}
-        />
-      )}
-    </div>
-  );
-}

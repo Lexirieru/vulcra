@@ -47,6 +47,7 @@ function ChainCell({ chain }: { chain: ChainId }) {
 function VaultRow({
   branch,
   position,
+  label,
   ownerLabel,
   href,
   collateralSymbol,
@@ -54,11 +55,13 @@ function VaultRow({
 }: {
   branch: CollateralBranch;
   position: BranchPosition;
+  /** Market-correct name: "XRP vault" (XRP Ledger) vs "FXRP vault" (Flare). */
+  label: string;
   ownerLabel: string;
   href: string;
-  /** "XRP" on the XRP rail, the branch token symbol on the EVM rail. */
+  /** "XRP" on the XRP market, the branch token symbol on the Flare markets. */
   collateralSymbol: string;
-  /** Where this position's collateral is supplied from (owner-specific). */
+  /** The single chain this position's collateral is supplied from. */
   chain: ChainId;
 }) {
   const { price18 } = useFtsoPrice(branch.feedId);
@@ -81,7 +84,7 @@ function VaultRow({
       <span className="flex min-w-0 items-center gap-3">
         <TokenIcon symbol={collateralSymbol} size={32} alt="" />
         <span className="flex min-w-0 flex-col">
-          <span className="font-medium text-ink">{branch.label} vault</span>
+          <span className="font-medium text-ink">{label}</span>
           <span className="truncate text-xs text-muted">{ownerLabel}</span>
         </span>
       </span>
@@ -184,7 +187,7 @@ export function YourPositionsCard() {
     <Reveal className="min-w-0">
       <SectionCard
         title="Your positions"
-        subtitle="Live from Coston2 — vaults on both rails, plus stability-pool deposits."
+        subtitle="Vaults across Flare and the XRP Ledger, plus stability-pool deposits — live from Coston2."
         bleed
       >
         <div className="hidden grid-cols-[minmax(0,2fr)_minmax(0,1fr)_1fr_1fr_auto_auto] gap-4 border-b border-line bg-surface-2/50 px-5 py-3 text-xs font-medium text-muted sm:grid">
@@ -199,6 +202,7 @@ export function YourPositionsCard() {
           <VaultRow
             branch={BRANCHES.fxrp}
             position={fxrp.evm}
+            label="FXRP vault"
             ownerLabel={`EVM wallet · ${shortenAddress(fxrp.evm.owner)}`}
             href="/borrow/fxrp"
             collateralSymbol="FXRP"
@@ -209,6 +213,7 @@ export function YourPositionsCard() {
           <VaultRow
             branch={BRANCHES.fxrp}
             position={fxrp.xrpl}
+            label="XRP vault"
             ownerLabel={`XRP Ledger · personal account ${shortenAddress(fxrp.xrpl.owner)}`}
             href="/borrow/xrp"
             collateralSymbol="XRP"
@@ -219,6 +224,7 @@ export function YourPositionsCard() {
           <VaultRow
             branch={BRANCHES.wflr}
             position={wflr.evm}
+            label="wFLR vault"
             ownerLabel={`EVM wallet · ${shortenAddress(wflr.evm.owner)}`}
             href="/borrow/wflr"
             collateralSymbol="wFLR"

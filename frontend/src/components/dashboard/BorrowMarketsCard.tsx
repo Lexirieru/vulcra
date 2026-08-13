@@ -131,14 +131,24 @@ export function BorrowMarketsCard() {
 
   const rows: Row[] = [
     {
-      // ONE row for the FXRP market — the XRPL-native path funds this same
-      // market (XRP becomes FXRP via FAssets), so the Chain column carries
-      // both marks instead of a second row with identical numbers.
+      // XRP — its own market row, distinguished by supply chain (XRP Ledger).
+      // It settles on the FXRP VaultManager, so market stats are shared with
+      // the FXRP row; the chain, route and framing are what set it apart.
+      key: "xrp",
+      name: "XRP",
+      symbol: "XRP",
+      sub: "From the XRP Ledger · via FAssets",
+      chains: ["xrpl"],
+      href: "/borrow/xrp",
+      live: true,
+      stats: fxrp,
+    },
+    {
       key: "fxrp",
       name: "FXRP",
       symbol: "FXRP",
-      sub: "FAssets XRP",
-      chains: ["flare", "xrpl"],
+      sub: "FAssets XRP · on Flare",
+      chains: ["flare"],
       href: "/borrow/fxrp",
       live: true,
       stats: fxrp,

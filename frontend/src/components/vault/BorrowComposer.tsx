@@ -65,7 +65,7 @@ function InfoRow({ left, right }: { left: React.ReactNode; right: React.ReactNod
 /**
  * Collateral selector — a LOCAL toggle, not navigation. Picking an asset calls
  * `onSelect`; it does not link anywhere, so the page never changes route and
- * never remounts. Same shape as the Flare ↔ XRP `RailToggle`.
+ * never remounts.
  *
  * Semantics are `radiogroup`/`radio` (pick one of a set) rather than tabs: the
  * choice re-frames the whole page — header, market panel and composer — not one

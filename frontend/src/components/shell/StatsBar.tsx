@@ -107,7 +107,9 @@ export function StatsBar() {
         <div className="ml-auto hidden items-center gap-5 sm:flex sm:gap-7">
           <StatItem
             label={fxrp.feedLabel}
-            icon={<TokenIcon symbol="FXRP" size={18} alt="" />}
+            // The XRP/USD feed prices XRP itself — the plain XRP mark, not the
+            // pink FXRP-on-Flare token chip.
+            icon={<TokenIcon symbol="XRP" size={18} alt="" />}
             value={
               <>
                 {formatPrice(xrpPrice.price18)}

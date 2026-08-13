@@ -1,15 +1,15 @@
 "use client";
 
-// Dedicated XRPL-native borrow page — the FXRP market surface PINNED to the
-// XRP Ledger rail. You supply XRP straight from the XRP Ledger (Crossmark /
-// GemWallet) as collateral; it becomes FXRP on Flare via FAssets and backs vUSD
-// you borrow cross-chain — a single XRPL payment, no Flare wallet or FLR gas.
+// The XRP MARKET — its own market, distinguished by supply chain (XRP Ledger).
+// You supply XRP straight from the XRP Ledger (Crossmark / GemWallet) as
+// collateral; it becomes FXRP on Flare via FAssets and backs vUSD you borrow
+// cross-chain — a single signed XRPL payment, no Flare wallet or FLR gas. The
+// position here is an XRP vault owned by your Flare PersonalAccount.
 //
-// A thin wrapper: it mounts the SAME XrplMintFlow the unified market page
-// (/borrow/fxrp) offers behind its rail toggle — connect / QR / paste-r-address
-// paths included — plus the XRP-framed market aside and the vUSD send-out card.
-// Deep links and the headline "borrow from your XRP wallet" story keep this
-// route; the market page reaches the identical surface via the toggle.
+// SEPARATE from the FXRP market (/borrow/fxrp, Flare chain, EVM wallet): they
+// settle on the same FXRP VaultManager on-chain, but the UI never merges them —
+// each market keeps its own route, wallet, position and framing, with pointer
+// cards linking across when you hold a vault on the other one.
 import { useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
@@ -50,7 +50,7 @@ export default function BorrowXrpPage() {
             href="/borrow"
             className="inline-flex w-fit items-center gap-1.5 text-sm text-muted hover:text-ink"
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden /> All collateral
+            <ArrowLeft className="h-4 w-4" aria-hidden /> All markets
           </Link>
           <div className="flex items-center gap-3">
             <TokenIcon symbol="XRP" size={40} alt="" />

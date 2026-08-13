@@ -1,13 +1,13 @@
 "use client";
 
-// Borrow landing — collateral picker. ONE card per market (FXRP, wFLR): live
-// FTSO price, MCR-derived max LTV, contract interest bounds, min debt. The
-// XRPL-native entry is the navy hero banner (→ /borrow/xrp), NOT a second card
-// — the XRP path funds the same FXRP market, so a separate card read as a
-// separate pool. Cards are position-aware: when you already hold a vault on a
-// market (either owner — EVM wallet or the XRP-path PersonalAccount), the card
-// says so and its CTA flips to "Manage". Roadmap assets (stXRP, sFLR) render
-// "Soon" cards — no fabricated numbers.
+// Borrow landing — market picker. Markets are SEPARATE per supply chain:
+// XRP (XRP Ledger → /borrow/xrp), FXRP (Flare → /borrow/fxrp), wFLR (Flare),
+// plus stXRP/sFLR "Soon" cards. The XRP and FXRP markets settle on the same
+// VaultManager on-chain, but each card carries ONE chain, its own route, and
+// its own position-awareness (XRP card watches the PersonalAccount vault; the
+// Flare cards watch the EVM wallet's vault). Live figures only — FTSO price,
+// MCR-derived max LTV, contract interest bounds, min debt; no fabricated
+// numbers on the roadmap cards.
 import Link from "next/link";
 import { Badge, Card, ChainMarks, PillButton, TokenIcon, type ChainId } from "@/components/ui";
 import { Reveal, Stagger } from "@/components/motion";
@@ -148,11 +148,10 @@ function BranchCard({ branch }: { branch: CollateralBranch }) {
   const { price18, isStale } = useFtsoPrice(branch.feedId);
   const { params } = useVaultParams(vaultManager);
   const { config: interest } = useInterestConfig(vaultManager, branch.interest);
-  // Aave-style position awareness: the market card knows when you already hold
-  // a vault here (either owner) and flips its CTA to "Manage" — a second vault
-  // is never the default path.
-  const { count } = useBranchPositions(branch);
-  const hasPosition = count > 0;
+  // Flare-market card → EVM-wallet position ONLY. A PersonalAccount vault
+  // belongs to the separate XRP market card, never here.
+  const { evm } = useBranchPositions(branch);
+  const hasPosition = Boolean(evm);
 
   return (
     <LiveCard
@@ -166,14 +165,43 @@ function BranchCard({ branch }: { branch: CollateralBranch }) {
       isStale={isStale}
       params={params}
       interest={interest}
-      chains={branch.hasXrplMint ? ["flare", "xrpl"] : ["flare"]}
+      chains={["flare"]}
       badge={hasPosition ? <Badge tone="green">You have a position</Badge> : undefined}
       ctaLabel={
-        hasPosition
-          ? `Manage your ${branch.label} position${count > 1 ? "s" : ""}`
-          : `Borrow against ${branch.label}`
+        hasPosition ? `Manage your ${branch.label} vault` : `Borrow against ${branch.label}`
       }
       ctaHref={`/borrow/${branch.key}`}
+    />
+  );
+}
+
+// XRP — its own market card, distinguished by supply chain (XRP Ledger): you
+// supply XRP from Crossmark/GemWallet, no EVM wallet. Settles on the FXRP
+// VaultManager on Flare, so it reads that branch's live price/params, but the
+// route, wallet, position (PersonalAccount vault) and framing are all its own.
+function XrpLedgerCard() {
+  const branch = BRANCHES.fxrp;
+  const vaultManager = branch.vaultManager || undefined;
+  const { price18, isStale } = useFtsoPrice(branch.feedId);
+  const { params } = useVaultParams(vaultManager);
+  const { config: interest } = useInterestConfig(vaultManager, branch.interest);
+  const { xrpl } = useBranchPositions(branch);
+  const hasPosition = Boolean(xrpl);
+
+  return (
+    <LiveCard
+      symbol="XRP"
+      label="XRP"
+      subtitle="On the XRP Ledger · becomes FXRP via FAssets"
+      feedLabel={branch.feedLabel}
+      price18={price18}
+      isStale={isStale}
+      params={params}
+      interest={interest}
+      chains={["xrpl"]}
+      badge={hasPosition ? <Badge tone="green">You have a position</Badge> : undefined}
+      ctaLabel={hasPosition ? "Manage your XRP vault" : "Borrow with XRP"}
+      ctaHref="/borrow/xrp"
     />
   );
 }
@@ -220,10 +248,11 @@ export default function BorrowPage() {
             Borrow vUSD
           </h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            Choose a collateral asset — each runs its own Vulcra branch on Flare
-            Coston2. Deposit collateral, borrow vUSD, and set your own interest rate.
+            Choose a market — each is set apart by the chain you supply from.
+            Deposit collateral, borrow vUSD, and set your own interest rate.
             Hold XRP? <span className="text-ink">Supply it straight from the XRP
-            Ledger</span> as collateral — one payment, no EVM wallet or FLR required.
+            Ledger</span> on the XRP market — one payment, no EVM wallet or FLR
+            required.
           </p>
         </div>
       </Reveal>
@@ -243,7 +272,7 @@ export default function BorrowPage() {
               </div>
               <p className="mt-0.5 max-w-xl text-sm text-white/75">
                 {xrplHasVault
-                  ? "Your XRP-path vault is live — manage collateral, debt, and interest in a single XRP Ledger payment."
+                  ? "Your XRP vault is live — manage collateral, debt, and interest in a single XRP Ledger payment."
                   : xrpConnected
                     ? `${providerName} is connected — borrow vUSD against your XRP in a single XRP Ledger payment, no EVM wallet or FLR needed.`
                     : "Connect an XRPL wallet (Crossmark / GemWallet) and borrow vUSD against your XRP in a single XRP Ledger payment — no EVM wallet or FLR needed."}
@@ -261,6 +290,7 @@ export default function BorrowPage() {
       </Reveal>
 
       <Stagger className="grid items-stretch gap-4 sm:grid-cols-2" startDelay={0.05} itemClassName="h-full">
+        <XrpLedgerCard key="xrp" />
         {BRANCH_ORDER.map((k) => (
           <BranchCard key={k} branch={BRANCHES[k]} />
         ))}
@@ -273,24 +303,21 @@ export default function BorrowPage() {
         {totalPositions > 0 ? (
           <p className="text-xs text-muted/80">
             You have {totalPositions} open position{totalPositions > 1 ? "s" : ""} —
-            manage {totalPositions > 1 ? "them" : "it"} on the{" "}
-            {fxrpPositions.count > 0 && (
-              <Link
-                href="/borrow/fxrp"
-                className="text-brand underline underline-offset-2"
-              >
-                FXRP market
-              </Link>
-            )}
-            {fxrpPositions.count > 0 && wflrPositions.count > 0 && " and the "}
-            {wflrPositions.count > 0 && (
-              <Link
-                href="/borrow/wflr"
-                className="text-brand underline underline-offset-2"
-              >
-                wFLR market
-              </Link>
-            )}
+            manage {totalPositions > 1 ? "them" : "it"} on{" "}
+            {[
+              fxrpPositions.xrpl && { label: "the XRP market", href: "/borrow/xrp" },
+              fxrpPositions.evm && { label: "the FXRP market", href: "/borrow/fxrp" },
+              wflrPositions.evm && { label: "the wFLR market", href: "/borrow/wflr" },
+            ]
+              .filter((m): m is { label: string; href: string } => Boolean(m))
+              .map((m, i, all) => (
+                <span key={m.href}>
+                  {i > 0 && (i === all.length - 1 ? " and " : ", ")}
+                  <Link href={m.href} className="text-brand underline underline-offset-2">
+                    {m.label}
+                  </Link>
+                </span>
+              ))}
             .
           </p>
         ) : (

@@ -161,11 +161,13 @@ export interface BranchPosition {
 }
 
 /**
- * Every position the user holds on ONE branch's market, across both rails.
- * The VaultManager keys vaults by owner, so the same person can hold TWO
- * distinct vaults: one owned by their EVM wallet (opened via wagmi writes) and
- * one owned by their XRPL wallet's PersonalAccount (opened via 0xFE payments).
- * This is the market page's single source of truth for "what do I have here".
+ * Every position the user holds against ONE branch's VaultManager, split by
+ * owning wallet. The VaultManager keys vaults by owner, so the same person can
+ * hold TWO distinct vaults: `evm` — owned by their EVM wallet (the Flare
+ * market, wagmi writes) — and `xrpl` — owned by their XRPL wallet's
+ * PersonalAccount (the separate XRP market, 0xFE payments). Consumers pick the
+ * side that matches their market; only aggregate views (dashboard positions,
+ * picker footer) use both.
  */
 export function useBranchPositions(branch: CollateralBranch) {
   const { address } = useAccount();

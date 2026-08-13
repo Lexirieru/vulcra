@@ -1,14 +1,15 @@
 "use client";
 
-// Per-collateral MARKET page — the single surface for one branch's market.
+// Per-collateral MARKET page — the FLARE-chain markets (FXRP, wFLR). You
+// deposit a collateral token you already hold on Flare and borrow vUSD with
+// your EVM wallet.
 //
-// One market, one position surface: the VaultManager keys vaults by owner, so
-// the same person can hold an EVM-wallet vault AND a PersonalAccount vault
-// (opened from the XRP Ledger). Both render here as first-class positions with
-// an owner chip, each managed on its own rail (wagmi writes vs ONE signed XRPL
-// 0xFE payment). With no position, a rail toggle picks how a new vault is
-// funded: FXRP from the Flare wallet, or XRP from the XRP Ledger (the same
-// XrplMintFlow that /borrow/xrp — the XRPL-pinned entry — mounts).
+// The XRP market is a SEPARATE market on its own page (/borrow/xrp): you
+// supply XRP from the XRP Ledger there, and its vault is owned by your Flare
+// PersonalAccount. The two markets share the FXRP VaultManager on-chain, but
+// the UI never merges them — when the connected XRP wallet's PersonalAccount
+// holds a vault, this page shows a POINTER card to the XRP market (correctly
+// labelled "XRP vault"), not an inline manage surface.
 //
 // The collateral selector is LOCAL STATE (`activeKey`), seeded once from the
 // [collateral] URL segment. Switching collateral is a setState: no <Link>, no
@@ -22,7 +23,6 @@ import { useAccount } from "wagmi";
 import { ArrowLeft, CheckCircle2, ChevronDown, ExternalLink, X } from "lucide-react";
 import { Card, ErrorState, Skeleton, TokenIcon } from "@/components/ui";
 import { Reveal } from "@/components/motion";
-import { RailToggle, type Rail } from "@/components/borrow/RailToggle";
 import { BorrowComposer } from "@/components/vault/BorrowComposer";
 import { ContractsNotice } from "@/components/vault/ContractsNotice";
 import { LivePrice } from "@/components/vault/LivePrice";
@@ -30,8 +30,7 @@ import { PositionCard } from "@/components/vault/PositionCard";
 import { PriceSimulator } from "@/components/vault/PriceSimulator";
 import { RedemptionsExplainer } from "@/components/vault/RedemptionsExplainer";
 import { VaultActions } from "@/components/vault/VaultActions";
-import { XrplMintFlow } from "@/components/xrpl/XrplMintFlow";
-import { XrplManagePanel } from "@/components/xrpl/XrplVaultActions";
+import { XrpVaultPointer } from "@/components/vault/XrpVaultPointer";
 import { BRANCHES, isBranchKey, type BranchKey } from "@/config/branches";
 import { useBranch } from "@/context/branch";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
@@ -103,18 +102,11 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
   const { rateBps } = useVaultRate(address, vaultManager);
   const { data: redeemableBefore } = useRedeemableBefore(address, vaultManager, hasVault);
 
-  // The XRP-path position: a vault on this branch owned by the connected XRPL
-  // wallet's PersonalAccount (not this EVM wallet). It renders as a first-class
-  // position in the list below, managed inline via 0xFE payments — never as an
-  // invitation to open a second vault by accident.
+  // The XRP-market position (owned by the connected XRP wallet's
+  // PersonalAccount). The XRP market is SEPARATE (/borrow/xrp) — this page only
+  // uses the read to show the pointer card, so an empty composer never hides an
+  // existing position or invites a duplicate vault.
   const xrplPath = useXrplPathVault(branch);
-  const { rateBps: xrplRateBps } = useVaultRate(xrplPath.pa, vaultManager);
-  const { data: xrplRedeemableBefore } = useRedeemableBefore(
-    xrplPath.pa,
-    vaultManager,
-    xrplPath.hasVault,
-  );
-  const positionCount = (hasVault && vault ? 1 : 0) + (xrplPath.hasVault && xrplPath.vault ? 1 : 0);
 
   // Keep the URL in step with the locally-switched collateral. The native
   // history API is App-Router-aware (shallow) — no navigation, no remount —
@@ -123,11 +115,6 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
     const want = `/borrow/${activeKey}`;
     if (window.location.pathname !== want) window.history.replaceState(null, "", want);
   }, [activeKey]);
-
-  // Which rail funds a NEW vault (no-position state only): the Flare wallet
-  // (FXRP composer) or the XRP Ledger (the XRPL-native flow). FXRP-only —
-  // wFLR has no XRPL rail.
-  const [rail, setRail] = useState<Rail>("flare");
 
   // Set when the composer's openVault confirms, so the "Confirmed + Explorer"
   // proof survives the composer → PositionCard swap (the composer unmounts the
@@ -177,20 +164,18 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
             href="/borrow"
             className="inline-flex w-fit items-center gap-1.5 text-sm text-muted hover:text-ink"
           >
-            <ArrowLeft className="h-4 w-4" aria-hidden /> All collateral
+            <ArrowLeft className="h-4 w-4" aria-hidden /> All markets
           </Link>
           <div ref={headerRef} className="flex items-center gap-3">
             <TokenIcon symbol={branch.collateralSymbol} size={40} alt="" />
             <div>
               <h1 className="text-2xl font-semibold tracking-tight text-ink">
-                {positionCount > 1
-                  ? `Your ${branch.label} vaults`
-                  : positionCount === 1
-                    ? `Your ${branch.label} vault`
-                    : `Borrow vUSD against ${branch.collateralSymbol}`}
+                {hasVault
+                  ? `Your ${branch.label} vault`
+                  : `Borrow vUSD against ${branch.collateralSymbol}`}
               </h1>
               <p className="mt-0.5 text-sm text-muted">
-                {positionCount > 0
+                {hasVault
                   ? `Manage collateral, debt, and interest — live ${branch.feedLabel} pricing from FTSO.`
                   : `Deposit ${branch.collateralSymbol} you hold on Flare, borrow vUSD, and set your own interest rate.`}
               </p>
@@ -207,21 +192,8 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
             <Card>
               <Skeleton className="h-64 w-full" />
             </Card>
-          ) : positionCount > 0 ? (
+          ) : hasVault && vault ? (
             <>
-              {/* The EVM read failed while the XRP-path position rendered fine —
-                  say so instead of silently listing an incomplete set. */}
-              {isConnected && vaultReadError && (
-                <Reveal>
-                  <Card>
-                    <ErrorState
-                      title="Couldn't read your EVM vault"
-                      description="The RPC read failed, so this list may be missing your EVM-owned position."
-                      onRetry={() => void refetchVault()}
-                    />
-                  </Card>
-                </Reveal>
-              )}
               {openedHash && (
                 <Reveal>
                   <div className="flex flex-wrap items-center gap-2 rounded-xl border border-green/30 bg-green/10 px-4 py-3 text-sm">
@@ -247,168 +219,126 @@ function BranchBorrow({ urlKey }: { urlKey: BranchKey }) {
                 </Reveal>
               )}
 
-              {/* EVM-owned position — managed with wagmi writes. */}
-              {hasVault && vault && (
-                <>
-                  <Reveal>
-                    <PositionCard
+              <Reveal>
+                <PositionCard
+                  vault={vault}
+                  price18={price18}
+                  params={params}
+                  collDec={branch.collateralDecimals}
+                  collateralSymbol={branch.collateralSymbol}
+                  feedLabel={branch.feedLabel}
+                  rateBps={rateBps}
+                  redeemableBefore18={redeemableBefore?.debt18}
+                  ownerChip={
+                    address ? `EVM wallet · ${shortenAddress(address)}` : undefined
+                  }
+                />
+              </Reveal>
+              <div className="grid gap-6 xl:grid-cols-2">
+                <Reveal delay={0.05} className="h-full">
+                  <VaultActions
+                    vault={vault}
+                    price18={price18}
+                    params={params}
+                    branch={branch}
+                    collateralToken={collateralToken}
+                    owner={address}
+                    disabled={notConfigured}
+                  />
+                </Reveal>
+                <Reveal delay={0.1} className="h-full">
+                  {price18 ? (
+                    <PriceSimulator
                       vault={vault}
-                      price18={price18}
+                      livePrice18={price18}
                       params={params}
                       collDec={branch.collateralDecimals}
-                      collateralSymbol={branch.collateralSymbol}
-                      feedLabel={branch.feedLabel}
-                      rateBps={rateBps}
-                      redeemableBefore18={redeemableBefore?.debt18}
-                      ownerChip={
-                        address ? `EVM wallet · ${shortenAddress(address)}` : undefined
-                      }
                     />
-                  </Reveal>
-                  <div className="grid gap-6 xl:grid-cols-2">
-                    <Reveal delay={0.05} className="h-full">
-                      <VaultActions
-                        vault={vault}
-                        price18={price18}
-                        params={params}
-                        branch={branch}
-                        collateralToken={collateralToken}
-                        owner={address}
-                        disabled={notConfigured}
-                      />
-                    </Reveal>
-                    <Reveal delay={0.1} className="h-full">
-                      {price18 ? (
-                        <PriceSimulator
-                          vault={vault}
-                          livePrice18={price18}
-                          params={params}
-                          collDec={branch.collateralDecimals}
-                        />
-                      ) : (
-                        <Card className="flex h-full items-center justify-center text-center text-sm text-muted">
-                          Loading live price…
-                        </Card>
-                      )}
-                    </Reveal>
-                  </div>
-                </>
-              )}
+                  ) : (
+                    <Card className="flex h-full items-center justify-center text-center text-sm text-muted">
+                      Loading live price…
+                    </Card>
+                  )}
+                </Reveal>
+              </div>
 
-              {/* XRP-path position — owned by the PersonalAccount derived from
-                  the connected r-address; every action is ONE signed XRPL 0xFE
-                  payment, managed right here (no EVM wallet involved). */}
-              {xrplPath.hasVault && xrplPath.vault && xrplPath.pa && xrplPath.xrplAddress && (
-                <>
-                  <Reveal delay={hasVault ? 0.1 : 0}>
-                    <PositionCard
-                      vault={xrplPath.vault}
-                      price18={price18}
-                      params={params}
-                      collDec={branch.collateralDecimals}
-                      collateralSymbol="XRP"
-                      feedLabel={branch.feedLabel}
-                      rateBps={xrplRateBps}
-                      redeemableBefore18={xrplRedeemableBefore?.debt18}
-                      ownerChip={`XRP Ledger · personal account ${shortenAddress(xrplPath.pa)}`}
-                    />
-                  </Reveal>
-                  <div className="grid gap-6 xl:grid-cols-2">
-                    <Reveal delay={0.05} className="h-full">
-                      <XrplManagePanel
-                        rAddress={xrplPath.xrplAddress}
-                        personalAccount={xrplPath.pa}
-                        vault={xrplPath.vault}
-                        onVaultChanged={() => void xrplPath.refetch()}
-                      />
-                    </Reveal>
-                    <Reveal delay={0.1} className="h-full">
-                      {price18 ? (
-                        <PriceSimulator
-                          vault={xrplPath.vault}
-                          livePrice18={price18}
-                          params={params}
-                          collDec={branch.collateralDecimals}
-                        />
-                      ) : (
-                        <Card className="flex h-full items-center justify-center text-center text-sm text-muted">
-                          Loading live price…
-                        </Card>
-                      )}
-                    </Reveal>
-                  </div>
-                </>
-              )}
-
-              {/* Only the XRP-path vault exists → opening a second, EVM-owned
-                  vault stays possible, but only behind an explicit disclosure,
-                  so it can't happen by accident. */}
-              {!hasVault && xrplPath.hasVault && (
+              {/* Separate market, helpful pointer: the connected XRP wallet's
+                  PersonalAccount may also hold an XRP vault — point to the XRP
+                  market rather than rendering it here. Gated so an empty
+                  pointer never leaves a blank Reveal wrapper (a phantom gap
+                  in this flex column). */}
+              {xrplPath.hasVault && (
                 <Reveal delay={0.15}>
-                  <details className="group rounded-2xl border border-dashed border-line px-4 py-3">
-                    <summary className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-ink [&::-webkit-details-marker]:hidden">
-                      <ChevronDown
-                        className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180"
-                        aria-hidden
-                      />
-                      Open a separate {branch.label} vault with this EVM wallet
-                    </summary>
-                    <p className="mt-1 text-xs text-muted/80">
-                      This creates a second vault owned by the connected EVM wallet,
-                      independent of the XRP-path vault above.
-                    </p>
-                    <div className="mt-4">
-                      <BorrowComposer
-                        branch={branch}
-                        onSelectBranch={setActiveKey}
-                        onOpened={onOpened}
-                      />
-                    </div>
-                  </details>
+                  <XrpVaultPointer branch={branch} />
                 </Reveal>
               )}
             </>
           ) : isConnected && vaultReadError ? (
-            // Fail CLOSED, not into the open composer: if the vault read
-            // errored, this page cannot know whether a vault already exists —
-            // showing the composer would invite opening a duplicate.
-            <Card>
-              <ErrorState
-                title="Couldn't read your vault"
-                description="The RPC read failed, so this page can't tell whether you already have a vault here. Retry before opening a new one."
-                onRetry={() => void refetchVault()}
-              />
-            </Card>
-          ) : (
+            // Fail CLOSED before anything that could open a vault: if the EVM
+            // vault read errored, this page cannot know whether one already
+            // exists — never fall through to a composer (even a disclosed one).
+            <div className="flex flex-col gap-6">
+              <Card>
+                <ErrorState
+                  title="Couldn't read your vault"
+                  description="The RPC read failed, so this page can't tell whether you already have a vault here. Retry before opening a new one."
+                  onRetry={() => void refetchVault()}
+                />
+              </Card>
+              {xrplPath.hasVault && <XrpVaultPointer branch={branch} />}
+            </div>
+          ) : xrplPath.hasVault ? (
             <Reveal>
               <div className="flex flex-col gap-6">
-                {/* No position yet. On the FXRP market the vault can be funded
-                    from EITHER rail — the toggle flips between the Flare-wallet
-                    composer (FXRP) and the XRPL-native flow (XRP). wFLR has no
-                    XRPL rail, so it renders the composer alone. */}
-                {branch.hasXrplMint && (
-                  <RailToggle value={rail} onChange={setRail} idPrefix="borrow-rail" />
-                )}
-                {branch.hasXrplMint && rail === "xrpl" ? (
-                  <div
-                    role="tabpanel"
-                    id="borrow-rail-panel-xrpl"
-                    aria-labelledby="borrow-rail-tab-xrpl"
-                  >
-                    <XrplMintFlow />
-                  </div>
-                ) : (
-                  <div
-                    role="tabpanel"
-                    id="borrow-rail-panel-flare"
-                    aria-labelledby="borrow-rail-tab-flare"
-                  >
+                {/* No FXRP (Flare) vault, but the XRP market has one — show the
+                    correctly-labelled pointer instead of a bare composer, and
+                    keep opening an FXRP vault behind an explicit disclosure so
+                    a duplicate can't happen by accident. */}
+                <XrpVaultPointer branch={branch} />
+                <details className="group rounded-2xl border border-dashed border-line px-4 py-3">
+                  <summary className="flex min-h-10 cursor-pointer list-none items-center gap-1.5 text-sm font-medium text-muted transition-colors hover:text-ink [&::-webkit-details-marker]:hidden">
+                    <ChevronDown
+                      className="h-4 w-4 shrink-0 transition-transform group-open:rotate-180"
+                      aria-hidden
+                    />
+                    Open a {branch.label} vault with this EVM wallet
+                  </summary>
+                  <p className="mt-1 text-xs text-muted/80">
+                    This opens a separate vault on the {branch.label} (Flare) market,
+                    owned by the connected EVM wallet — independent of the XRP vault
+                    above.
+                  </p>
+                  <div className="mt-4">
                     <BorrowComposer
                       branch={branch}
                       onSelectBranch={setActiveKey}
                       onOpened={onOpened}
                     />
                   </div>
+                </details>
+              </div>
+            </Reveal>
+          ) : (
+            <Reveal>
+              <div className="flex flex-col gap-6">
+                <BorrowComposer
+                  branch={branch}
+                  onSelectBranch={setActiveKey}
+                  onOpened={onOpened}
+                />
+                {/* Separate market, light cross-link: holding XRP on the XRP
+                    Ledger belongs on the XRP market, not in this composer. */}
+                {branch.hasXrplMint && (
+                  <p className="text-xs text-muted/80">
+                    Hold XRP on the XRP Ledger instead?{" "}
+                    <Link
+                      href="/borrow/xrp"
+                      className="font-medium text-brand hover:underline"
+                    >
+                      Borrow on the XRP market
+                    </Link>{" "}
+                    — one signed XRPL payment, no EVM wallet.
+                  </p>
                 )}
               </div>
             </Reveal>
