@@ -1,16 +1,24 @@
 "use client";
 
-// Borrow landing — collateral picker. Live branches (FXRP, wFLR) plus the
-// dedicated XRP (XRP Ledger) entry show real data only: FTSO price, MCR-derived
-// max LTV, contract interest bounds, min debt. Every live card shares ONE
-// presentational frame (LiveCard) so they are pixel-identical. Roadmap assets
-// (stXRP, sFLR) render "Soon" cards — no fabricated numbers.
+// Borrow landing — collateral picker. ONE card per market (FXRP, wFLR): live
+// FTSO price, MCR-derived max LTV, contract interest bounds, min debt. The
+// XRPL-native entry is the navy hero banner (→ /borrow/xrp), NOT a second card
+// — the XRP path funds the same FXRP market, so a separate card read as a
+// separate pool. Cards are position-aware: when you already hold a vault on a
+// market (either owner — EVM wallet or the XRP-path PersonalAccount), the card
+// says so and its CTA flips to "Manage". Roadmap assets (stXRP, sFLR) render
+// "Soon" cards — no fabricated numbers.
 import Link from "next/link";
 import { Badge, Card, PillButton, TokenIcon } from "@/components/ui";
 import { Reveal, Stagger } from "@/components/motion";
 import { BRANCH_ORDER, BRANCHES, type CollateralBranch } from "@/config/branches";
 import { useFtsoPrice } from "@/hooks/useFtsoPrice";
-import { useVaultParams, type VaultParams } from "@/hooks/useVault";
+import {
+  useBranchPositions,
+  useFxrpPositions,
+  useVaultParams,
+  type VaultParams,
+} from "@/hooks/useVault";
 import { useInterestConfig } from "@/hooks/useInterest";
 import { useXrplWalletContext } from "@/context/xrpl";
 import { XRPL_PROVIDERS } from "@/lib/xrpl/wallets";
@@ -48,9 +56,9 @@ function ltvFromMcr(params: VaultParams): string {
       })}%`;
 }
 
-// Shared frame for every LIVE collateral card — one source of truth so the XRP
-// card and the FXRP/wFLR cards are structurally identical (same header, same
-// four rows, same full-width CTA). No chain badges, no per-card ornaments.
+// Shared frame for every LIVE market card — one source of truth so the FXRP
+// and wFLR cards are structurally identical (same header, same four rows, same
+// full-width CTA). No chain badges, no per-card ornaments.
 function LiveCard({
   symbol,
   label,
@@ -62,6 +70,7 @@ function LiveCard({
   interest,
   ctaLabel,
   ctaHref,
+  badge,
 }: {
   symbol: string;
   label: string;
@@ -73,15 +82,20 @@ function LiveCard({
   interest: { isDefault: boolean; minBps: number; maxBps: number };
   ctaLabel: string;
   ctaHref: string;
+  /** e.g. "You have a position" — position-aware markets show it here. */
+  badge?: React.ReactNode;
 }) {
   return (
     <Card className="flex h-full flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <TokenIcon symbol={symbol} size={40} alt="" />
-        <span>
-          <span className="block text-lg font-semibold text-ink">{label}</span>
-          <span className="block text-xs text-muted">{subtitle}</span>
+      <div className="flex items-center justify-between gap-3">
+        <span className="flex items-center gap-3">
+          <TokenIcon symbol={symbol} size={40} alt="" />
+          <span>
+            <span className="block text-lg font-semibold text-ink">{label}</span>
+            <span className="block text-xs text-muted">{subtitle}</span>
+          </span>
         </span>
+        {badge}
       </div>
 
       <div className="space-y-1.5 border-t border-line pt-3">
@@ -122,48 +136,33 @@ function BranchCard({ branch }: { branch: CollateralBranch }) {
   const { price18, isStale } = useFtsoPrice(branch.feedId);
   const { params } = useVaultParams(vaultManager);
   const { config: interest } = useInterestConfig(vaultManager, branch.interest);
+  // Aave-style position awareness: the market card knows when you already hold
+  // a vault here (either owner) and flips its CTA to "Manage" — a second vault
+  // is never the default path.
+  const { count } = useBranchPositions(branch);
+  const hasPosition = count > 0;
 
   return (
     <LiveCard
       symbol={branch.collateralSymbol}
       label={branch.label}
       subtitle={
-        branch.hasXrplMint ? "FXRP on Flare · via FAssets" : `${branch.collateralSymbol} · Coston2`
+        branch.hasXrplMint
+          ? "FXRP on Flare · fund from Flare or the XRP Ledger"
+          : `${branch.collateralSymbol} · Coston2`
       }
       feedLabel={branch.feedLabel}
       price18={price18}
       isStale={isStale}
       params={params}
       interest={interest}
-      ctaLabel={`Borrow against ${branch.label}`}
+      badge={hasPosition ? <Badge tone="green">You have a position</Badge> : undefined}
+      ctaLabel={
+        hasPosition
+          ? `Manage your ${branch.label} position${count > 1 ? "s" : ""}`
+          : `Borrow against ${branch.label}`
+      }
       ctaHref={`/borrow/${branch.key}`}
-    />
-  );
-}
-
-// XRP (XRP Ledger) — the XRPL-native entry, a SEPARATE card from FXRP: what you
-// supply is XRP on the XRP Ledger (Crossmark/GemWallet), which becomes FXRP
-// collateral on Flare via FAssets. It reads the FXRP branch's live price/params
-// but frames everything as XRP and deep-links into the dedicated /borrow/xrp page.
-function XrpLedgerCard() {
-  const branch = BRANCHES.fxrp;
-  const vaultManager = branch.vaultManager || undefined;
-  const { price18, isStale } = useFtsoPrice(branch.feedId);
-  const { params } = useVaultParams(vaultManager);
-  const { config: interest } = useInterestConfig(vaultManager, branch.interest);
-
-  return (
-    <LiveCard
-      symbol="XRP"
-      label="XRP"
-      subtitle="On the XRP Ledger · testnet"
-      feedLabel={branch.feedLabel}
-      price18={price18}
-      isStale={isStale}
-      params={params}
-      interest={interest}
-      ctaLabel="Borrow with XRP"
-      ctaHref="/borrow/xrp"
     />
   );
 }
@@ -192,6 +191,13 @@ export default function BorrowPage() {
   const providerName = wallet.providerId
     ? XRPL_PROVIDERS[wallet.providerId].name
     : "your XRP wallet";
+  // Position awareness for the hero + footer: the XRP hero flips to "manage"
+  // when the PersonalAccount vault exists, and the footer names the markets
+  // where the user actually has something to manage.
+  const fxrpPositions = useFxrpPositions();
+  const wflrPositions = useBranchPositions(BRANCHES.wflr);
+  const totalPositions = fxrpPositions.count + wflrPositions.count;
+  const xrplHasVault = Boolean(fxrpPositions.xrpl);
   return (
     <div className="flex flex-col gap-8">
       <Reveal>
@@ -222,20 +228,25 @@ export default function BorrowPage() {
                 Have XRP? Borrow vUSD straight from your XRP wallet
               </div>
               <p className="mt-0.5 max-w-xl text-sm text-white/75">
-                {xrpConnected
-                  ? `${providerName} is connected — borrow vUSD against your XRP in a single XRP Ledger payment, no EVM wallet or FLR needed.`
-                  : "Connect an XRPL wallet (Crossmark / GemWallet) and borrow vUSD against your XRP in a single XRP Ledger payment — no EVM wallet or FLR needed."}
+                {xrplHasVault
+                  ? "Your XRP-path vault is live — manage collateral, debt, and interest in a single XRP Ledger payment."
+                  : xrpConnected
+                    ? `${providerName} is connected — borrow vUSD against your XRP in a single XRP Ledger payment, no EVM wallet or FLR needed.`
+                    : "Connect an XRPL wallet (Crossmark / GemWallet) and borrow vUSD against your XRP in a single XRP Ledger payment — no EVM wallet or FLR needed."}
               </p>
             </div>
           </div>
           <span className="inline-flex shrink-0 items-center gap-2 self-start rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-navy sm:self-auto">
-            {xrpConnected ? "Borrow with XRP →" : "Connect XRP wallet"}
+            {xrplHasVault
+              ? "Manage your XRP vault →"
+              : xrpConnected
+                ? "Borrow with XRP →"
+                : "Connect XRP wallet"}
           </span>
         </Link>
       </Reveal>
 
       <Stagger className="grid items-stretch gap-4 sm:grid-cols-2" startDelay={0.05} itemClassName="h-full">
-        <XrpLedgerCard key="xrp" />
         {BRANCH_ORDER.map((k) => (
           <BranchCard key={k} branch={BRANCHES[k]} />
         ))}
@@ -245,15 +256,36 @@ export default function BorrowPage() {
       </Stagger>
 
       <Reveal delay={0.15}>
-        <p className="text-xs text-muted/80">
-          Rates and limits are read live from each branch&apos;s VaultManager;
-          &ldquo;—&rdquo; means the value hasn&apos;t loaded or the branch isn&apos;t
-          configured. Manage an existing vault from its{" "}
-          <Link href="/borrow/fxrp" className="text-brand underline underline-offset-2">
-            collateral page
-          </Link>
-          .
-        </p>
+        {totalPositions > 0 ? (
+          <p className="text-xs text-muted/80">
+            You have {totalPositions} open position{totalPositions > 1 ? "s" : ""} —
+            manage {totalPositions > 1 ? "them" : "it"} on the{" "}
+            {fxrpPositions.count > 0 && (
+              <Link
+                href="/borrow/fxrp"
+                className="text-brand underline underline-offset-2"
+              >
+                FXRP market
+              </Link>
+            )}
+            {fxrpPositions.count > 0 && wflrPositions.count > 0 && " and the "}
+            {wflrPositions.count > 0 && (
+              <Link
+                href="/borrow/wflr"
+                className="text-brand underline underline-offset-2"
+              >
+                wFLR market
+              </Link>
+            )}
+            .
+          </p>
+        ) : (
+          <p className="text-xs text-muted/80">
+            Rates and limits are read live from each branch&apos;s VaultManager;
+            &ldquo;—&rdquo; means the value hasn&apos;t loaded or the branch isn&apos;t
+            configured. Open a vault and this page will point you back to it.
+          </p>
+        )}
       </Reveal>
     </div>
   );

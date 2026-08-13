@@ -1,14 +1,15 @@
 "use client";
 
-// Dedicated XRPL-native borrow page. You supply XRP straight from the XRP Ledger
-// (Crossmark / GemWallet) as collateral; it becomes FXRP on Flare via FAssets and
-// backs vUSD you borrow cross-chain — a single XRPL payment, no Flare wallet or
-// FLR gas.
+// Dedicated XRPL-native borrow page — the FXRP market surface PINNED to the
+// XRP Ledger rail. You supply XRP straight from the XRP Ledger (Crossmark /
+// GemWallet) as collateral; it becomes FXRP on Flare via FAssets and backs vUSD
+// you borrow cross-chain — a single XRPL payment, no Flare wallet or FLR gas.
 //
-// This is intentionally SEPARATE from /borrow/fxrp (the Flare-wallet FXRP
-// composer): different source asset (XRP vs FXRP), different chain (XRP Ledger
-// vs Flare), different wallet. Same visual layout, its own route — the two paths
-// are never merged onto one page.
+// A thin wrapper: it mounts the SAME XrplMintFlow the unified market page
+// (/borrow/fxrp) offers behind its rail toggle — connect / QR / paste-r-address
+// paths included — plus the XRP-framed market aside and the vUSD send-out card.
+// Deep links and the headline "borrow from your XRP wallet" story keep this
+// route; the market page reaches the identical surface via the toggle.
 import { useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";

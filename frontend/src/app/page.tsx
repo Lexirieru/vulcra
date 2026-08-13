@@ -5,6 +5,7 @@ import { HeroCard, TokenIcon, Sticker } from "@/components/ui";
 import { Reveal } from "@/components/motion";
 import { BorrowMarketsCard } from "@/components/dashboard/BorrowMarketsCard";
 import { EarnPoolsCard } from "@/components/dashboard/EarnPoolsCard";
+import { YourPositionsCard } from "@/components/dashboard/YourPositionsCard";
 
 export default function DashboardPage() {
   return (
@@ -54,6 +55,11 @@ export default function DashboardPage() {
           />
         </Reveal>
       </div>
+
+      {/* Your positions (Aave-style anchor) — renders nothing until the
+          connected wallets actually hold a vault or a pool deposit, so the
+          landing stays clean for new users. Owns its own <Reveal>. */}
+      <YourPositionsCard />
 
       {/* min-w-0 lets the card's table scroll inside its own overflow-x-auto
           instead of stretching this flex column past the viewport on mobile. */}

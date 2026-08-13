@@ -21,6 +21,7 @@ export function PositionCard({
   feedLabel,
   rateBps,
   redeemableBefore18,
+  ownerChip,
 }: {
   vault: VaultState;
   price18?: bigint;
@@ -30,6 +31,9 @@ export function PositionCard({
   feedLabel: string;
   rateBps?: bigint;
   redeemableBefore18?: bigint;
+  /** Which wallet owns this vault (e.g. "EVM wallet · 0x12…ab") — disambiguates
+      positions when the same market lists more than one owner. */
+  ownerChip?: React.ReactNode;
 }) {
   const crBps = price18
     ? computeCrBps(vault.collateral, collDec, vault.debt18, price18)
@@ -43,8 +47,15 @@ export function PositionCard({
 
   return (
     <Card className="p-6">
-      <div className="flex items-center justify-between">
-        <CardTitle>Your vault</CardTitle>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <CardTitle>Your vault</CardTitle>
+          {ownerChip ? (
+            <span className="inline-flex max-w-full items-center truncate rounded-full border border-line bg-surface-2 px-2.5 py-0.5 text-xs text-muted">
+              {ownerChip}
+            </span>
+          ) : null}
+        </div>
         <Badge tone={band === "danger" ? "danger" : band === "warning" ? "warning" : "green"}>
           {riskLabel}
         </Badge>

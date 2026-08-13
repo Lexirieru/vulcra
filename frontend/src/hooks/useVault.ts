@@ -5,14 +5,14 @@
 // comes from the branch config (env). A blank address → `notConfigured` (no mock).
 // The SAME ABI serves every branch; only the instance address differs. Reads the
 // real `params()` struct; falls back to documented defaults (R7) when unconfigured.
-import { useReadContract } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import type { Address } from "viem";
 import { COSTON2_CHAIN_ID } from "@/config/contracts";
 import { useXrplWalletContext } from "@/context/xrpl";
 import { usePersonalAccount } from "@/hooks/usePersonalAccount";
 import { vaultManagerAbi } from "@/lib/contracts/abis";
 import { useContractAddress } from "@/lib/contracts/registry";
-import type { CollateralBranch } from "@/config/branches";
+import { BRANCHES, type CollateralBranch } from "@/config/branches";
 
 export const DEFAULT_PARAMS = {
   mcrBps: 13_000n, // 130%
@@ -138,7 +138,7 @@ export function useXrplPathVault(branch: CollateralBranch) {
   const account = usePersonalAccount(xrplAddress ?? "");
   const pa = account.data?.personalAccount as Address | undefined;
   const enabled = branch.hasXrplMint && Boolean(xrplAddress);
-  const { vault, hasVault } = useVault(
+  const { vault, hasVault, refetch } = useVault(
     enabled ? pa : undefined,
     branch.vaultManager || undefined,
   );
@@ -149,5 +149,47 @@ export function useXrplPathVault(branch: CollateralBranch) {
     pa,
     vault,
     hasVault: enabled && hasVault,
+    refetch,
   };
+}
+
+/** One position in a branch's market, tagged with the wallet that owns it. */
+export interface BranchPosition {
+  /** The on-chain vault owner (EVM wallet, or the derived PersonalAccount). */
+  owner: Address;
+  vault: VaultState;
+}
+
+/**
+ * Every position the user holds on ONE branch's market, across both rails.
+ * The VaultManager keys vaults by owner, so the same person can hold TWO
+ * distinct vaults: one owned by their EVM wallet (opened via wagmi writes) and
+ * one owned by their XRPL wallet's PersonalAccount (opened via 0xFE payments).
+ * This is the market page's single source of truth for "what do I have here".
+ */
+export function useBranchPositions(branch: CollateralBranch) {
+  const { address } = useAccount();
+  const evmQ = useVault(address, branch.vaultManager || undefined);
+  const xrplQ = useXrplPathVault(branch);
+
+  const evm: BranchPosition | undefined =
+    address && evmQ.hasVault && evmQ.vault
+      ? { owner: address, vault: evmQ.vault }
+      : undefined;
+  const xrpl: (BranchPosition & { rAddress: string }) | undefined =
+    xrplQ.pa && xrplQ.xrplAddress && xrplQ.hasVault && xrplQ.vault
+      ? { owner: xrplQ.pa, rAddress: xrplQ.xrplAddress, vault: xrplQ.vault }
+      : undefined;
+
+  return {
+    evm,
+    xrpl,
+    count: (evm ? 1 : 0) + (xrpl ? 1 : 0),
+    isLoading: evmQ.isLoading,
+  };
+}
+
+/** The FXRP market's positions — the only branch where both rails exist. */
+export function useFxrpPositions() {
+  return useBranchPositions(BRANCHES.fxrp);
 }

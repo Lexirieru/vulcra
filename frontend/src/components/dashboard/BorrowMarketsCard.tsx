@@ -23,6 +23,8 @@ type Row = {
   name: string;
   symbol: string;
   sub?: string;
+  /** Small info chip next to the name (e.g. "via XRPL" on the FXRP row). */
+  chip?: string;
   href?: string;
   live: boolean;
   stats?: BranchStats;
@@ -68,6 +70,11 @@ const COLUMNS: Array<DataTableColumn<Row>> = [
         <span className="flex min-w-0 flex-col">
           <span className="flex items-center gap-2 font-medium">
             {row.name}
+            {row.chip && (
+              <Badge tone="blue" className="normal-case">
+                {row.chip}
+              </Badge>
+            )}
             {!row.live && (
               <Badge tone="neutral" className="normal-case">
                 Soon
@@ -120,20 +127,14 @@ export function BorrowMarketsCard() {
 
   const rows: Row[] = [
     {
-      // XRPL-native entry — same underlying FXRP market on Flare, framed as XRP.
-      key: "xrp",
-      name: "XRP",
-      symbol: "XRP",
-      sub: "XRP Ledger → Flare",
-      href: "/borrow/xrp",
-      live: true,
-      stats: fxrp,
-    },
-    {
+      // ONE row for the FXRP market — the XRPL-native path funds this same
+      // market (XRP becomes FXRP via FAssets), so it is a chip on this row,
+      // not a second row with identical numbers.
       key: "fxrp",
       name: "FXRP",
       symbol: "FXRP",
-      sub: "FAssets XRP",
+      sub: "FAssets XRP · fund from Flare or the XRP Ledger",
+      chip: "via XRPL",
       href: "/borrow/fxrp",
       live: true,
       stats: fxrp,
