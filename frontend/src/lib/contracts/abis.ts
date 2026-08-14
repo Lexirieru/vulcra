@@ -103,6 +103,34 @@ export const stabilityPoolAbi = [
   { type: "function", name: "claimReward", stateMutability: "nonpayable", inputs: [], outputs: [] },
 ] as const;
 
+// FlareTeeManager (FCC diamond) — read-only fragments to surface a Compute
+// Extension's on-chain registration (the Guardian's TEE machine). `getTeeMachine`
+// returns the (teeId, teeProxyId, url) tuple; `getTeeMachineStatus` returns 2 for
+// PRODUCTION. Reads hit the manager directly, so they hold even when the enclave
+// endpoint is unreachable.
+export const flareTeeManagerAbi = [
+  { type: "function", name: "getTeeMachineStatus", stateMutability: "view", inputs: [{ name: "tee", type: "address" }], outputs: [{ name: "", type: "uint8" }] },
+  {
+    type: "function",
+    name: "getTeeMachine",
+    stateMutability: "view",
+    inputs: [{ name: "tee", type: "address" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "teeId", type: "address" },
+          { name: "teeProxyId", type: "address" },
+          { name: "url", type: "string" },
+        ],
+      },
+    ],
+  },
+  { type: "function", name: "getExtensionId", stateMutability: "view", inputs: [{ name: "tee", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "getTeeMachineOwner", stateMutability: "view", inputs: [{ name: "tee", type: "address" }], outputs: [{ name: "", type: "address" }] },
+] as const;
+
 export const vaultManagerAbi = [
   // --- reads ---
   {

@@ -45,3 +45,17 @@ export const API_BASE_URL =
 // service when it runs on its own host/port (e.g. http://localhost:8790).
 export const GUARDIAN_API_URL =
   process.env.NEXT_PUBLIC_GUARDIAN_API_URL?.trim() || API_BASE_URL;
+
+// Guardian confidential extension (FCC). The TEE machine is registered on Flare's
+// FCC manager (a diamond that is NOT registry-resolvable), so these are env-driven
+// with verified Coston2 defaults, like the Vulcra core addresses above. They power
+// the read-only, on-chain "Confidential keeper (TEE)" status card — public testnet
+// values only. `getTeeMachineStatus(GUARDIAN_TEE_ID)` returns 2 (PRODUCTION).
+export const GUARDIAN_TEE_MANAGER_ADDRESS = (
+  process.env.NEXT_PUBLIC_GUARDIAN_TEE_MANAGER?.trim() ||
+  "0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE"
+) as Address;
+export const GUARDIAN_TEE_ID = (
+  process.env.NEXT_PUBLIC_GUARDIAN_TEE_ID?.trim() ||
+  "0xE894096c9530E865c29701ed39d2Dc28E3716A8f"
+) as Address;

@@ -19,6 +19,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { Reveal } from "@/components/motion";
+import { TeeStatusCard } from "@/components/guardian/TeeStatusCard";
 import { api } from "@/lib/api/client";
 import { useVaultParams } from "@/hooks/useVault";
 import { useBranch } from "@/context/branch";
@@ -198,6 +199,10 @@ export default function GuardianPage() {
           </Card>
         </Reveal>
       </div>
+
+      <Reveal delay={0.1}>
+        <TeeStatusCard />
+      </Reveal>
     </div>
   );
 }

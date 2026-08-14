@@ -18,7 +18,7 @@ CDP from an XRP wallet only** through the Vulcra MCP server.
 [![Rails](https://img.shields.io/badge/Flare-FAssets_·_FTSOv2_·_FDC_·_FCC-1f6feb?style=for-the-badge)](https://dev.flare.network)
 [![Agent](https://img.shields.io/badge/AI_agent-MCP_zero--custody-f0883e?style=for-the-badge)](#-the-ai-agent--drive-a-cdp-from-an-xrp-wallet-mcp)
 
-### ▶︎ Live now: **[vulcra.xyz](https://vulcra.xyz)**
+### ▶︎ Live now: **[vulcra.xyz](https://vulcra.xyz)** · ▶ **[Watch the demo](https://youtu.be/rRWTnkSeI9o)**
 
 **[▶ Launch the dApp — app.vulcra.xyz](https://app.vulcra.xyz)** · API [api.vulcra.xyz](https://api.vulcra.xyz/health) · Guardian TEE [tee.vulcra.xyz](https://tee.vulcra.xyz/health)
 
@@ -26,6 +26,7 @@ CDP from an XRP wallet only** through the Vulcra MCP server.
 **[VaultManager (FXRP)](https://coston2-explorer.flare.network/address/0x93e572cDbfb62557E041B53490e5208C147b5388)** ·
 **[vUSD](https://coston2-explorer.flare.network/address/0x333FDCf66792122e80654E197Eb6Fa3705f1B6D8)** ·
 **[Repo](https://github.com/Lexirieru/vulcra)** ·
+**[BUIDL (DoraHacks)](https://dorahacks.io/buidl/47827)** ·
 **[Flare docs](https://dev.flare.network)**
 
 </div>
@@ -470,6 +471,24 @@ keeper wallet holding `GUARDIAN_EXECUTOR_ROLE`; until then the Guardian is decis
 `SIMULATED_TEE` mode (deterministic, reproducible build) — the judge-approved Coston2 posture;
 production mode runs a measured GCP Confidential Space attestation against the current `FlareTeeManager`
 (`0x1a9C4A…`).
+
+**On-chain registration (verifiable, no proxy or indexer).** The confidential extension is registered
+to **PRODUCTION** on the redeployed manager, surfaced live in the dApp on the "Confidential keeper (TEE)"
+card at **[app.vulcra.xyz/guardian](https://app.vulcra.xyz/guardian)**:
+
+| Field | Value |
+|---|---|
+| FlareTeeManager (FCC) | `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE` |
+| teeId | `0xE894096c9530E865c29701ed39d2Dc28E3716A8f` |
+| Extension id | `66247` |
+| InstructionSender | `0x63Ccb68581c57b60B1019EBFd18621CFE38C5604` |
+| On-chain status | `2` (PRODUCTION) |
+
+```bash
+cast call 0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE \
+  "getTeeMachineStatus(address)(uint8)" 0xE894096c9530E865c29701ed39d2Dc28E3716A8f \
+  --rpc-url https://coston2-api.flare.network/ext/C/rpc   # -> 2 (PRODUCTION)
+```
 
 ---
 
